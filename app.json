@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Locas",
+    "slug": "locas",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#FF6B00"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.neurader.locas"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FF6B00"
+      },
+      "package": "com.neurader.locas",
+      "edgeToEdge": true
+    },
+    "plugins": [
+      "expo-sqlite"
+    ]
+  }
+}
