@@ -364,19 +364,56 @@ export async function deleteExpense(id) {
 export async function getDashboardStats() {
   const db = await getDB();
   const now = new Date();
-  const mm = String(now.getMonth()+1).padStart(2,'0');
+  const mm  = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = String(now.getFullYear());
   const monthStart = `${yyyy}-${mm}-01`;
   const monthEnd   = `${yyyy}-${mm}-31`;
 
-  const [sales, expenses, receivables, payables, topCustomers] = await Promise.all([
-    db.getFirstAsync(`SELECT COALESCE(SUM(total),0) as total, COUNT(*) as count FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`, [monthStart, monthEnd]),
-    db.getFirstAsync(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE deleted_at IS NULL AND date>=? AND date<=?`, [monthStart, monthEnd]),
-    db.getFirstAsync(`SELECT COALESCE(SUM(total-paid),0) as total FROM invoices WHERE deleted_at IS NULL AND type='sale' AND status != 'paid'`),
-    db.getFirstAsync(`SELECT COALESCE(SUM(total-paid),0) as total FROM invoices WHERE deleted_at IS NULL AND type='purchase' AND status != 'paid'`),
-    db.getAllAsync(`SELECT party_name, COALESCE(SUM(total),0) as total FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=? GROUP BY party_name ORDER BY total DESC LIMIT 5`, [monthStart, monthEnd]),
+  const [sales, expenses, receivables, payables, topCustomers, collected] = await Promise.all([
+    // Total invoiced this month
+    db.getFirstAsync(
+      `SELECT COALESCE(SUM(total),0) as total, COUNT(*) as count 
+       FROM invoices 
+       WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`,
+      [monthStart, monthEnd]
+    ),
+    // Total expenses this month
+    db.getFirstAsync(
+      `SELECT COALESCE(SUM(amount),0) as total 
+       FROM expenses 
+       WHERE deleted_at IS NULL AND date>=? AND date<=?`,
+      [monthStart, monthEnd]
+    ),
+    // Total outstanding (all time unpaid sales)
+    db.getFirstAsync(
+      `SELECT COALESCE(SUM(total-paid),0) as total 
+       FROM invoices 
+       WHERE deleted_at IS NULL AND type='sale' AND status != 'paid'`
+    ),
+    // Total payables (unpaid purchases)
+    db.getFirstAsync(
+      `SELECT COALESCE(SUM(total-paid),0) as total 
+       FROM invoices 
+       WHERE deleted_at IS NULL AND type='purchase' AND status != 'paid'`
+    ),
+    // Top customers this month
+    db.getAllAsync(
+      `SELECT party_name, COALESCE(SUM(total),0) as total 
+       FROM invoices 
+       WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=? 
+       GROUP BY party_name ORDER BY total DESC LIMIT 5`,
+      [monthStart, monthEnd]
+    ),
+    // Actually collected (paid amount) this month — for real profit
+    db.getFirstAsync(
+      `SELECT COALESCE(SUM(paid),0) as total 
+       FROM invoices 
+       WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`,
+      [monthStart, monthEnd]
+    ),
   ]);
-  return { sales, expenses, receivables, payables, topCustomers };
+
+  return { sales, expenses, receivables, payables, topCustomers, collected };
 }
 
 // ─── Reports ─────────────────────────────────────────────────────
