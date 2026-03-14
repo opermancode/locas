@@ -13,7 +13,9 @@ function amountInWords(amount) {
   const hund  = Math.floor((num % 1000) / 100);
   const rest  = num % 100;
   let words = '';
-  const twoDigit = (n) => n >= 20 ? tens[Math.floor(n/10)] + (n%10 ? ' ' + ones[n%10] : '') : ones[n];
+  const twoDigit = (n) => n >= 20
+    ? tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '')
+    : ones[n];
   if (crore) words += twoDigit(crore) + ' Crore ';
   if (lakh)  words += twoDigit(lakh)  + ' Lakh ';
   if (thou)  words += twoDigit(thou)  + ' Thousand ';
@@ -61,7 +63,6 @@ export default function template1(invoice, profile, accentColor = '#1E3A5F') {
     font-size: 16px;
     font-weight: 800;
     letter-spacing: 3px;
-    margin-bottom: 0;
   }
   .sub-header {
     background: ${accentColor}22;
@@ -73,84 +74,78 @@ export default function template1(invoice, profile, accentColor = '#1E3A5F') {
     padding: 8px 12px;
     margin-bottom: 12px;
   }
-  .business-name { font-size: 15px; font-weight: 800; color: ${accentColor}; }
+  .business-name   { font-size: 15px; font-weight: 800; color: ${accentColor}; }
   .business-detail { font-size: 10px; color: #444; margin-top: 2px; line-height: 1.6; }
-  .inv-info { text-align: right; font-size: 10px; color: #444; line-height: 1.8; }
+  .inv-info        { text-align: right; font-size: 10px; color: #444; line-height: 1.8; }
   .inv-info strong { color: ${accentColor}; font-size: 12px; }
 
-  .bill-section {
-    border: 1px solid ${accentColor};
-    margin-bottom: 12px;
-  }
-  .bill-header {
-    background: ${accentColor};
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
+  .bill-section  { border: 1px solid ${accentColor}; margin-bottom: 12px; }
+  .bill-header   {
+    background: ${accentColor}; color: white;
+    font-size: 10px; font-weight: 700;
     padding: 5px 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    text-transform: uppercase; letter-spacing: 1px;
   }
-  .bill-body { padding: 10px; }
-  .bill-row  { display: flex; gap: 20px; }
-  .bill-col  { flex: 1; }
-  .bill-label{ font-size: 9px; font-weight: 700; color: #666; text-transform: uppercase; margin-bottom: 2px; }
-  .bill-value{ font-size: 12px; font-weight: 700; color: #111; }
-  .bill-sub  { font-size: 10px; color: #555; line-height: 1.6; margin-top: 2px; }
-  .supply-tag{ display:inline-block; background:${accentColor}22; color:${accentColor}; font-size:9px; font-weight:700; padding:2px 8px; border-radius:3px; margin-top:4px; border:1px solid ${accentColor}44; }
+  .bill-body   { padding: 10px; }
+  .bill-row    { display: flex; gap: 20px; }
+  .bill-col    { flex: 1; }
+  .bill-label  { font-size: 9px; font-weight: 700; color: #666; text-transform: uppercase; margin-bottom: 2px; }
+  .bill-value  { font-size: 12px; font-weight: 700; color: #111; }
+  .bill-sub    { font-size: 10px; color: #555; line-height: 1.6; margin-top: 2px; }
+  .supply-tag  {
+    display: inline-block;
+    background: ${accentColor}22; color: ${accentColor};
+    font-size: 9px; font-weight: 700;
+    padding: 2px 8px; border-radius: 3px; margin-top: 4px;
+    border: 1px solid ${accentColor}44;
+  }
 
-  table { width:100%; border-collapse:collapse; margin-bottom:0; }
   .table-wrap { border: 1px solid ${accentColor}; margin-bottom: 12px; }
-  thead tr { background: ${accentColor}; color: white; }
+  table       { width: 100%; border-collapse: collapse; }
+  thead tr    { background: ${accentColor}; color: white; }
   th  { padding: 7px 6px; text-align: center; font-size: 10px; font-weight: 600; border-right: 1px solid ${accentColor}88; }
   th:last-child { border-right: none; }
   .td { padding: 7px 6px; font-size: 10px; border-bottom: 1px solid #E5E7EB; border-right: 1px solid #E5E7EB; vertical-align: middle; }
   .td:last-child { border-right: none; }
 
-  .bottom-section { display: flex; gap: 12px; margin-bottom: 12px; }
-  .terms-box {
-    flex: 1; border: 1px solid ${accentColor};
-  }
-  .terms-header { background: ${accentColor}; color: white; font-size: 10px; font-weight: 700; padding: 5px 10px; }
-  .terms-body   { padding: 8px 10px; font-size: 10px; color: #444; line-height: 1.8; }
-  .terms-row    { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dotted #ddd; }
-  .terms-grand  { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; font-weight: 800; color: ${accentColor}; margin-top: 4px; }
-  .terms-danger { display: flex; justify-content: space-between; padding: 2px 0; font-weight: 700; color: #DC2626; }
-
-  .sign-box {
-    width: 200px; border: 1px solid ${accentColor};
-    display: flex; flex-direction: column;
-  }
-  .sign-header { background: ${accentColor}; color: white; font-size: 10px; font-weight: 700; padding: 5px 10px; }
-  .sign-body   { flex: 1; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; min-height: 100px; }
-  .sign-name   { font-size: 11px; font-weight: 700; color: #111; }
-  .sign-line   { border-top: 1px solid #999; margin-top: 40px; padding-top: 4px; font-size: 9px; color: #666; text-align: center; }
-
   .words-box {
     border: 1px solid ${accentColor};
-    padding: 7px 10px;
-    margin-bottom: 12px;
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
+    padding: 7px 10px; margin-bottom: 12px;
+    display: flex; gap: 8px; align-items: flex-start;
   }
   .words-label { font-size: 9px; font-weight: 700; color: ${accentColor}; text-transform: uppercase; white-space: nowrap; margin-top: 1px; }
   .words-value { font-size: 10px; color: #111; font-style: italic; }
 
-  .status-badge { display:inline-block; padding:2px 10px; border-radius:3px; font-size:9px; font-weight:700; }
-  .paid    { background:#D1FAE5; color:#065F46; }
-  .unpaid  { background:#FEE2E2; color:#991B1B; }
-  .partial { background:#FEF3C7; color:#92400E; }
+  .bottom-section { display: flex; gap: 12px; margin-bottom: 12px; }
 
-  .footer { text-align:center; font-size:9px; color:#999; margin-top:8px; border-top:1px solid #eee; padding-top:6px; }
+  .terms-box     { flex: 1; border: 1px solid ${accentColor}; }
+  .terms-header  { background: ${accentColor}; color: white; font-size: 10px; font-weight: 700; padding: 5px 10px; }
+  .terms-body    { padding: 8px 10px; }
+  .terms-row     { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #ddd; font-size: 11px; }
+  .terms-grand   { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; font-weight: 800; color: ${accentColor}; margin-top: 4px; }
+  .terms-danger  { display: flex; justify-content: space-between; padding: 3px 0; font-weight: 700; color: #DC2626; font-size: 11px; }
+  .terms-muted   { color: #666; }
+
+  .sign-box    { width: 200px; border: 1px solid ${accentColor}; display: flex; flex-direction: column; }
+  .sign-header { background: ${accentColor}; color: white; font-size: 10px; font-weight: 700; padding: 5px 10px; }
+  .sign-body   { flex: 1; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; min-height: 110px; }
+  .sign-name   { font-size: 11px; font-weight: 700; color: #111; }
+  .sign-line   { border-top: 1px solid #999; margin-top: 50px; padding-top: 4px; font-size: 9px; color: #666; text-align: center; }
+
+  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 3px; font-size: 9px; font-weight: 700; }
+  .paid    { background: #D1FAE5; color: #065F46; }
+  .unpaid  { background: #FEE2E2; color: #991B1B; }
+  .partial { background: #FEF3C7; color: #92400E; }
+
+  .footer { text-align: center; font-size: 9px; color: #999; margin-top: 8px; border-top: 1px solid #eee; padding-top: 6px; }
 </style>
 </head>
 <body>
 
-<!-- Top header bar -->
+<!-- Top header -->
 <div class="top-header">TAX INVOICE</div>
 
-<!-- Sub header: business + invoice info -->
+<!-- Business + Invoice info -->
 <div class="sub-header">
   <div>
     <div class="business-name">${prof.name || 'My Business'}</div>
@@ -170,7 +165,7 @@ export default function template1(invoice, profile, accentColor = '#1E3A5F') {
   </div>
 </div>
 
-<!-- Bill To / From -->
+<!-- Party Details -->
 <div class="bill-section">
   <div class="bill-header">Party Details</div>
   <div class="bill-body">
@@ -179,9 +174,9 @@ export default function template1(invoice, profile, accentColor = '#1E3A5F') {
         <div class="bill-label">From (Seller)</div>
         <div class="bill-value">${prof.name || 'My Business'}</div>
         <div class="bill-sub">
-          ${prof.address    ? prof.address + '<br>'                                      : ''}
-          ${prof.gstin      ? 'GSTIN: ' + prof.gstin + '<br>'                            : ''}
-          ${prof.state      ? 'State: ' + prof.state + ' (' + (prof.state_code||'') + ')': ''}
+          ${prof.address  ? prof.address + '<br>'                                       : ''}
+          ${prof.gstin    ? 'GSTIN: ' + prof.gstin + '<br>'                             : ''}
+          ${prof.state    ? 'State: ' + prof.state + ' (' + (prof.state_code||'') + ')' : ''}
         </div>
       </div>
       <div style="width:1px;background:${accentColor}33;margin:0 10px"></div>
@@ -189,8 +184,8 @@ export default function template1(invoice, profile, accentColor = '#1E3A5F') {
         <div class="bill-label">Bill To (Buyer)</div>
         <div class="bill-value">${inv.party_name || 'Walk-in Customer'}</div>
         <div class="bill-sub">
-          ${inv.party_address ? inv.party_address + '<br>'                                            : ''}
-          ${inv.party_gstin   ? 'GSTIN: ' + inv.party_gstin + '<br>'                                  : ''}
+          ${inv.party_address ? inv.party_address + '<br>'                                              : ''}
+          ${inv.party_gstin   ? 'GSTIN: ' + inv.party_gstin + '<br>'                                    : ''}
           ${inv.party_state   ? 'State: ' + inv.party_state + ' (' + (inv.party_state_code||'') + ')' : ''}
         </div>
         <span class="supply-tag">${isInter ? '🔀 IGST — Inter-state' : '✅ CGST+SGST — Intra-state'}</span>
@@ -225,42 +220,45 @@ export default function template1(invoice, profile, accentColor = '#1E3A5F') {
   <span class="words-value">${amountInWords(inv.total)}</span>
 </div>
 
-<!-- Bottom: Terms + Totals + Signature -->
+<!-- Bottom: Summary + Signature -->
 <div class="bottom-section">
-
-  <!-- Terms & Totals -->
   <div class="terms-box">
     <div class="terms-header">Summary</div>
     <div class="terms-body">
       <div class="terms-row"><span>Subtotal</span><span>${inr(inv.subtotal)}</span></div>
-      ${inv.discount > 0 ? `<div class="terms-row"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>` : ''}
+      ${inv.discount > 0
+        ? `<div class="terms-row terms-muted"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`
+        : ''}
       <div class="terms-row"><span>Taxable Amount</span><span>${inr(inv.taxable)}</span></div>
       ${isInter
-        ? `<div class="terms-row"><span>IGST</span><span>${inr(inv.igst)}</span></div>`
-        : `<div class="terms-row"><span>Add: CGST</span><span>${inr(inv.cgst)}</span></div>
-           <div class="terms-row"><span>Add: SGST</span><span>${inr(inv.sgst)}</span></div>`
+        ? `<div class="terms-row terms-muted"><span>IGST</span><span>${inr(inv.igst)}</span></div>`
+        : `<div class="terms-row terms-muted"><span>Add: CGST</span><span>${inr(inv.cgst)}</span></div>
+           <div class="terms-row terms-muted"><span>Add: SGST</span><span>${inr(inv.sgst)}</span></div>`
       }
-      ${inv.paid > 0    ? `<div class="terms-row"><span>Balance Received</span><span>${inr(inv.paid)}</span></div>` : ''}
-      ${balance > 0.01  ? `<div class="terms-danger"><span>Balance Due</span><span>${inr(balance)}</span></div>`   : ''}
+      ${inv.paid > 0
+        ? `<div class="terms-row"><span>Balance Received</span><span>${inr(inv.paid)}</span></div>`
+        : ''}
+      ${balance > 0.01
+        ? `<div class="terms-danger"><span>Balance Due</span><span>${inr(balance)}</span></div>`
+        : ''}
       <div class="terms-grand"><span>Grand Total</span><span>${inr(inv.total)}</span></div>
 
       ${prof.bank_name || prof.account_no ? `
         <div style="margin-top:10px;padding-top:6px;border-top:1px solid #eee;font-size:10px;color:#444;line-height:1.8">
           <strong style="color:${accentColor}">Bank Details</strong><br>
-          ${prof.bank_name  ? prof.bank_name + '<br>'  : ''}
+          ${prof.bank_name  ? prof.bank_name + '<br>'        : ''}
           ${prof.account_no ? 'A/C: ' + prof.account_no + '<br>' : ''}
-          ${prof.ifsc       ? 'IFSC: ' + prof.ifsc     : ''}
+          ${prof.ifsc       ? 'IFSC: ' + prof.ifsc           : ''}
         </div>` : ''}
 
-      ${inv.notes ? `
-        <div style="margin-top:8px;padding-top:6px;border-top:1px solid #eee;font-size:10px;color:#444">
+      ${inv.notes || inv.terms ? `
+        <div style="margin-top:8px;padding-top:6px;border-top:1px solid #eee;font-size:10px;color:#444;line-height:1.7">
           <strong style="color:${accentColor}">Terms &amp; Conditions</strong><br>
-          ${inv.notes}
+          ${inv.terms || ''}${inv.notes ? '<br>' + inv.notes : ''}
         </div>` : ''}
     </div>
   </div>
 
-  <!-- Authorised Signatory -->
   <div class="sign-box">
     <div class="sign-header">For ${prof.name || 'Business'}</div>
     <div class="sign-body">
@@ -268,7 +266,6 @@ export default function template1(invoice, profile, accentColor = '#1E3A5F') {
       <div class="sign-line">Authorised Signatory</div>
     </div>
   </div>
-
 </div>
 
 <div class="footer">This is a computer-generated invoice · Powered by Locas</div>
