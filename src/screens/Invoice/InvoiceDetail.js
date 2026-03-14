@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Alert, Modal, TextInput, ActivityIndicator, Share,
-  FlatList, Dimensions,
+  FlatList, Dimensions, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,22 +14,22 @@ import { TEMPLATES, buildHTML } from '../../utils/templates/index';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const CARD_W   = SCREEN_W * 0.62;
+const CARD_W   = SCREEN_W * 0.55;
 const CARD_GAP = 12;
 
 const COLOR_PALETTE = [
-  { hex: '#1E3A5F' },
-  { hex: '#B8860B' },
-  { hex: '#1B6B3A' },
-  { hex: '#7C3AED' },
-  { hex: '#DC2626' },
-  { hex: '#EA580C' },
-  { hex: '#0369A1' },
-  { hex: '#BE185D' },
-  { hex: '#0F766E' },
-  { hex: '#374151' },
-  { hex: '#92400E' },
-  { hex: '#1D4ED8' },
+  { hex: '#1E3A5F', name: 'Navy'    },
+  { hex: '#2563EB', name: 'Blue'    },
+  { hex: '#0369A1', name: 'Sky'     },
+  { hex: '#0F766E', name: 'Teal'    },
+  { hex: '#1B6B3A', name: 'Green'   },
+  { hex: '#059669', name: 'Emerald' },
+  { hex: '#B8860B', name: 'Gold'    },
+  { hex: '#EA580C', name: 'Orange'  },
+  { hex: '#DC2626', name: 'Red'     },
+  { hex: '#BE185D', name: 'Pink'    },
+  { hex: '#7C3AED', name: 'Purple'  },
+  { hex: '#374151', name: 'Slate'   },
 ];
 
 const STATUS_STYLE = {
@@ -38,6 +38,64 @@ const STATUS_STYLE = {
   unpaid:  { bg: '#FEE2E2', text: '#991B1B' },
   overdue: { bg: '#FECACA', text: '#7F1D1D' },
 };
+
+// ── Mini template preview HTML (rendered in WebView-like iframe) ──
+// We build a tiny scaled HTML snapshot for each template
+function buildPreviewHTML(accentColor) {
+  return `
+    <div style="font-family:Arial,sans-serif;font-size:6px;color:#111;padding:6px;width:100%;height:100%">
+      <div style="background:${accentColor};color:white;padding:4px 6px;margin-bottom:4px;font-weight:700;font-size:7px">TAX INVOICE</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <div>
+          <div style="font-weight:700;font-size:7px">Business Name</div>
+          <div style="color:#666;font-size:5px">Address, City<br>GSTIN: 27AAAA</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700;font-size:6px">INV-0001</div>
+          <div style="color:#666;font-size:5px">01 Jan 2025</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
+        <thead>
+          <tr style="background:${accentColor};color:white">
+            <th style="padding:2px 3px;font-size:5px;text-align:left">Item</th>
+            <th style="padding:2px 3px;font-size:5px;text-align:center">Qty</th>
+            <th style="padding:2px 3px;font-size:5px;text-align:right">Rate</th>
+            <th style="padding:2px 3px;font-size:5px;text-align:right">Amt</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background:#F9FAFB">
+            <td style="padding:2px 3px;font-size:5px">Product A</td>
+            <td style="padding:2px 3px;font-size:5px;text-align:center">2</td>
+            <td style="padding:2px 3px;font-size:5px;text-align:right">₹500</td>
+            <td style="padding:2px 3px;font-size:5px;text-align:right">₹1000</td>
+          </tr>
+          <tr>
+            <td style="padding:2px 3px;font-size:5px">Product B</td>
+            <td style="padding:2px 3px;font-size:5px;text-align:center">1</td>
+            <td style="padding:2px 3px;font-size:5px;text-align:right">₹250</td>
+            <td style="padding:2px 3px;font-size:5px;text-align:right">₹250</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:4px">
+        <div style="width:70px">
+          <div style="display:flex;justify-content:space-between;font-size:5px;padding:1px 0;border-bottom:1px solid #eee">
+            <span>CGST</span><span>₹63</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:5px;padding:1px 0;border-bottom:1px solid #eee">
+            <span>SGST</span><span>₹63</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:6px;padding:2px 3px;background:${accentColor};color:white;margin-top:2px;font-weight:700">
+            <span>Total</span><span>₹1376</span>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:5px;color:#999;border-top:1px solid #eee;padding-top:3px;text-align:center">Authorised Signatory</div>
+    </div>
+  `;
+}
 
 export default function InvoiceDetail({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -48,14 +106,12 @@ export default function InvoiceDetail({ navigation, route }) {
   const [loading, setLoading]   = useState(true);
   const [printing, setPrinting] = useState(false);
 
-  // Template & color
-  const [selectedTpl, setSelectedTpl]   = useState('t1');
-  const [accentColor, setAccentColor]   = useState('#1E3A5F');
-  const [tplModal, setTplModal]         = useState(false);
+  const [selectedTpl, setSelectedTpl] = useState('t1');
+  const [accentColor, setAccentColor] = useState('#1E3A5F');
+  const [tplModal, setTplModal]       = useState(false);
   const [actionAfterPick, setActionAfterPick] = useState(null);
   const flatRef = useRef(null);
 
-  // Payment modal
   const [payModal, setPayModal]   = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('Cash');
@@ -64,7 +120,6 @@ export default function InvoiceDetail({ navigation, route }) {
   const [payNote, setPayNote]     = useState('');
   const [paying, setPaying]       = useState(false);
 
-  // ── Load ──────────────────────────────────────────────────────
   const load = async () => {
     try {
       const [inv, prof] = await Promise.all([
@@ -82,7 +137,6 @@ export default function InvoiceDetail({ navigation, route }) {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  // ── Status ────────────────────────────────────────────────────
   const getStatus = () => {
     if (!invoice) return 'unpaid';
     if (invoice.status === 'paid') return 'paid';
@@ -92,7 +146,6 @@ export default function InvoiceDetail({ navigation, route }) {
 
   const balance = invoice ? (invoice.total || 0) - (invoice.paid || 0) : 0;
 
-  // ── Payment ───────────────────────────────────────────────────
   const openPayModal = () => {
     setPayAmount(balance.toFixed(2));
     setPayMethod('Cash');
@@ -119,7 +172,6 @@ export default function InvoiceDetail({ navigation, route }) {
     }
   };
 
-  // ── Delete ────────────────────────────────────────────────────
   const handleDelete = () => {
     Alert.alert('Delete Invoice', `Delete ${invoice.invoice_number}?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -130,7 +182,6 @@ export default function InvoiceDetail({ navigation, route }) {
     ]);
   };
 
-  // ── Template picker ───────────────────────────────────────────
   const openTemplatePicker = (action) => {
     setActionAfterPick(action);
     setTplModal(true);
@@ -142,7 +193,6 @@ export default function InvoiceDetail({ navigation, route }) {
     if (actionAfterPick === 'print') await doPrint();
   };
 
-  // ── PDF / Print ───────────────────────────────────────────────
   const doPDF = async () => {
     setPrinting(true);
     try {
@@ -172,7 +222,6 @@ export default function InvoiceDetail({ navigation, route }) {
     }
   };
 
-  // ── WhatsApp ──────────────────────────────────────────────────
   const handleWhatsApp = async () => {
     const inv     = invoice;
     const isInter = inv.supply_type === 'inter';
@@ -189,7 +238,7 @@ ${isInter
   ? `IGST: ${formatINR(inv.igst)}`
   : `CGST: ${formatINR(inv.cgst)}\nSGST: ${formatINR(inv.sgst)}`}
 *Total: ${formatINR(inv.total)}*${inv.paid > 0
-  ? `\nPaid:  ${formatINR(inv.paid)}\nBalance: ${formatINR(balance)}`
+  ? `\nPaid: ${formatINR(inv.paid)}\nBalance: ${formatINR(balance)}`
   : ''}
 
 _Generated by Locas_`;
@@ -200,17 +249,17 @@ _Generated by Locas_`;
     }
   };
 
-  // ── Template card ─────────────────────────────────────────────
+  // ── Template card with actual mini invoice preview ────────────
   const renderTemplateCard = ({ item }) => {
-    const isSelected = selectedTpl === item.id;
-    const cardAccent = isSelected ? accentColor : item.accent;
+    const isSelected  = selectedTpl === item.id;
+    const cardAccent  = isSelected ? accentColor : item.accent;
+    const isThermal   = item.id === 't5';
 
     return (
       <TouchableOpacity
         style={[
           styles.tplCard,
-          { borderColor: isSelected ? accentColor : COLORS.border },
-          isSelected && { borderWidth: 2.5 },
+          isSelected && { borderColor: accentColor, borderWidth: 2.5 },
         ]}
         onPress={() => {
           setSelectedTpl(item.id);
@@ -218,99 +267,135 @@ _Generated by Locas_`;
         }}
         activeOpacity={0.85}
       >
-        {/* Mini invoice preview */}
-        <View style={[styles.tplPreview, { backgroundColor: cardAccent + '10' }]}>
-
-          {/* Header bar */}
-          <View style={[styles.tplHeaderBar, { backgroundColor: cardAccent }]}>
-            <View style={styles.tplHeaderLeft}>
-              <View style={[styles.tplLine, { width: 52, backgroundColor: 'rgba(255,255,255,0.85)' }]} />
-              <View style={[styles.tplLine, { width: 36, backgroundColor: 'rgba(255,255,255,0.5)', marginTop: 3 }]} />
-            </View>
-            <View style={styles.tplHeaderRight}>
-              <View style={[styles.tplLine, { width: 38, backgroundColor: 'rgba(255,255,255,0.65)', alignSelf: 'flex-end' }]} />
-              <View style={[styles.tplLine, { width: 28, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 3, alignSelf: 'flex-end' }]} />
+        {/* Selected overlay check */}
+        {isSelected && (
+          <View style={[styles.selectedOverlay, { borderColor: accentColor }]}>
+            <View style={[styles.selectedBadge, { backgroundColor: accentColor }]}>
+              <Text style={styles.selectedBadgeText}>✓ Selected</Text>
             </View>
           </View>
+        )}
 
-          {/* Party row */}
-          <View style={styles.tplPartyRow}>
-            <View style={styles.tplPartyCol}>
-              <View style={[styles.tplLine, { width: 28, backgroundColor: cardAccent, height: 2 }]} />
-              <View style={[styles.tplLine, { width: 46, marginTop: 3 }]} />
-              <View style={[styles.tplLine, { width: 36, marginTop: 2 }]} />
-            </View>
-            <View style={[{ width: 1, backgroundColor: cardAccent + '30', marginHorizontal: 6 }]} />
-            <View style={styles.tplPartyCol}>
-              <View style={[styles.tplLine, { width: 28, backgroundColor: cardAccent, height: 2 }]} />
-              <View style={[styles.tplLine, { width: 46, marginTop: 3 }]} />
-              <View style={[styles.tplLine, { width: 36, marginTop: 2 }]} />
-            </View>
-          </View>
-
-          {/* Table header */}
-          <View style={[styles.tplTableHeader, { backgroundColor: cardAccent }]}>
-            {[36, 18, 22, 22].map((w, i) => (
-              <View key={i} style={[styles.tplThLine, { width: w }]} />
-            ))}
-          </View>
-
-          {/* Table rows */}
-          {[0, 1, 2].map(i => (
-            <View key={i} style={[styles.tplTableRow, { backgroundColor: i % 2 === 0 ? cardAccent + '12' : '#fff' }]}>
-              {[36, 18, 22, 22].map((w, j) => (
-                <View key={j} style={[styles.tplTdLine, {
-                  width: w,
-                  backgroundColor: j === 3 ? cardAccent + '70' : '#CBD5E1',
-                }]} />
-              ))}
-            </View>
-          ))}
-
-          {/* Words row */}
-          <View style={[styles.tplWordsRow, { borderColor: cardAccent + '40' }]}>
-            <View style={[styles.tplLine, { width: 40, backgroundColor: cardAccent + '80', height: 3 }]} />
-            <View style={[styles.tplLine, { width: 70, marginLeft: 4 }]} />
-          </View>
-
-          {/* Bottom: totals + sign */}
-          <View style={styles.tplBottom}>
-            <View style={styles.tplTotalsCol}>
-              {[55, 55, 55].map((w, i) => (
-                <View key={i} style={[styles.tplLine, { width: w, marginBottom: 3 }]} />
-              ))}
-              <View style={[styles.tplLine, { width: 55, height: 3, backgroundColor: cardAccent, marginTop: 2 }]} />
-            </View>
-            <View style={styles.tplSignCol}>
-              <View style={[styles.tplSealCircle, { borderColor: cardAccent }]} />
-              <View style={[styles.tplLine, { width: 36, marginTop: 4 }]} />
-            </View>
-          </View>
-        </View>
-
-        {/* Card label */}
-        <View style={styles.tplFooter}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.tplName}>{item.name}</Text>
-            <Text style={styles.tplSubtitle}>{item.subtitle}</Text>
-          </View>
-          {isSelected && (
-            <View style={[styles.tplCheck, { backgroundColor: accentColor }]}>
-              <Text style={styles.tplCheckText}>✓</Text>
-            </View>
-          )}
-        </View>
-
-        {item.id === 't5' && (
+        {/* Thermal badge */}
+        {isThermal && (
           <View style={styles.thermalBadge}>
             <Text style={styles.thermalBadgeText}>🖨️ Thermal</Text>
           </View>
         )}
+
+        {/* ── Actual mini invoice preview ── */}
+        <View style={[styles.miniPreview, { borderColor: cardAccent + '40' }]}>
+
+          {/* Top color bar */}
+          <View style={[styles.miniTopBar, { backgroundColor: cardAccent }]} />
+
+          {/* Mini header */}
+          <View style={styles.miniHeader}>
+            <View style={{ flex: 1 }}>
+              <View style={[styles.miniText, { width: 60, backgroundColor: '#1a1a1a', height: 5, marginBottom: 2 }]} />
+              <View style={[styles.miniText, { width: 44 }]} />
+              <View style={[styles.miniText, { width: 36, marginTop: 1 }]} />
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <View style={[styles.miniText, { width: 40, backgroundColor: cardAccent, height: 8, borderRadius: 1 }]} />
+              <View style={[styles.miniText, { width: 30, marginTop: 3 }]} />
+            </View>
+          </View>
+
+          {/* Mini meta row */}
+          <View style={[styles.miniMetaRow, { borderColor: cardAccent + '30' }]}>
+            {['Inv#', 'Date', 'Due'].map((label, i) => (
+              <View key={i} style={styles.miniMetaCell}>
+                <View style={[styles.miniText, { width: 14, height: 3, marginBottom: 1 }]} />
+                <View style={[styles.miniText, { width: 20, height: 4, backgroundColor: '#374151' }]} />
+              </View>
+            ))}
+          </View>
+
+          {/* Mini bill to row */}
+          <View style={[styles.miniBillRow, { borderColor: cardAccent + '20' }]}>
+            <View style={styles.miniBillCol}>
+              <View style={[styles.miniText, { width: 20, backgroundColor: cardAccent, height: 3, marginBottom: 2 }]} />
+              <View style={[styles.miniText, { width: 44, height: 4, backgroundColor: '#111' }]} />
+              <View style={[styles.miniText, { width: 34, marginTop: 1 }]} />
+            </View>
+            <View style={[{ width: 0.5, backgroundColor: cardAccent + '30' }]} />
+            <View style={styles.miniBillCol}>
+              <View style={[styles.miniText, { width: 20, backgroundColor: cardAccent, height: 3, marginBottom: 2 }]} />
+              <View style={[styles.miniText, { width: 44, height: 4, backgroundColor: '#111' }]} />
+              <View style={[styles.miniText, { width: 34, marginTop: 1 }]} />
+            </View>
+          </View>
+
+          {/* Mini table */}
+          <View style={styles.miniTable}>
+            {/* Table header */}
+            <View style={[styles.miniTHead, { backgroundColor: cardAccent }]}>
+              {[28, 14, 18, 18].map((w, i) => (
+                <View key={i} style={[styles.miniTH, { width: w }]} />
+              ))}
+            </View>
+            {/* Table rows */}
+            {[0, 1, 2].map(i => (
+              <View key={i} style={[styles.miniTR, { backgroundColor: i % 2 === 0 ? cardAccent + '0D' : '#fff' }]}>
+                {[28, 14, 18, 18].map((w, j) => (
+                  <View key={j} style={[styles.miniTD, {
+                    width: w,
+                    backgroundColor: j === 3 ? cardAccent + '60' : '#CBD5E1',
+                    height: j === 3 ? 4 : 3,
+                  }]} />
+                ))}
+              </View>
+            ))}
+          </View>
+
+          {/* Mini totals + sign */}
+          <View style={styles.miniBottom}>
+            <View style={{ flex: 1 }}>
+              {/* Amount in words line */}
+              <View style={[styles.miniWordsBox, { borderColor: cardAccent + '30' }]}>
+                <View style={[styles.miniText, { width: 30, backgroundColor: cardAccent, height: 3 }]} />
+                <View style={[styles.miniText, { width: 50, marginTop: 1 }]} />
+              </View>
+            </View>
+            <View style={styles.miniTotalsBox}>
+              {[0, 1, 2].map(i => (
+                <View key={i} style={styles.miniTotalRow}>
+                  <View style={[styles.miniText, { width: 20 }]} />
+                  <View style={[styles.miniText, { width: 18, backgroundColor: i === 2 ? cardAccent : '#CBD5E1' }]} />
+                </View>
+              ))}
+              <View style={[styles.miniGrandTotal, { backgroundColor: cardAccent }]}>
+                <View style={[styles.miniText, { width: 22, backgroundColor: 'rgba(255,255,255,0.7)' }]} />
+                <View style={[styles.miniText, { width: 20, backgroundColor: 'rgba(255,255,255,0.9)' }]} />
+              </View>
+            </View>
+          </View>
+
+          {/* Mini signature line */}
+          <View style={[styles.miniSignRow, { borderColor: cardAccent + '20' }]}>
+            <View style={styles.miniSeal}>
+              <View style={[styles.miniSealCircle, { borderColor: cardAccent }]} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={[styles.miniText, { width: 50, marginBottom: 2 }]} />
+              <View style={[styles.miniText, { width: 36, height: 3 }]} />
+            </View>
+          </View>
+        </View>
+
+        {/* Card footer */}
+        <View style={[styles.tplFooter, isSelected && { backgroundColor: accentColor + '10' }]}>
+          <View style={[styles.tplAccentDot, { backgroundColor: cardAccent }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.tplName, isSelected && { color: accentColor }]}>{item.name}</Text>
+            <Text style={styles.tplSubtitle}>{item.subtitle}</Text>
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
 
-  // ── Loading ───────────────────────────────────────────────────
   if (loading) {
     return (
       <View style={styles.center}>
@@ -331,11 +416,9 @@ _Generated by Locas_`;
   const statusStyle = STATUS_STYLE[statusKey] || STATUS_STYLE.unpaid;
   const activeTpl   = TEMPLATES.find(t => t.id === selectedTpl) || TEMPLATES[0];
 
-  // ─────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
@@ -351,7 +434,6 @@ _Generated by Locas_`;
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
-        {/* Amount card */}
         <View style={styles.amountCard}>
           <View style={{ flex: 1 }}>
             <Text style={styles.amountLabel}>Invoice Total</Text>
@@ -372,7 +454,6 @@ _Generated by Locas_`;
           </View>
         </View>
 
-        {/* Action buttons */}
         <View style={styles.actionRow}>
           {balance > 0.01 && (
             <ActionBtn icon="💰" label="Payment"  color={COLORS.success}   onPress={openPayModal} />
@@ -382,20 +463,16 @@ _Generated by Locas_`;
           <ActionBtn icon="🖨️" label="Print"     color={COLORS.secondary} onPress={() => openTemplatePicker('print')} loading={printing} />
         </View>
 
-        {/* Active template strip */}
         <TouchableOpacity
           style={styles.tplStrip}
           onPress={() => openTemplatePicker('pdf')}
           activeOpacity={0.8}
         >
           <View style={[styles.tplStripDot, { backgroundColor: accentColor }]} />
-          <Text style={styles.tplStripLabel}>
-            {activeTpl.name} — {activeTpl.subtitle}
-          </Text>
+          <Text style={styles.tplStripLabel}>{activeTpl.name} — {activeTpl.subtitle}</Text>
           <Text style={styles.tplStripChange}>Change →</Text>
         </TouchableOpacity>
 
-        {/* Supply type */}
         <View style={styles.supplyBadge}>
           <Text style={styles.supplyText}>
             {invoice.supply_type === 'inter'
@@ -404,7 +481,6 @@ _Generated by Locas_`;
           </Text>
         </View>
 
-        {/* Party */}
         {invoice.party_name ? (
           <>
             <SectionTitle title="Bill To" />
@@ -417,7 +493,6 @@ _Generated by Locas_`;
           </>
         ) : null}
 
-        {/* Items */}
         <SectionTitle title="Items" />
         <View style={styles.card}>
           <View style={styles.tableHeader}>
@@ -447,15 +522,11 @@ _Generated by Locas_`;
           ))}
         </View>
 
-        {/* Tax breakdown */}
         <SectionTitle title="Tax Breakdown" />
         <View style={styles.card}>
           <TaxRow label="Subtotal"       value={formatINR(invoice.subtotal)} />
           {invoice.discount > 0 && (
-            <TaxRow
-              label={`Discount (${invoice.discount}%)`}
-              value={`-${formatINR(invoice.subtotal - invoice.taxable)}`}
-            />
+            <TaxRow label={`Discount (${invoice.discount}%)`} value={`-${formatINR(invoice.subtotal - invoice.taxable)}`} />
           )}
           <TaxRow label="Taxable Amount" value={formatINR(invoice.taxable)} />
           {invoice.supply_type === 'intra' ? (
@@ -473,7 +544,6 @@ _Generated by Locas_`;
           {balance > 0.01   && <TaxRow label="Balance Due" value={formatINR(balance)} danger />}
         </View>
 
-        {/* Payments */}
         {invoice.payments?.length > 0 && (
           <>
             <SectionTitle title="Payment History" />
@@ -491,7 +561,6 @@ _Generated by Locas_`;
           </>
         )}
 
-        {/* Notes */}
         {invoice.notes ? (
           <>
             <SectionTitle title="Notes" />
@@ -521,14 +590,14 @@ _Generated by Locas_`;
             <View style={styles.tplSheetHeader}>
               <View>
                 <Text style={styles.tplSheetTitle}>Choose Template</Text>
-                <Text style={styles.tplSheetSub}>Swipe · tap to select · pick color below</Text>
+                <Text style={styles.tplSheetSub}>Swipe to preview · tap to select</Text>
               </View>
               <TouchableOpacity onPress={() => setTplModal(false)} style={styles.tplCloseBtn}>
                 <Text style={styles.tplClose}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Swipeable cards */}
+            {/* Swipeable template cards */}
             <FlatList
               ref={flatRef}
               data={TEMPLATES}
@@ -546,19 +615,29 @@ _Generated by Locas_`;
             {/* Dot indicators */}
             <View style={styles.dotsRow}>
               {TEMPLATES.map(t => (
-                <View
+                <TouchableOpacity
                   key={t.id}
-                  style={[
+                  onPress={() => {
+                    setSelectedTpl(t.id);
+                    setAccentColor(t.accent);
+                    flatRef.current?.scrollToIndex({
+                      index: TEMPLATES.findIndex(tp => tp.id === t.id),
+                      animated: true,
+                      viewPosition: 0,
+                    });
+                  }}
+                >
+                  <View style={[
                     styles.dot,
                     selectedTpl === t.id && [styles.dotActive, { backgroundColor: accentColor }],
-                  ]}
-                />
+                  ]} />
+                </TouchableOpacity>
               ))}
             </View>
 
             {/* Color picker */}
             <View style={styles.colorSection}>
-              <Text style={styles.colorLabel}>Accent Color</Text>
+              <Text style={styles.colorSectionTitle}>Template Color</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -567,36 +646,42 @@ _Generated by Locas_`;
                 {COLOR_PALETTE.map(c => (
                   <TouchableOpacity
                     key={c.hex}
-                    style={[
-                      styles.colorDot,
-                      { backgroundColor: c.hex },
-                      accentColor === c.hex && styles.colorDotSelected,
-                    ]}
+                    style={styles.colorItem}
                     onPress={() => setAccentColor(c.hex)}
                     activeOpacity={0.8}
                   >
-                    {accentColor === c.hex && (
-                      <Text style={styles.colorDotCheck}>✓</Text>
-                    )}
+                    <View style={[
+                      styles.colorDot,
+                      { backgroundColor: c.hex },
+                      accentColor === c.hex && [styles.colorDotSelected, { borderColor: c.hex }],
+                    ]}>
+                      {accentColor === c.hex && (
+                        <Text style={styles.colorDotCheck}>✓</Text>
+                      )}
+                    </View>
+                    <Text style={[
+                      styles.colorName,
+                      accentColor === c.hex && { color: c.hex, fontWeight: FONTS.bold },
+                    ]}>
+                      {c.name}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-              <Text style={styles.colorHint}>Color applies to the selected template</Text>
             </View>
 
-            {/* Confirm */}
+            {/* Confirm actions */}
             <View style={styles.tplActions}>
-              <TouchableOpacity
-                style={styles.tplCancelBtn}
-                onPress={() => setTplModal(false)}
-              >
+              <TouchableOpacity style={styles.tplCancelBtn} onPress={() => setTplModal(false)}>
                 <Text style={styles.tplCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.tplConfirmBtn, { backgroundColor: accentColor }]}
                 onPress={confirmTemplate}
               >
-                <Text style={styles.tplConfirmText}>Use {activeTpl.name}  →</Text>
+                <Text style={styles.tplConfirmText}>
+                  Use {activeTpl.name}  →
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -615,7 +700,6 @@ _Generated by Locas_`;
               </TouchableOpacity>
             </View>
             <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-
               <View style={styles.payInvInfo}>
                 <Text style={styles.payInvNum}>{invoice.invoice_number}</Text>
                 <Text style={styles.payInvParty}>{invoice.party_name || 'Walk-in'}</Text>
@@ -623,66 +707,28 @@ _Generated by Locas_`;
               </View>
 
               <FieldLabel>Amount (₹)*</FieldLabel>
-              <TextInput
-                style={styles.input}
-                value={payAmount}
-                onChangeText={setPayAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={COLORS.textMute}
-              />
+              <TextInput style={styles.input} value={payAmount} onChangeText={setPayAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={COLORS.textMute} />
 
               <FieldLabel>Date</FieldLabel>
-              <TextInput
-                style={styles.input}
-                value={payDate}
-                onChangeText={setPayDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.textMute}
-              />
+              <TextInput style={styles.input} value={payDate} onChangeText={setPayDate} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMute} />
 
               <FieldLabel>Payment Method</FieldLabel>
               <View style={styles.methodRow}>
                 {PAYMENT_METHODS.map(m => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.methodChip, payMethod === m && styles.methodChipActive]}
-                    onPress={() => setPayMethod(m)}
-                  >
-                    <Text style={[styles.methodText, payMethod === m && styles.methodTextActive]}>
-                      {m}
-                    </Text>
+                  <TouchableOpacity key={m} style={[styles.methodChip, payMethod === m && styles.methodChipActive]} onPress={() => setPayMethod(m)}>
+                    <Text style={[styles.methodText, payMethod === m && styles.methodTextActive]}>{m}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
               <FieldLabel>Reference (optional)</FieldLabel>
-              <TextInput
-                style={styles.input}
-                value={payRef}
-                onChangeText={setPayRef}
-                placeholder="UTR / Cheque No."
-                placeholderTextColor={COLORS.textMute}
-              />
+              <TextInput style={styles.input} value={payRef} onChangeText={setPayRef} placeholder="UTR / Cheque No." placeholderTextColor={COLORS.textMute} />
 
               <FieldLabel>Note (optional)</FieldLabel>
-              <TextInput
-                style={styles.input}
-                value={payNote}
-                onChangeText={setPayNote}
-                placeholder="Any note..."
-                placeholderTextColor={COLORS.textMute}
-              />
+              <TextInput style={styles.input} value={payNote} onChangeText={setPayNote} placeholder="Any note..." placeholderTextColor={COLORS.textMute} />
 
-              <TouchableOpacity
-                style={[styles.confirmBtn, paying && { opacity: 0.5 }]}
-                onPress={handlePayment}
-                disabled={paying}
-              >
-                {paying
-                  ? <ActivityIndicator color={COLORS.white} />
-                  : <Text style={styles.confirmBtnText}>✅ Confirm Payment</Text>
-                }
+              <TouchableOpacity style={[styles.confirmBtn, paying && { opacity: 0.5 }]} onPress={handlePayment} disabled={paying}>
+                {paying ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.confirmBtnText}>✅ Confirm Payment</Text>}
               </TouchableOpacity>
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -693,7 +739,7 @@ _Generated by Locas_`;
   );
 }
 
-// ─── Tiny helpers ─────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────
 
 function SectionTitle({ title }) {
   return <Text style={styles.sectionTitle}>{title}</Text>;
@@ -704,18 +750,14 @@ function FieldLabel({ children }) {
 function TaxRow({ label, value, muted, grand, danger }) {
   return (
     <View style={styles.taxRow}>
-      <Text style={[
-        styles.taxLabel,
-        muted  && { color: COLORS.textSub },
-        grand  && { fontWeight: FONTS.heavy },
-      ]}>
+      <Text style={[styles.taxLabel, muted && { color: COLORS.textSub }, grand && { fontWeight: FONTS.heavy }]}>
         {label}
       </Text>
       <Text style={[
         styles.taxValue,
-        muted  && { color: COLORS.textSub },
-        grand  && { fontWeight: FONTS.heavy, color: COLORS.primary, fontSize: 16 },
-        danger && { color: COLORS.danger, fontWeight: FONTS.bold },
+        muted   && { color: COLORS.textSub },
+        grand   && { fontWeight: FONTS.heavy, color: COLORS.primary, fontSize: 16 },
+        danger  && { color: COLORS.danger, fontWeight: FONTS.bold },
       ]}>
         {value}
       </Text>
@@ -726,10 +768,7 @@ function ActionBtn({ icon, label, color, onPress, loading }) {
   return (
     <TouchableOpacity style={styles.actionBtn} onPress={onPress} disabled={loading} activeOpacity={0.8}>
       <View style={[styles.actionIconBox, { backgroundColor: color + '20' }]}>
-        {loading
-          ? <ActivityIndicator size="small" color={color} />
-          : <Text style={styles.actionIcon}>{icon}</Text>
-        }
+        {loading ? <ActivityIndicator size="small" color={color} /> : <Text style={styles.actionIcon}>{icon}</Text>}
       </View>
       <Text style={[styles.actionLabel, { color }]}>{label}</Text>
     </TouchableOpacity>
@@ -789,7 +828,6 @@ const styles = StyleSheet.create({
   supplyText:  { fontSize: 12, color: COLORS.primary, fontWeight: FONTS.semibold },
 
   sectionTitle: { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.textSub, marginBottom: 8, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
-
   card: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, padding: 14, marginBottom: 12, ...SHADOW.sm },
 
   partyName:   { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 4 },
@@ -819,15 +857,18 @@ const styles = StyleSheet.create({
   notesText: { fontSize: 13, color: COLORS.textSub, lineHeight: 20 },
 
   // ── Template picker ────────────────────────────────────────────
-  tplOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  tplOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   tplSheet: {
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.bg,
     borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
-    paddingTop: 6, paddingBottom: 32,
+    paddingBottom: 32,
+    maxHeight: '90%',
   },
   tplSheetHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
     paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   tplSheetTitle: { fontSize: 18, fontWeight: FONTS.heavy, color: COLORS.text },
@@ -835,72 +876,104 @@ const styles = StyleSheet.create({
   tplCloseBtn:   { padding: 4 },
   tplClose:      { fontSize: 20, color: COLORS.textMute },
 
-  tplList: { paddingHorizontal: 20, paddingVertical: 16 },
+  tplList: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 4 },
 
+  // ── Template card ──────────────────────────────────────────────
   tplCard: {
     width: CARD_W,
-    backgroundColor: COLORS.bg,
+    backgroundColor: COLORS.card,
     borderRadius: RADIUS.lg,
     borderWidth: 1.5,
     borderColor: COLORS.border,
     overflow: 'hidden',
-    ...SHADOW.sm,
+    ...SHADOW.md,
   },
 
-  // Mini preview
-  tplPreview:     { padding: 8 },
-  tplHeaderBar:   { flexDirection: 'row', justifyContent: 'space-between', borderRadius: 3, padding: 7, marginBottom: 6 },
-  tplHeaderLeft:  { gap: 2 },
-  tplHeaderRight: { gap: 2, alignItems: 'flex-end' },
-  tplPartyRow:    { flexDirection: 'row', marginBottom: 6 },
-  tplPartyCol:    { flex: 1, gap: 2 },
-  tplTableHeader: { flexDirection: 'row', justifyContent: 'space-between', borderRadius: 2, paddingHorizontal: 5, paddingVertical: 4 },
-  tplThLine:      { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.7)' },
-  tplTableRow:    { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5, paddingVertical: 3, borderRadius: 2 },
-  tplTdLine:      { height: 3, borderRadius: 2 },
-  tplWordsRow:    { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 2, padding: 4, marginVertical: 4 },
-  tplBottom:      { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, gap: 6 },
-  tplTotalsCol:   { flex: 1 },
-  tplSignCol:     { width: 50, alignItems: 'center' },
-  tplSealCircle:  { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed' },
-  tplLine:        { height: 4, borderRadius: 2, backgroundColor: '#CBD5E1' },
-
-  tplFooter: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: COLORS.card,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
+  selectedOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    zIndex: 10, alignItems: 'flex-start', padding: 8,
   },
-  tplName:      { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.text },
-  tplSubtitle:  { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
-  tplCheck:     { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  tplCheckText: { fontSize: 13, color: COLORS.white, fontWeight: FONTS.bold },
+  selectedBadge: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: RADIUS.full,
+  },
+  selectedBadgeText: { fontSize: 11, color: COLORS.white, fontWeight: FONTS.bold },
 
   thermalBadge: {
-    position: 'absolute', top: 8, right: 8,
+    position: 'absolute', top: 8, right: 8, zIndex: 11,
     backgroundColor: '#1F2937', borderRadius: RADIUS.sm,
     paddingHorizontal: 6, paddingVertical: 3,
   },
   thermalBadgeText: { fontSize: 9, color: COLORS.white, fontWeight: FONTS.bold },
 
-  dotsRow:  { flexDirection: 'row', justifyContent: 'center', gap: 6, marginBottom: 4 },
+  // Mini preview
+  miniPreview: {
+    margin: 8, borderWidth: 1, borderRadius: RADIUS.sm,
+    backgroundColor: '#fff', overflow: 'hidden',
+  },
+  miniTopBar:   { height: 8 },
+  miniHeader:   { flexDirection: 'row', padding: 6, paddingBottom: 4 },
+  miniMetaRow:  { flexDirection: 'row', borderTopWidth: 0.5, borderBottomWidth: 0.5, marginHorizontal: 0 },
+  miniMetaCell: { flex: 1, padding: 4, gap: 1, borderRightWidth: 0.5, borderColor: '#E5E7EB' },
+  miniBillRow:  { flexDirection: 'row', borderTopWidth: 0.5, borderBottomWidth: 0.5, borderColor: '#E5E7EB' },
+  miniBillCol:  { flex: 1, padding: 5, gap: 1 },
+  miniTable:    { marginTop: 2 },
+  miniTHead:    { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 3 },
+  miniTH:       { height: 3, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.7)' },
+  miniTR:       { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 2 },
+  miniTD:       { borderRadius: 1 },
+  miniBottom:   { flexDirection: 'row', padding: 5, gap: 4 },
+  miniWordsBox: { borderWidth: 0.5, borderRadius: 2, padding: 3, marginBottom: 4 },
+  miniTotalsBox:{ width: 55 },
+  miniTotalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  miniGrandTotal:{ flexDirection: 'row', justifyContent: 'space-between', padding: 2, borderRadius: 1, marginTop: 2 },
+  miniSignRow:  { flexDirection: 'row', alignItems: 'center', padding: 5, borderTopWidth: 0.5, gap: 4 },
+  miniSeal:     { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  miniSealCircle:{ width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed' },
+  miniText:     { height: 4, borderRadius: 2, backgroundColor: '#CBD5E1' },
+
+  tplFooter: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: COLORS.card,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  tplAccentDot: { width: 10, height: 10, borderRadius: 5 },
+  tplName:      { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.text },
+  tplSubtitle:  { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
+
+  // Dots
+  dotsRow:  { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 6 },
   dot:      { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.border },
-  dotActive:{ width: 18, borderRadius: 3 },
+  dotActive:{ width: 20, borderRadius: 3 },
 
   // Color picker
-  colorSection: { paddingHorizontal: 20, paddingVertical: 10, borderTopWidth: 1, borderTopColor: COLORS.border },
-  colorLabel:   { fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
-  colorRow:     { gap: 10, paddingVertical: 4 },
-  colorDot: {
-    width: 34, height: 34, borderRadius: 17,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: 'transparent',
+  colorSection: {
+    paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: COLORS.card,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
   },
-  colorDotSelected: { borderColor: COLORS.text, transform: [{ scale: 1.15 }] },
+  colorSectionTitle: {
+    fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textSub,
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12,
+  },
+  colorRow:  { gap: 8, paddingBottom: 4 },
+  colorItem: { alignItems: 'center', gap: 4 },
+  colorDot: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2.5, borderColor: 'transparent',
+  },
+  colorDotSelected: { borderWidth: 2.5, transform: [{ scale: 1.1 }] },
   colorDotCheck:    { color: COLORS.white, fontSize: 14, fontWeight: FONTS.heavy },
-  colorHint:        { fontSize: 11, color: COLORS.textMute, marginTop: 8 },
+  colorName:        { fontSize: 9, color: COLORS.textMute },
 
-  tplActions: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 8 },
+  tplActions: {
+    flexDirection: 'row', gap: 12,
+    paddingHorizontal: 16, paddingTop: 12,
+    backgroundColor: COLORS.card,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
   tplCancelBtn: {
     flex: 1, paddingVertical: 13, borderRadius: RADIUS.lg,
     alignItems: 'center', borderWidth: 1.5, borderColor: COLORS.border,
@@ -909,7 +982,7 @@ const styles = StyleSheet.create({
   tplConfirmBtn:  { flex: 2, paddingVertical: 13, borderRadius: RADIUS.lg, alignItems: 'center' },
   tplConfirmText: { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.white },
 
-  // ── Payment modal ──────────────────────────────────────────────
+  // Payment modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalSheet:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, maxHeight: '85%', paddingBottom: 20 },
   modalHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
