@@ -58,16 +58,13 @@ export default function DashboardScreen({ navigation }) {
           <View>
             {profile?.name ? (
               <>
-                <Text style={styles.headerBrandSmall}>LOCAS</Text>
                 <Text style={styles.headerBizName} numberOfLines={1}>
-                  {profile.name}  ·  {monthName} {year}
+                  {profile.name}
                 </Text>
+                <Text style={styles.headerBrandSmall}>LOCAS</Text>
               </>
             ) : (
-              <>
-                <Text style={styles.headerBrand}>LOCAS</Text>
-                <Text style={styles.headerSub}>{monthName} {year}</Text>
-              </>
+              <Text style={styles.headerBrand}>LOCAS</Text>
             )}
           </View>
         </View>
