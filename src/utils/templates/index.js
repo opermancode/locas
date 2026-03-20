@@ -18,11 +18,8 @@ export const TEMPLATES = [
 export function buildHTML(templateId, invoice, profile, accentColor) {
   const tpl   = TEMPLATES.find(t => t.id === templateId) || TEMPLATES[0];
   const color = accentColor || tpl.accent;
-
-  // Build UPI QR block if enabled
   const upiBlock = (profile?.show_upi_qr && profile?.upi_id)
     ? buildUPIQRBlock(profile.upi_id, profile.name || '', color)
     : '';
-
   return tpl.fn(invoice, profile, color, upiBlock);
 }
