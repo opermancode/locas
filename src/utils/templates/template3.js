@@ -1,277 +1,187 @@
-function r(n)   { return Number(n || 0).toFixed(2); }
+function r(n) { return Number(n || 0).toFixed(2); }
 function inr(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }); }
-
 function amountInWords(amount) {
-  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine',
-    'Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  const num = Math.floor(amount);
-  if (num === 0) return 'Zero';
-  const crore = Math.floor(num / 10000000);
-  const lakh  = Math.floor((num % 10000000) / 100000);
-  const thou  = Math.floor((num % 100000) / 1000);
-  const hund  = Math.floor((num % 1000) / 100);
-  const rest  = num % 100;
-  let words = '';
-  const twoDigit = (n) => n >= 20
-    ? tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '')
-    : ones[n];
-  if (crore) words += twoDigit(crore) + ' Crore ';
-  if (lakh)  words += twoDigit(lakh)  + ' Lakh ';
-  if (thou)  words += twoDigit(thou)  + ' Thousand ';
-  if (hund)  words += ones[hund]      + ' Hundred ';
-  if (rest)  words += twoDigit(rest);
-  return words.trim() + ' Rupees Only';
+  const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  const num=Math.floor(amount); if(num===0)return'Zero';
+  const crore=Math.floor(num/10000000),lakh=Math.floor((num%10000000)/100000),thou=Math.floor((num%100000)/1000),hund=Math.floor((num%1000)/100),rest=num%100;
+  let w=''; const two=(n)=>n>=20?tens[Math.floor(n/10)]+(n%10?' '+ones[n%10]:''):ones[n];
+  if(crore)w+=two(crore)+' Crore '; if(lakh)w+=two(lakh)+' Lakh '; if(thou)w+=two(thou)+' Thousand '; if(hund)w+=ones[hund]+' Hundred '; if(rest)w+=two(rest);
+  return w.trim()+' Rupees Only';
 }
 
-export default function template3(invoice, profile, accentColor = '#1B6B3A') {
-  const inv     = invoice;
-  const prof    = profile || {};
-  const isInter = inv.supply_type === 'inter';
-  const balance = (inv.total || 0) - (inv.paid || 0);
+export default function template3(invoice, profile, accentColor = '#7C2D92') {
+  const inv=invoice; const prof=profile||{};
+  const isInter=inv.supply_type==='inter';
+  const balance=(inv.total||0)-(inv.paid||0);
 
-  const itemRows = (inv.items || []).map((item, i) => `
-    <tr style="background:${i % 2 === 0 ? '#F0FFF4' : '#FFFFFF'}">
-      <td class="td" style="text-align:center">${i + 1}</td>
-      <td class="td">${item.name}</td>
-      <td class="td" style="text-align:center">${item.hsn || '—'}</td>
-      <td class="td" style="text-align:center">${item.qty}</td>
-      <td class="td" style="text-align:right">₹${r(item.rate)}</td>
-      <td class="td" style="text-align:center">${item.gst_rate}%</td>
-      <td class="td" style="text-align:right">
-        ${isInter ? '₹' + r(item.igst) : '₹' + r(item.cgst) + ' / ₹' + r(item.sgst)}
-      </td>
-      <td class="td" style="text-align:right;font-weight:700">₹${r(item.total)}</td>
-    </tr>
-  `).join('');
+  const rows=(inv.items||[]).map((item,i)=>`
+    <tr style="background:${i%2===0?accentColor+'08':'#fff'}">
+      <td class="tc">${i+1}</td>
+      <td class="tl"><strong>${item.name}</strong>${item.hsn?`<br><span class="sm">HSN: ${item.hsn}</span>`:''}</td>
+      <td class="tc">${item.qty} <span class="sm">${item.unit}</span></td>
+      <td class="tr">₹${r(item.rate)}</td>
+      <td class="tr">${item.discount>0?item.discount+'%':'—'}</td>
+      <td class="tr">₹${r(item.taxable)}</td>
+      <td class="tc">${item.gst_rate}%</td>
+      <td class="tr">${isInter?'₹'+r(item.igst):'₹'+r(item.cgst)+'<br><span class="sm">₹'+r(item.sgst)+'</span>'}</td>
+      <td class="tr bold" style="color:${accentColor}">₹${r(item.total)}</td>
+    </tr>`).join('');
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 20px; }
-
-  .header-top {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: 10px;
-  }
-  .biz-block  { flex: 1; }
-  .biz-name   { font-size: 16px; font-weight: 800; color: #111; }
-  .biz-detail { font-size: 10px; color: #555; margin-top: 3px; line-height: 1.7; }
-
-  .inv-title-block { text-align: right; }
-  .inv-title  { font-size: 24px; font-weight: 800; color: ${accentColor}; letter-spacing: 1px; }
-  .inv-meta   { font-size: 10px; color: #555; margin-top: 4px; line-height: 1.8; text-align: right; }
-
-  .divider-accent { height: 3px; background: ${accentColor}; margin: 10px 0; }
-
-  .status-badge { display:inline-block; padding:2px 10px; border-radius:3px; font-size:9px; font-weight:700; }
-  .paid    { background:#D1FAE5; color:#065F46; }
-  .unpaid  { background:#FEE2E2; color:#991B1B; }
-  .partial { background:#FEF3C7; color:#92400E; }
-
-  .bill-section { display:flex; border:1px solid ${accentColor}55; margin-bottom:12px; }
-  .bill-col     { flex:1; padding:10px 12px; }
-  .bill-col + .bill-col { border-left:1px solid ${accentColor}33; }
-  .bill-label   { font-size:9px; font-weight:700; color:${accentColor}; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; }
-  .bill-name    { font-size:13px; font-weight:700; }
-  .bill-detail  { font-size:10px; color:#555; line-height:1.7; margin-top:2px; }
-  .supply-tag   { display:inline-block; background:${accentColor}15; color:${accentColor}; font-size:9px; font-weight:700; padding:2px 8px; border-radius:3px; margin-top:4px; }
-
-  .table-outer { border:1px solid ${accentColor}44; margin-bottom:12px; }
-  table        { width:100%; border-collapse:collapse; }
-  thead tr     { background:${accentColor}; color:white; }
-  th  { padding:8px 7px; font-size:10px; font-weight:600; text-align:center; border-right:1px solid ${accentColor}88; }
-  th:last-child { border-right:none; }
-  .td { padding:7px; font-size:10px; border-bottom:1px solid ${accentColor}22; border-right:1px solid ${accentColor}11; vertical-align:middle; }
-  .td:last-child { border-right:none; }
-
-  .bottom-area { display:flex; gap:12px; }
-
-  .left-bottom { flex:1; }
-
-  .words-row {
-    border:1px solid ${accentColor}44; padding:8px 10px; margin-bottom:8px;
-    display:flex; gap:8px; align-items:flex-start;
-  }
-  .words-label { font-size:9px; font-weight:700; color:${accentColor}; text-transform:uppercase; white-space:nowrap; }
-  .words-value { font-size:10px; color:#333; font-style:italic; line-height:1.5; }
-
-  .terms-cond   { border:1px solid ${accentColor}44; margin-bottom:8px; }
-  .terms-header { background:${accentColor}15; padding:5px 10px; font-size:10px; font-weight:700; color:${accentColor}; border-bottom:1px solid ${accentColor}33; }
-  .terms-body   { padding:8px 10px; font-size:10px; color:#444; line-height:1.7; }
-
-  .bank-box    { border:1px solid ${accentColor}44; }
-  .bank-header { background:${accentColor}15; padding:5px 10px; font-size:10px; font-weight:700; color:${accentColor}; border-bottom:1px solid ${accentColor}33; }
-  .bank-body   { padding:8px 10px; font-size:10px; color:#333; line-height:1.8; }
-
-  .right-bottom { width:220px; }
-
-  .totals-box { border:1px solid ${accentColor}44; margin-bottom:8px; }
-  .totals-hdr { background:${accentColor}; color:white; padding:6px 10px; font-size:10px; font-weight:700; }
-  .totals-body{ padding:8px 10px; }
-  .t-row      { display:flex; justify-content:space-between; padding:3px 0; font-size:10px; border-bottom:1px dotted ${accentColor}22; }
-  .t-muted    { color:#666; }
-  .t-danger   { color:#DC2626; font-weight:700; }
-
-  .grand-total-box {
-    background:${accentColor}; color:white;
-    padding:10px; text-align:center;
-    font-size:15px; font-weight:800; letter-spacing:1px;
-    margin-bottom:8px;
-  }
-  .grand-label { font-size:9px; letter-spacing:2px; margin-bottom:3px; opacity:0.85; }
-
-  .sign-box    { border:1px solid ${accentColor}44; }
-  .sign-header { background:${accentColor}15; padding:5px 10px; font-size:10px; font-weight:700; color:${accentColor}; border-bottom:1px solid ${accentColor}33; }
-  .sign-body   { padding:10px; min-height:90px; display:flex; flex-direction:column; justify-content:space-between; }
-  .seal-circle { width:54px; height:54px; border-radius:50%; border:2px dashed ${accentColor}; display:flex; align-items:center; justify-content:center; font-size:8px; color:${accentColor}; text-align:center; font-weight:700; margin:0 auto 8px; }
-  .sign-line   { border-top:1px solid #999; padding-top:4px; font-size:9px; color:#666; text-align:center; }
-
-  .footer { text-align:center; font-size:9px; color:#aaa; margin-top:10px; border-top:1px solid #eee; padding-top:6px; }
-</style>
-</head>
-<body>
-
-<!-- Header -->
-<div class="header-top">
-  <div class="biz-block">
-    <div class="biz-name">${prof.name || 'My Business'}</div>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a1a}
+.page{padding:0}
+.top-strip{height:6px;background:${accentColor}}
+.header{display:flex;justify-content:space-between;align-items:flex-start;padding:20px 28px 16px;border-bottom:1px solid #eee}
+.biz-name{font-size:20px;font-weight:900;color:#111;margin-bottom:4px}
+.biz-detail{font-size:10px;color:#555;line-height:1.8}
+.inv-block{text-align:right}
+.inv-label{font-size:28px;font-weight:900;color:${accentColor};letter-spacing:3px}
+.inv-meta{font-size:10px;color:#555;margin-top:5px;line-height:1.8;text-align:right}
+.inv-num{font-size:13px;font-weight:800;color:#111}
+.badge{display:inline-block;padding:2px 10px;border-radius:3px;font-size:9px;font-weight:700}
+.paid{background:#D1FAE5;color:#065F46}.unpaid{background:#FEE2E2;color:#991B1B}.partial{background:#FEF3C7;color:#92400E}
+.body{padding:16px 28px}
+.section-title{font-size:9px;font-weight:800;color:${accentColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.section-title:before{content:'';display:block;width:16px;height:3px;background:${accentColor};border-radius:2px}
+.meta-bar{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid ${accentColor}22;margin-bottom:14px;border-radius:4px;overflow:hidden}
+.meta-cell{padding:7px 10px;border-right:1px solid ${accentColor}22}
+.meta-cell:last-child{border-right:none}
+.meta-cell:nth-child(odd){background:${accentColor}06}
+.ml{font-size:9px;color:#888;text-transform:uppercase;margin-bottom:2px}
+.mv{font-size:11px;font-weight:700;color:#111}
+.parties{display:flex;gap:10px;margin-bottom:14px}
+.pcol{flex:1;border-radius:4px;overflow:hidden;border:1px solid ${accentColor}22}
+.ph{background:${accentColor};color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:6px 10px}
+.pb{padding:10px}
+.pname{font-size:13px;font-weight:800;color:#111;margin-bottom:3px}
+.pdet{font-size:10px;color:#555;line-height:1.7}
+.stag{display:inline-block;background:${accentColor}12;color:${accentColor};font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:5px;border:1px solid ${accentColor}33}
+table{width:100%;border-collapse:collapse;margin-bottom:12px}
+thead tr{background:${accentColor};color:#fff}
+th{padding:8px 7px;font-size:10px;font-weight:700;text-align:left}
+.tc{text-align:center}.tr{text-align:right}.tl{text-align:left}
+td{padding:8px 7px;font-size:10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.sm{font-size:9px;color:#999}.bold{font-weight:700}
+.bottom{display:flex;gap:12px;margin-bottom:14px}
+.left-col{flex:1}
+.words{background:${accentColor}08;border:1px solid ${accentColor}22;padding:8px 10px;border-radius:4px;margin-bottom:8px}
+.wl{font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;margin-bottom:2px}
+.wv{font-style:italic;color:#333;font-size:10px}
+.tc-box{background:${accentColor}05;border:1px solid ${accentColor}18;padding:8px 10px;border-radius:4px;margin-bottom:8px}
+.tc-title{font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;margin-bottom:4px}
+.tc-body{font-size:10px;color:#444;line-height:1.7}
+.upi{border:1px solid ${accentColor}33;padding:8px;text-align:center;border-radius:4px;background:#fff}
+.upi-label{font-size:9px;font-weight:700;color:${accentColor};margin-bottom:4px}
+.upi-box{width:54px;height:54px;border:1.5px dashed ${accentColor}55;background:#f9f9f9;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:8px;color:#999;text-align:center;border-radius:4px;line-height:1.4}
+.upi-id{font-size:9px;color:#555;margin-top:3px}
+.right-col{width:245px}
+.totals-wrap{border:1px solid ${accentColor}22;border-radius:4px;overflow:hidden;margin-bottom:8px}
+.trow{display:flex;justify-content:space-between;padding:5px 10px;font-size:11px;border-bottom:1px solid #f5f5f5}
+.trow-muted{color:#666}
+.trow-danger{color:#DC2626;font-weight:700}
+.trow-grand{display:flex;justify-content:space-between;padding:10px;font-size:14px;font-weight:900;background:${accentColor};color:#fff}
+.bank-box{border:1px solid ${accentColor}22;padding:8px 10px;margin-bottom:8px;border-radius:4px;font-size:10px;background:${accentColor}05}
+.bank-label{font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;margin-bottom:3px}
+.sign-box{border:1px solid ${accentColor}22;border-radius:4px;overflow:hidden}
+.sh{background:${accentColor}12;padding:5px 10px;font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;border-bottom:1px solid ${accentColor}18}
+.sb{padding:10px;min-height:64px;display:flex;flex-direction:column;justify-content:space-between}
+.seal{width:44px;height:44px;border-radius:50%;border:1.5px dashed ${accentColor}55;display:flex;align-items:center;justify-content:center;font-size:8px;color:${accentColor};text-align:center;font-weight:700;margin:0 auto}
+.sline{border-top:1px solid #ccc;padding-top:3px;font-size:9px;color:#666;text-align:center;margin-top:8px}
+.footer{background:${accentColor};color:#fff;padding:8px 28px;display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:600}
+.footer-sub{font-size:9px;opacity:.75}
+</style></head><body>
+<div class="top-strip"></div>
+<div class="header">
+  <div>
+    <div class="biz-name">${prof.name||'My Business'}</div>
     <div class="biz-detail">
-      ${prof.address ? prof.address + '<br>' : ''}
-      ${prof.phone   ? 'Contact: ' + prof.phone : ''}
-      ${prof.email   ? '  |  ' + prof.email : ''}<br>
-      ${prof.gstin   ? 'GSTIN: <strong>' + prof.gstin + '</strong>' : ''}
-      ${prof.pan     ? '  |  PAN: ' + prof.pan : ''}
+      ${prof.address?prof.address+'<br>':''}
+      ${prof.phone?'📞 '+prof.phone+(prof.email?' | '+prof.email:'')+'<br>':''}
+      ${prof.gstin?'GSTIN: <strong>'+prof.gstin+'</strong>':''}${prof.pan?' | PAN: '+prof.pan:''}
     </div>
   </div>
-  <div class="inv-title-block">
-    <div class="inv-title">Invoice</div>
+  <div class="inv-block">
+    <div class="inv-label">TAX INVOICE</div>
     <div class="inv-meta">
-      INVOICE NO.: <strong>${inv.invoice_number}</strong><br>
-      DATE: ${inv.date}<br>
-      ${inv.due_date ? 'DUE DATE: ' + inv.due_date + '<br>' : ''}
-      <span class="status-badge ${inv.status || 'unpaid'}">${(inv.status || 'unpaid').toUpperCase()}</span>
+      <span class="inv-num">${inv.invoice_number}</span><br>
+      Date: ${inv.date}${inv.due_date?'<br>Due: '+inv.due_date:''}<br>
+      <span class="badge ${inv.status||'unpaid'}">${(inv.status||'UNPAID').toUpperCase()}</span>
     </div>
   </div>
 </div>
 
-<div class="divider-accent"></div>
+<div class="body">
+<div class="meta-bar">
+  <div class="meta-cell"><div class="ml">Invoice No.</div><div class="mv">${inv.invoice_number}</div></div>
+  <div class="meta-cell"><div class="ml">Date</div><div class="mv">${inv.date}</div></div>
+  ${inv.due_date?`<div class="meta-cell"><div class="ml">Due Date</div><div class="mv">${inv.due_date}</div></div>`:`<div class="meta-cell"><div class="ml">Due Date</div><div class="mv">On Receipt</div></div>`}
+  <div class="meta-cell"><div class="ml">Supply Type</div><div class="mv">${isInter?'Inter-state':'Intra-state'}</div></div>
+</div>
 
-<!-- Bill To -->
-<div class="bill-section">
-  <div class="bill-col">
-    <div class="bill-label">Bill To</div>
-    <div class="bill-name">${inv.party_name || 'Walk-in Customer'}</div>
-    <div class="bill-detail">
-      ${inv.party_address ? inv.party_address + '<br>'                                              : ''}
-      ${inv.party_gstin   ? 'GSTIN: ' + inv.party_gstin + '<br>'                                    : ''}
-      ${inv.party_state   ? 'State: ' + inv.party_state + ' (' + (inv.party_state_code||'') + ')' : ''}
+<div class="parties">
+  <div class="pcol">
+    <div class="ph">Bill To</div>
+    <div class="pb">
+      <div class="pname">${inv.party_name||'Walk-in Customer'}</div>
+      <div class="pdet">${inv.party_address?inv.party_address+'<br>':''}${inv.party_gstin?'GSTIN: '+inv.party_gstin+'<br>':''}${inv.party_state?'State: '+inv.party_state+' ('+(inv.party_state_code||'')+')':''}</div>
+      <span class="stag">${isInter?'🔀 IGST':'✅ CGST+SGST'}</span>
     </div>
-    <span class="supply-tag">${isInter ? '🔀 IGST' : '✅ CGST+SGST'}</span>
   </div>
-  <div class="bill-col">
-    <div class="bill-label">Seller</div>
-    <div class="bill-name">${prof.name || 'My Business'}</div>
-    <div class="bill-detail">
-      ${prof.address ? prof.address + '<br>'                                       : ''}
-      ${prof.gstin   ? 'GSTIN: ' + prof.gstin + '<br>'                             : ''}
-      ${prof.state   ? 'State: ' + prof.state + ' (' + (prof.state_code||'') + ')' : ''}
+  <div class="pcol">
+    <div class="ph">Seller</div>
+    <div class="pb">
+      <div class="pname">${prof.name||'My Business'}</div>
+      <div class="pdet">${prof.address?prof.address+'<br>':''}${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}${prof.state?'State: '+prof.state+' ('+(prof.state_code||'')+')':''}</div>
     </div>
   </div>
 </div>
 
-<!-- Items Table -->
-<div class="table-outer">
-  <table>
-    <thead>
-      <tr>
-        <th style="width:4%">#</th>
-        <th style="width:26%;text-align:left">Description</th>
-        <th style="width:9%">HSN</th>
-        <th style="width:8%">Qty</th>
-        <th style="width:10%">Price</th>
-        <th style="width:7%">Tax%</th>
-        <th style="width:16%">${isInter ? 'IGST' : 'CGST / SGST'}</th>
-        <th style="width:12%">Amount</th>
-      </tr>
-    </thead>
-    <tbody>${itemRows}</tbody>
-  </table>
-</div>
+<table>
+  <thead><tr>
+    <th class="tc" style="width:4%">#</th><th style="width:25%">Item / Description</th>
+    <th class="tc" style="width:9%">Qty</th><th class="tr" style="width:9%">Rate</th>
+    <th class="tr" style="width:7%">Disc</th><th class="tr" style="width:11%">Taxable</th>
+    <th class="tc" style="width:7%">GST%</th><th class="tr" style="width:14%">${isInter?'IGST':'CGST/SGST'}</th>
+    <th class="tr" style="width:11%">Amount</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
 
-<!-- Bottom area -->
-<div class="bottom-area">
-
-  <!-- Left -->
-  <div class="left-bottom">
-    <div class="words-row">
-      <span class="words-label">Amount in Words:</span>
-      <span class="words-value">${amountInWords(inv.total)}</span>
+<div class="bottom">
+  <div class="left-col">
+    <div class="words"><div class="wl">Amount in Words</div><div class="wv">${amountInWords(inv.total)}</div></div>
+    ${inv.notes||inv.terms?`<div class="tc-box"><div class="tc-title">Terms &amp; Conditions</div><div class="tc-body">${inv.terms||''}${inv.notes?'<br>'+inv.notes:''}</div></div>`:''}
+    <div class="upi">
+      <div class="upi-label">Scan &amp; Pay (UPI)</div>
+      <div class="upi-box">QR Code</div>
+      ${prof.phone?`<div class="upi-id">UPI: ${prof.phone}@upi</div>`:''}
     </div>
-
-    ${inv.terms || inv.notes ? `
-    <div class="terms-cond">
-      <div class="terms-header">Terms &amp; Conditions</div>
-      <div class="terms-body">
-        ${inv.terms || ''}${inv.notes ? '<br>' + inv.notes : ''}
-      </div>
-    </div>` : ''}
-
-    ${prof.bank_name || prof.account_no ? `
-    <div class="bank-box">
-      <div class="bank-header">Payment Mode</div>
-      <div class="bank-body">
-        ${prof.bank_name  ? '<strong>' + prof.bank_name + '</strong><br>' : ''}
-        ${prof.account_no ? 'A/C: ' + prof.account_no + '<br>'           : ''}
-        ${prof.ifsc       ? 'IFSC: ' + prof.ifsc                          : ''}
-      </div>
-    </div>` : ''}
   </div>
-
-  <!-- Right -->
-  <div class="right-bottom">
-    <div class="totals-box">
-      <div class="totals-hdr">Tax Summary</div>
-      <div class="totals-body">
-        <div class="t-row"><span>Subtotal</span><span>${inr(inv.subtotal)}</span></div>
-        ${inv.discount > 0
-          ? `<div class="t-row t-muted"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`
-          : ''}
-        <div class="t-row"><span>Taxable</span><span>${inr(inv.taxable)}</span></div>
-        ${isInter
-          ? `<div class="t-row t-muted"><span>Add: IGST</span><span>${inr(inv.igst)}</span></div>`
-          : `<div class="t-row t-muted"><span>Add: CGST</span><span>${inr(inv.cgst)}</span></div>
-             <div class="t-row t-muted"><span>Add: SGST</span><span>${inr(inv.sgst)}</span></div>`
-        }
-        ${inv.paid > 0
-          ? `<div class="t-row"><span>Balance Received</span><span>${inr(inv.paid)}</span></div>`
-          : ''}
-        ${balance > 0.01
-          ? `<div class="t-row t-danger"><span>Balance Due</span><span>${inr(balance)}</span></div>`
-          : ''}
-      </div>
+  <div class="right-col">
+    <div class="totals-wrap">
+      <div class="trow"><span>Subtotal</span><span>${inr(inv.subtotal)}</span></div>
+      ${inv.discount>0?`<div class="trow trow-muted"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`:''}
+      <div class="trow"><span>Taxable Amount</span><span>${inr(inv.taxable)}</span></div>
+      ${isInter?`<div class="trow trow-muted"><span>IGST</span><span>${inr(inv.igst)}</span></div>`
+      :`<div class="trow trow-muted"><span>CGST</span><span>${inr(inv.cgst)}</span></div><div class="trow trow-muted"><span>SGST</span><span>${inr(inv.sgst)}</span></div>`}
+      ${inv.paid>0?`<div class="trow trow-muted"><span>Paid</span><span>${inr(inv.paid)}</span></div>`:''}
+      ${balance>0.01?`<div class="trow trow-danger"><span>Balance Due</span><span>${inr(balance)}</span></div>`:''}
+      <div class="trow-grand"><span>Grand Total</span><span>${inr(inv.total)}</span></div>
     </div>
-
-    <div class="grand-total-box">
-      <div class="grand-label">GRAND TOTAL</div>
-      ${inr(inv.total)}
-    </div>
-
+    ${prof.bank_name||prof.account_no?`<div class="bank-box"><div class="bank-label">Bank Details</div>${prof.bank_name?'<strong>'+prof.bank_name+'</strong><br>':''}${prof.account_no?'A/C: '+prof.account_no+'<br>':''}${prof.ifsc?'IFSC: '+prof.ifsc:''}</div>`:''}
     <div class="sign-box">
-      <div class="sign-header">Seal &amp; Signature</div>
-      <div class="sign-body">
-        <div class="seal-circle">SEAL</div>
-        <div class="sign-line">Authorised Signatory</div>
-      </div>
+      <div class="sh">For ${prof.name||'Business'}</div>
+      <div class="sb"><div class="seal">SEAL</div><div class="sline">Authorised Signatory</div></div>
     </div>
   </div>
-
 </div>
-
-<div class="footer">This is a computer-generated invoice · Powered by Locas</div>
-</body>
-</html>`;
+</div>
+<div class="footer">
+  <div><div>${prof.name||'My Business'}</div><div class="footer-sub">${prof.gstin?'GSTIN: '+prof.gstin:''}</div></div>
+  <div style="text-align:right"><div>Thank you for your business!</div><div class="footer-sub">Powered by Locas</div></div>
+</div>
+</body></html>`;
 }
