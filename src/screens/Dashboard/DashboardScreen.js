@@ -5,19 +5,24 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getDashboardStats } from '../../db/db';
+import { getDashboardStats, getProfile } from '../../db/db';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 import { formatINRCompact, formatINR } from '../../utils/gst';
 
 export default function DashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [stats, setStats]           = useState(null);
+  const [profile, setProfile] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
     try {
-      const data = await getDashboardStats();
+      const [data, prof] = await Promise.all([
+        getDashboardStats(),
+        getProfile(),
+      ]);
       setStats(data);
+      setProfile(prof);
     } catch (e) { console.error(e); }
     finally { setRefreshing(false); }
   };
@@ -51,8 +56,19 @@ export default function DashboardScreen({ navigation }) {
             />
           </View>
           <View>
-            <Text style={styles.headerBrand}>LOCAS</Text>
-            <Text style={styles.headerSub}>{monthName} {year}</Text>
+            {profile?.name ? (
+              <>
+                <Text style={styles.headerBrandSmall}>LOCAS</Text>
+                <Text style={styles.headerBizName} numberOfLines={1}>
+                  {profile.name}  ·  {monthName} {year}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.headerBrand}>LOCAS</Text>
+                <Text style={styles.headerSub}>{monthName} {year}</Text>
+              </>
+            )}
           </View>
         </View>
         <TouchableOpacity
@@ -243,6 +259,19 @@ const styles = StyleSheet.create({
   logoMiniImg: { width: 28, height: 28 },
   headerBrand: { fontSize: 18, fontWeight: '900', color: '#fff', letterSpacing: 4 },
   headerSub:   { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 },
+  headerBrandSmall: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 4,
+  },
+  headerBizName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.3,
+    maxWidth: 220,
+  },
   settingsBtn: {
     width: 38, height: 38, borderRadius: RADIUS.md,
     backgroundColor: 'rgba(255,255,255,0.12)',
