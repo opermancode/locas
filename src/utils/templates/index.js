@@ -6,12 +6,12 @@ import template5 from './template5';
 import template6 from './template6';
 
 export const TEMPLATES = [
-  { id: 't1', name: 'Template 1', subtitle: 'Navy Professional', accent: '#1E3A5F', fn: template1 },
-  { id: 't2', name: 'Template 2', subtitle: 'Gold Classic',      accent: '#B8860B', fn: template2 },
-  { id: 't3', name: 'Template 3', subtitle: 'Green Structured',  accent: '#1B6B3A', fn: template3 },
-  { id: 't4', name: 'Template 4', subtitle: 'Emerald Sidebar',   accent: '#059669', fn: template4 },
-  { id: 't5', name: 'Template 5', subtitle: 'Thermal Receipt',   accent: '#000000', fn: template5 },
-  { id: 't6', name: 'Template 6', subtitle: 'Modern Clean',      accent: '#0d0d0d', fn: template6 },
+  { id: 't1', name: 'Classic',     subtitle: 'Left stripe · Navy',      accent: '#1E40AF', fn: template1 },
+  { id: 't2', name: 'Bold Header', subtitle: 'Full top band · Teal',    accent: '#0F766E', fn: template2 },
+  { id: 't3', name: 'Elegant',     subtitle: 'Top strip · Purple',      accent: '#7C2D92', fn: template3 },
+  { id: 't4', name: 'Dark Pro',    subtitle: 'Dark header · Orange',    accent: '#C2410C', fn: template4 },
+  { id: 't5', name: 'Thermal',     subtitle: '58/80mm receipt print',   accent: '#111111', fn: template5 },
+  { id: 't6', name: 'Minimal Pro', subtitle: 'Corner accent · Blue',    accent: '#2563EB', fn: template6 },
 ];
 
 export function buildHTML(templateId, invoice, profile, accentColor) {
