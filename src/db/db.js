@@ -30,6 +30,8 @@ async function createTables(db) {
       invoice_counter INTEGER DEFAULT 0,
       signature TEXT DEFAULT '',
       logo TEXT DEFAULT '',
+      upi_id TEXT DEFAULT '',
+      show_upi_qr INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
