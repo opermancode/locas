@@ -162,12 +162,17 @@ export async function saveProfile(data) {
     `UPDATE business_profile SET
       name=?, address=?, phone=?, email=?, gstin=?, state=?,
       state_code=?, pan=?, bank_name=?, account_no=?, ifsc=?,
-      invoice_prefix=?, updated_at=datetime('now')
+      invoice_prefix=?, upi_id=?, show_upi_qr=?,
+      updated_at=datetime('now')
      WHERE id=1`,
-    [data.name||'', data.address||'', data.phone||'', data.email||'',
-     data.gstin||'', data.state||'', data.state_code||'', data.pan||'',
-     data.bank_name||'', data.account_no||'', data.ifsc||'',
-     data.invoice_prefix||'INV']
+    [
+      data.name||'', data.address||'', data.phone||'', data.email||'',
+      data.gstin||'', data.state||'', data.state_code||'', data.pan||'',
+      data.bank_name||'', data.account_no||'', data.ifsc||'',
+      data.invoice_prefix||'INV',
+      data.upi_id||'',
+      data.show_upi_qr ? 1 : 0,
+    ]
   );
 }
 
