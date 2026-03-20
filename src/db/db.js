@@ -8,6 +8,7 @@ export async function getDB() {
   await _db.execAsync('PRAGMA journal_mode = WAL;');
   await _db.execAsync('PRAGMA foreign_keys = ON;');
   await createTables(_db);
+  await runMigrations(_db);
   return _db;
 }
 
@@ -148,6 +149,18 @@ async function createTables(db) {
 
     INSERT OR IGNORE INTO business_profile (id, name) VALUES (1, 'My Business');
   `);
+}
+
+// ─── Migrations ───────────────────────────────────────────────────
+// Runs every startup — ALTER TABLE is ignored if column already exists
+async function runMigrations(db) {
+  try {
+    await db.execAsync(`ALTER TABLE business_profile ADD COLUMN upi_id TEXT DEFAULT ''`);
+  } catch (e) { /* already exists */ }
+
+  try {
+    await db.execAsync(`ALTER TABLE business_profile ADD COLUMN show_upi_qr INTEGER DEFAULT 0`);
+  } catch (e) { /* already exists */ }
 }
 
 // ─── Business Profile ───────────────────────────────────────────
@@ -312,7 +325,7 @@ export async function getInvoiceDetail(id) {
   const db = await getDB();
   const invoice = await db.getFirstAsync('SELECT * FROM invoices WHERE id=?', [id]);
   if (!invoice) return null;
-  invoice.items = await db.getAllAsync('SELECT * FROM invoice_items WHERE invoice_id=?', [id]);
+  invoice.items    = await db.getAllAsync('SELECT * FROM invoice_items WHERE invoice_id=?', [id]);
   invoice.payments = await db.getAllAsync('SELECT * FROM payments WHERE invoice_id=? ORDER BY date DESC', [id]);
   return invoice;
 }
@@ -323,10 +336,13 @@ export async function recordPayment(invoiceId, amount, method, reference, date, 
     `INSERT INTO payments (invoice_id,amount,method,reference,date,note) VALUES (?,?,?,?,?,?)`,
     [invoiceId, amount, method||'cash', reference||'', date, note||'']
   );
-  const inv = await db.getFirstAsync('SELECT total, paid FROM invoices WHERE id=?', [invoiceId]);
+  const inv = await db.getFirstAsync('SELECT total, paid, party_id FROM invoices WHERE id=?', [invoiceId]);
   const newPaid = (inv.paid || 0) + amount;
-  const status = newPaid >= inv.total ? 'paid' : 'partial';
-  await db.runAsync('UPDATE invoices SET paid=?, status=?, updated_at=datetime(\'now\') WHERE id=?', [newPaid, status, invoiceId]);
+  const status  = newPaid >= inv.total ? 'paid' : 'partial';
+  await db.runAsync(
+    `UPDATE invoices SET paid=?, status=?, updated_at=datetime('now') WHERE id=?`,
+    [newPaid, status, invoiceId]
+  );
   if (inv.party_id) {
     await db.runAsync('UPDATE parties SET balance=balance-? WHERE id=?', [amount, inv.party_id]);
   }
@@ -344,7 +360,10 @@ export async function getExpenses(filters = {}) {
   const params = [];
   if (filters.from) { where += ' AND date>=?'; params.push(filters.from); }
   if (filters.to)   { where += ' AND date<=?'; params.push(filters.to); }
-  return await db.getAllAsync(`SELECT * FROM expenses ${where} ORDER BY date DESC, id DESC`, params);
+  return await db.getAllAsync(
+    `SELECT * FROM expenses ${where} ORDER BY date DESC, id DESC`,
+    params
+  );
 }
 
 export async function saveExpense(data) {
@@ -370,52 +389,40 @@ export async function deleteExpense(id) {
 // ─── Dashboard Stats ─────────────────────────────────────────────
 export async function getDashboardStats() {
   const db = await getDB();
-  const now = new Date();
-  const mm  = String(now.getMonth() + 1).padStart(2, '0');
+  const now  = new Date();
+  const mm   = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = String(now.getFullYear());
   const monthStart = `${yyyy}-${mm}-01`;
   const monthEnd   = `${yyyy}-${mm}-31`;
 
   const [sales, expenses, receivables, payables, topCustomers, collected] = await Promise.all([
-    // Total invoiced this month
     db.getFirstAsync(
-      `SELECT COALESCE(SUM(total),0) as total, COUNT(*) as count 
-       FROM invoices 
-       WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`,
+      `SELECT COALESCE(SUM(total),0) as total, COUNT(*) as count
+       FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`,
       [monthStart, monthEnd]
     ),
-    // Total expenses this month
     db.getFirstAsync(
-      `SELECT COALESCE(SUM(amount),0) as total 
-       FROM expenses 
-       WHERE deleted_at IS NULL AND date>=? AND date<=?`,
+      `SELECT COALESCE(SUM(amount),0) as total
+       FROM expenses WHERE deleted_at IS NULL AND date>=? AND date<=?`,
       [monthStart, monthEnd]
     ),
-    // Total outstanding (all time unpaid sales)
     db.getFirstAsync(
-      `SELECT COALESCE(SUM(total-paid),0) as total 
-       FROM invoices 
-       WHERE deleted_at IS NULL AND type='sale' AND status != 'paid'`
+      `SELECT COALESCE(SUM(total-paid),0) as total
+       FROM invoices WHERE deleted_at IS NULL AND type='sale' AND status != 'paid'`
     ),
-    // Total payables (unpaid purchases)
     db.getFirstAsync(
-      `SELECT COALESCE(SUM(total-paid),0) as total 
-       FROM invoices 
-       WHERE deleted_at IS NULL AND type='purchase' AND status != 'paid'`
+      `SELECT COALESCE(SUM(total-paid),0) as total
+       FROM invoices WHERE deleted_at IS NULL AND type='purchase' AND status != 'paid'`
     ),
-    // Top customers this month
     db.getAllAsync(
-      `SELECT party_name, COALESCE(SUM(total),0) as total 
-       FROM invoices 
-       WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=? 
+      `SELECT party_name, COALESCE(SUM(total),0) as total
+       FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?
        GROUP BY party_name ORDER BY total DESC LIMIT 5`,
       [monthStart, monthEnd]
     ),
-    // Actually collected (paid amount) this month — for real profit
     db.getFirstAsync(
-      `SELECT COALESCE(SUM(paid),0) as total 
-       FROM invoices 
-       WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`,
+      `SELECT COALESCE(SUM(paid),0) as total
+       FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`,
       [monthStart, monthEnd]
     ),
   ]);
@@ -427,10 +434,24 @@ export async function getDashboardStats() {
 export async function getReportData(from, to) {
   const db = await getDB();
   const [sales, purchases, expenses, gst] = await Promise.all([
-    db.getAllAsync(`SELECT * FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=? ORDER BY date`, [from, to]),
-    db.getAllAsync(`SELECT * FROM invoices WHERE deleted_at IS NULL AND type='purchase' AND date>=? AND date<=? ORDER BY date`, [from, to]),
-    db.getAllAsync(`SELECT * FROM expenses WHERE deleted_at IS NULL AND date>=? AND date<=? ORDER BY date`, [from, to]),
-    db.getFirstAsync(`SELECT COALESCE(SUM(cgst),0) as cgst, COALESCE(SUM(sgst),0) as sgst, COALESCE(SUM(igst),0) as igst, COALESCE(SUM(total_tax),0) as total FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`, [from, to]),
+    db.getAllAsync(
+      `SELECT * FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=? ORDER BY date`,
+      [from, to]
+    ),
+    db.getAllAsync(
+      `SELECT * FROM invoices WHERE deleted_at IS NULL AND type='purchase' AND date>=? AND date<=? ORDER BY date`,
+      [from, to]
+    ),
+    db.getAllAsync(
+      `SELECT * FROM expenses WHERE deleted_at IS NULL AND date>=? AND date<=? ORDER BY date`,
+      [from, to]
+    ),
+    db.getFirstAsync(
+      `SELECT COALESCE(SUM(cgst),0) as cgst, COALESCE(SUM(sgst),0) as sgst,
+              COALESCE(SUM(igst),0) as igst, COALESCE(SUM(total_tax),0) as total
+       FROM invoices WHERE deleted_at IS NULL AND type='sale' AND date>=? AND date<=?`,
+      [from, to]
+    ),
   ]);
   return { sales, purchases, expenses, gst };
 }
