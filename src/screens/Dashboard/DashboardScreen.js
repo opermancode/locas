@@ -257,13 +257,13 @@ const styles = StyleSheet.create({
   headerBrand: { fontSize: 18, fontWeight: '900', color: '#fff', letterSpacing: 4 },
   headerSub:   { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 },
   headerBrandSmall: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     color: 'rgba(255,255,255,0.55)',
     letterSpacing: 4,
   },
   headerBizName: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '800',
     color: '#fff',
     letterSpacing: 0.3,
