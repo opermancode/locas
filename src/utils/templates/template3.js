@@ -1,187 +1,115 @@
-function r(n) { return Number(n || 0).toFixed(2); }
-function inr(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }); }
-function amountInWords(amount) {
-  const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  const num=Math.floor(amount); if(num===0)return'Zero';
-  const crore=Math.floor(num/10000000),lakh=Math.floor((num%10000000)/100000),thou=Math.floor((num%100000)/1000),hund=Math.floor((num%1000)/100),rest=num%100;
-  let w=''; const two=(n)=>n>=20?tens[Math.floor(n/10)]+(n%10?' '+ones[n%10]:''):ones[n];
-  if(crore)w+=two(crore)+' Crore '; if(lakh)w+=two(lakh)+' Lakh '; if(thou)w+=two(thou)+' Thousand '; if(hund)w+=ones[hund]+' Hundred '; if(rest)w+=two(rest);
-  return w.trim()+' Rupees Only';
-}
+function r(n){return Number(n||0).toFixed(2);}
+function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
+function words(amount){const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const n=Math.floor(amount);if(n===0)return'Zero';const two=(x)=>x>=20?tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:''):ones[x];let w='';const cr=Math.floor(n/10000000),lk=Math.floor((n%10000000)/100000),th=Math.floor((n%100000)/1000),hu=Math.floor((n%1000)/100),re=n%100;if(cr)w+=two(cr)+' Crore ';if(lk)w+=two(lk)+' Lakh ';if(th)w+=two(th)+' Thousand ';if(hu)w+=ones[hu]+' Hundred ';if(re)w+=two(re);return w.trim()+' Rupees Only';}
 
-export default function template3(invoice, profile, accentColor = '#7C2D92') {
-  const inv=invoice; const prof=profile||{};
+export default function template3(invoice, profile, accent='#7C2D92', upiBlock='') {
+  const inv=invoice, prof=profile||{};
   const isInter=inv.supply_type==='inter';
   const balance=(inv.total||0)-(inv.paid||0);
-
   const rows=(inv.items||[]).map((item,i)=>`
-    <tr style="background:${i%2===0?accentColor+'08':'#fff'}">
+    <tr style="background:${i%2===0?accent+'0A':'#fff'}">
       <td class="tc">${i+1}</td>
-      <td class="tl"><strong>${item.name}</strong>${item.hsn?`<br><span class="sm">HSN: ${item.hsn}</span>`:''}</td>
-      <td class="tc">${item.qty} <span class="sm">${item.unit}</span></td>
+      <td class="tl"><b>${item.name}</b>${item.hsn?`<br><span class="xs">HSN: ${item.hsn}</span>`:''}</td>
+      <td class="tc">${item.qty} <span class="xs">${item.unit}</span></td>
       <td class="tr">₹${r(item.rate)}</td>
       <td class="tr">${item.discount>0?item.discount+'%':'—'}</td>
       <td class="tr">₹${r(item.taxable)}</td>
       <td class="tc">${item.gst_rate}%</td>
-      <td class="tr">${isInter?'₹'+r(item.igst):'₹'+r(item.cgst)+'<br><span class="sm">₹'+r(item.sgst)+'</span>'}</td>
-      <td class="tr bold" style="color:${accentColor}">₹${r(item.total)}</td>
+      <td class="tr">${isInter?'₹'+r(item.igst):'₹'+r(item.cgst)+'<br><span class="xs">₹'+r(item.sgst)+'</span>'}</td>
+      <td class="tr b" style="color:${accent}">₹${r(item.total)}</td>
     </tr>`).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a1a}
-.page{padding:0}
-.top-strip{height:6px;background:${accentColor}}
-.header{display:flex;justify-content:space-between;align-items:flex-start;padding:20px 28px 16px;border-bottom:1px solid #eee}
-.biz-name{font-size:20px;font-weight:900;color:#111;margin-bottom:4px}
-.biz-detail{font-size:10px;color:#555;line-height:1.8}
-.inv-block{text-align:right}
-.inv-label{font-size:28px;font-weight:900;color:${accentColor};letter-spacing:3px}
-.inv-meta{font-size:10px;color:#555;margin-top:5px;line-height:1.8;text-align:right}
-.inv-num{font-size:13px;font-weight:800;color:#111}
+body{font-family:Arial,sans-serif;font-size:11px;color:#111}
+.tstrip{height:6px;background:${accent}}
+.header{display:flex;justify-content:space-between;align-items:flex-start;padding:18px 26px 14px;border-bottom:1px solid #eee}
+.bn{font-size:19px;font-weight:900;color:#111;margin-bottom:3px}
+.bd{font-size:10px;color:#555;line-height:1.8}
+.gtag{display:inline-block;background:${accent}15;color:${accent};font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:3px;border:1px solid ${accent}33}
+.il{font-size:26px;font-weight:900;color:${accent};letter-spacing:3px}
+.im{text-align:right;font-size:10px;color:#555;margin-top:5px;line-height:1.8}
+.in{font-size:13px;font-weight:800;color:#111}
 .badge{display:inline-block;padding:2px 10px;border-radius:3px;font-size:9px;font-weight:700}
 .paid{background:#D1FAE5;color:#065F46}.unpaid{background:#FEE2E2;color:#991B1B}.partial{background:#FEF3C7;color:#92400E}
-.body{padding:16px 28px}
-.section-title{font-size:9px;font-weight:800;color:${accentColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
-.section-title:before{content:'';display:block;width:16px;height:3px;background:${accentColor};border-radius:2px}
-.meta-bar{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid ${accentColor}22;margin-bottom:14px;border-radius:4px;overflow:hidden}
-.meta-cell{padding:7px 10px;border-right:1px solid ${accentColor}22}
-.meta-cell:last-child{border-right:none}
-.meta-cell:nth-child(odd){background:${accentColor}06}
-.ml{font-size:9px;color:#888;text-transform:uppercase;margin-bottom:2px}
-.mv{font-size:11px;font-weight:700;color:#111}
-.parties{display:flex;gap:10px;margin-bottom:14px}
-.pcol{flex:1;border-radius:4px;overflow:hidden;border:1px solid ${accentColor}22}
-.ph{background:${accentColor};color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:6px 10px}
-.pb{padding:10px}
-.pname{font-size:13px;font-weight:800;color:#111;margin-bottom:3px}
-.pdet{font-size:10px;color:#555;line-height:1.7}
-.stag{display:inline-block;background:${accentColor}12;color:${accentColor};font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:5px;border:1px solid ${accentColor}33}
-table{width:100%;border-collapse:collapse;margin-bottom:12px}
-thead tr{background:${accentColor};color:#fff}
-th{padding:8px 7px;font-size:10px;font-weight:700;text-align:left}
-.tc{text-align:center}.tr{text-align:right}.tl{text-align:left}
-td{padding:8px 7px;font-size:10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
-.sm{font-size:9px;color:#999}.bold{font-weight:700}
-.bottom{display:flex;gap:12px;margin-bottom:14px}
-.left-col{flex:1}
-.words{background:${accentColor}08;border:1px solid ${accentColor}22;padding:8px 10px;border-radius:4px;margin-bottom:8px}
-.wl{font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;margin-bottom:2px}
-.wv{font-style:italic;color:#333;font-size:10px}
-.tc-box{background:${accentColor}05;border:1px solid ${accentColor}18;padding:8px 10px;border-radius:4px;margin-bottom:8px}
-.tc-title{font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;margin-bottom:4px}
-.tc-body{font-size:10px;color:#444;line-height:1.7}
-.upi{border:1px solid ${accentColor}33;padding:8px;text-align:center;border-radius:4px;background:#fff}
-.upi-label{font-size:9px;font-weight:700;color:${accentColor};margin-bottom:4px}
-.upi-box{width:54px;height:54px;border:1.5px dashed ${accentColor}55;background:#f9f9f9;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:8px;color:#999;text-align:center;border-radius:4px;line-height:1.4}
-.upi-id{font-size:9px;color:#555;margin-top:3px}
-.right-col{width:245px}
-.totals-wrap{border:1px solid ${accentColor}22;border-radius:4px;overflow:hidden;margin-bottom:8px}
-.trow{display:flex;justify-content:space-between;padding:5px 10px;font-size:11px;border-bottom:1px solid #f5f5f5}
-.trow-muted{color:#666}
-.trow-danger{color:#DC2626;font-weight:700}
-.trow-grand{display:flex;justify-content:space-between;padding:10px;font-size:14px;font-weight:900;background:${accentColor};color:#fff}
-.bank-box{border:1px solid ${accentColor}22;padding:8px 10px;margin-bottom:8px;border-radius:4px;font-size:10px;background:${accentColor}05}
-.bank-label{font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;margin-bottom:3px}
-.sign-box{border:1px solid ${accentColor}22;border-radius:4px;overflow:hidden}
-.sh{background:${accentColor}12;padding:5px 10px;font-size:9px;font-weight:700;color:${accentColor};text-transform:uppercase;border-bottom:1px solid ${accentColor}18}
-.sb{padding:10px;min-height:64px;display:flex;flex-direction:column;justify-content:space-between}
-.seal{width:44px;height:44px;border-radius:50%;border:1.5px dashed ${accentColor}55;display:flex;align-items:center;justify-content:center;font-size:8px;color:${accentColor};text-align:center;font-weight:700;margin:0 auto}
+.body{padding:14px 26px}
+.stitle{font-size:9px;font-weight:800;color:${accent};text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;display:flex;align-items:center;gap:5px}
+.stitle:before{content:'';display:block;width:14px;height:3px;background:${accent};border-radius:2px}
+.mbar{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid ${accent}20;margin-bottom:12px;border-radius:4px;overflow:hidden}
+.mc{padding:6px 10px;border-right:1px solid ${accent}18}.mc:last-child{border-right:none}.mc:nth-child(odd){background:${accent}06}
+.ml{font-size:9px;color:#888;text-transform:uppercase;margin-bottom:2px}.mv{font-size:11px;font-weight:700;color:#111}
+.parties{display:flex;gap:10px;margin-bottom:12px}
+.pc{flex:1;border:1px solid ${accent}20;border-radius:4px;overflow:hidden}
+.ph{background:${accent};color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:6px 10px}
+.pb{padding:10px}.pn{font-size:13px;font-weight:800;color:#111;margin-bottom:2px}.pd{font-size:10px;color:#555;line-height:1.7}
+.stag{display:inline-block;background:${accent}12;color:${accent};font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:4px;border:1px solid ${accent}30}
+table{width:100%;border-collapse:collapse;margin-bottom:10px}
+thead tr{background:${accent};color:#fff}
+th{padding:7px 6px;font-size:10px;font-weight:700;text-align:left}
+td{padding:7px 6px;font-size:10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.tc{text-align:center}.tr{text-align:right}.tl{text-align:left}.b{font-weight:700}.xs{font-size:9px;color:#999}
+.bot{display:flex;gap:10px;margin-bottom:10px}
+.notes{flex:1}
+.wbox{background:${accent}08;border:1px solid ${accent}20;padding:7px 10px;border-radius:4px;margin-bottom:6px}
+.wl{font-size:9px;font-weight:700;color:${accent};text-transform:uppercase;margin-bottom:2px}.wv{font-style:italic;color:#333;font-size:10px}
+.tcbox{background:#f9f9f9;border-left:3px solid ${accent};padding:7px 10px;margin-bottom:6px;font-size:10px;color:#444;line-height:1.7}
+.tright{width:238px}
+.twrap{border:1px solid ${accent}20;border-radius:4px;overflow:hidden;margin-bottom:6px}
+.trow{display:flex;justify-content:space-between;padding:5px 10px;font-size:11px;border-bottom:1px solid ${accent}10}
+.tm{color:#666}.td2{color:#DC2626;font-weight:700}
+.tgrand{display:flex;justify-content:space-between;padding:9px 10px;font-size:14px;font-weight:900;background:${accent};color:#fff}
+.bank{border:1px solid ${accent}18;padding:8px 10px;margin-bottom:6px;border-radius:4px;font-size:10px;background:${accent}05}
+.blab{font-size:9px;font-weight:700;color:${accent};text-transform:uppercase;margin-bottom:3px}
+.sign{border:1px solid ${accent}20;border-radius:4px;overflow:hidden}
+.sh{background:${accent}10;padding:5px 10px;font-size:9px;font-weight:700;color:${accent};text-transform:uppercase;border-bottom:1px solid ${accent}18}
+.sb{padding:10px;min-height:62px;display:flex;flex-direction:column;justify-content:space-between}
+.seal{width:42px;height:42px;border-radius:50%;border:1.5px dashed ${accent}55;display:flex;align-items:center;justify-content:center;font-size:8px;color:${accent};text-align:center;font-weight:700;margin:0 auto}
 .sline{border-top:1px solid #ccc;padding-top:3px;font-size:9px;color:#666;text-align:center;margin-top:8px}
-.footer{background:${accentColor};color:#fff;padding:8px 28px;display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:600}
-.footer-sub{font-size:9px;opacity:.75}
+.footer{background:${accent};color:#fff;padding:7px 26px;display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:600}
+.fs{font-size:9px;opacity:.7}
 </style></head><body>
-<div class="top-strip"></div>
+<div class="tstrip"></div>
 <div class="header">
-  <div>
-    <div class="biz-name">${prof.name||'My Business'}</div>
-    <div class="biz-detail">
-      ${prof.address?prof.address+'<br>':''}
-      ${prof.phone?'📞 '+prof.phone+(prof.email?' | '+prof.email:'')+'<br>':''}
-      ${prof.gstin?'GSTIN: <strong>'+prof.gstin+'</strong>':''}${prof.pan?' | PAN: '+prof.pan:''}
-    </div>
-  </div>
-  <div class="inv-block">
-    <div class="inv-label">TAX INVOICE</div>
-    <div class="inv-meta">
-      <span class="inv-num">${inv.invoice_number}</span><br>
-      Date: ${inv.date}${inv.due_date?'<br>Due: '+inv.due_date:''}<br>
-      <span class="badge ${inv.status||'unpaid'}">${(inv.status||'UNPAID').toUpperCase()}</span>
-    </div>
-  </div>
+  <div><div class="bn">${prof.name||'My Business'}</div><div class="bd">${prof.address?prof.address+'<br>':''}${prof.phone?'📞 '+prof.phone+(prof.email?' | '+prof.email:'')+'<br>':''}${prof.pan?'PAN: '+prof.pan:''}</div>${prof.gstin?`<span class="gtag">GSTIN: ${prof.gstin}</span>`:''}</div>
+  <div><div class="il">TAX INVOICE</div><div class="im"><span class="in">${inv.invoice_number}</span><br>Date: ${inv.date}${inv.due_date?'<br>Due: '+inv.due_date:''}<br><span class="badge ${inv.status||'unpaid'}">${(inv.status||'UNPAID').toUpperCase()}</span></div></div>
 </div>
-
 <div class="body">
-<div class="meta-bar">
-  <div class="meta-cell"><div class="ml">Invoice No.</div><div class="mv">${inv.invoice_number}</div></div>
-  <div class="meta-cell"><div class="ml">Date</div><div class="mv">${inv.date}</div></div>
-  ${inv.due_date?`<div class="meta-cell"><div class="ml">Due Date</div><div class="mv">${inv.due_date}</div></div>`:`<div class="meta-cell"><div class="ml">Due Date</div><div class="mv">On Receipt</div></div>`}
-  <div class="meta-cell"><div class="ml">Supply Type</div><div class="mv">${isInter?'Inter-state':'Intra-state'}</div></div>
+<div class="mbar">
+  <div class="mc"><div class="ml">Invoice No.</div><div class="mv">${inv.invoice_number}</div></div>
+  <div class="mc"><div class="ml">Date</div><div class="mv">${inv.date}</div></div>
+  ${inv.due_date?`<div class="mc"><div class="ml">Due Date</div><div class="mv">${inv.due_date}</div></div>`:`<div class="mc"><div class="ml">Due Date</div><div class="mv">On Receipt</div></div>`}
+  <div class="mc"><div class="ml">Supply Type</div><div class="mv">${isInter?'Inter-state':'Intra-state'}</div></div>
 </div>
-
 <div class="parties">
-  <div class="pcol">
-    <div class="ph">Bill To</div>
-    <div class="pb">
-      <div class="pname">${inv.party_name||'Walk-in Customer'}</div>
-      <div class="pdet">${inv.party_address?inv.party_address+'<br>':''}${inv.party_gstin?'GSTIN: '+inv.party_gstin+'<br>':''}${inv.party_state?'State: '+inv.party_state+' ('+(inv.party_state_code||'')+')':''}</div>
-      <span class="stag">${isInter?'🔀 IGST':'✅ CGST+SGST'}</span>
-    </div>
-  </div>
-  <div class="pcol">
-    <div class="ph">Seller</div>
-    <div class="pb">
-      <div class="pname">${prof.name||'My Business'}</div>
-      <div class="pdet">${prof.address?prof.address+'<br>':''}${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}${prof.state?'State: '+prof.state+' ('+(prof.state_code||'')+')':''}</div>
-    </div>
-  </div>
+  <div class="pc"><div class="ph">Bill To</div><div class="pb"><div class="pn">${inv.party_name||'Walk-in Customer'}</div><div class="pd">${inv.party_address?inv.party_address+'<br>':''}${inv.party_gstin?'GSTIN: '+inv.party_gstin+'<br>':''}${inv.party_state?'State: '+inv.party_state+' ('+(inv.party_state_code||'')+')':''}</div><span class="stag">${isInter?'🔀 IGST':'✅ CGST+SGST'}</span></div></div>
+  <div class="pc"><div class="ph">Seller</div><div class="pb"><div class="pn">${prof.name||'My Business'}</div><div class="pd">${prof.address?prof.address+'<br>':''}${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}${prof.state?'State: '+prof.state+' ('+(prof.state_code||'')+')':''}</div></div></div>
 </div>
-
 <table>
-  <thead><tr>
-    <th class="tc" style="width:4%">#</th><th style="width:25%">Item / Description</th>
-    <th class="tc" style="width:9%">Qty</th><th class="tr" style="width:9%">Rate</th>
-    <th class="tr" style="width:7%">Disc</th><th class="tr" style="width:11%">Taxable</th>
-    <th class="tc" style="width:7%">GST%</th><th class="tr" style="width:14%">${isInter?'IGST':'CGST/SGST'}</th>
-    <th class="tr" style="width:11%">Amount</th>
-  </tr></thead>
+  <thead><tr><th class="tc" style="width:4%">#</th><th style="width:24%">Item</th><th class="tc" style="width:9%">Qty</th><th class="tr" style="width:9%">Rate</th><th class="tr" style="width:7%">Disc</th><th class="tr" style="width:11%">Taxable</th><th class="tc" style="width:7%">GST%</th><th class="tr" style="width:14%">${isInter?'IGST':'CGST/SGST'}</th><th class="tr" style="width:11%">Amount</th></tr></thead>
   <tbody>${rows}</tbody>
 </table>
-
-<div class="bottom">
-  <div class="left-col">
-    <div class="words"><div class="wl">Amount in Words</div><div class="wv">${amountInWords(inv.total)}</div></div>
-    ${inv.notes||inv.terms?`<div class="tc-box"><div class="tc-title">Terms &amp; Conditions</div><div class="tc-body">${inv.terms||''}${inv.notes?'<br>'+inv.notes:''}</div></div>`:''}
-    <div class="upi">
-      <div class="upi-label">Scan &amp; Pay (UPI)</div>
-      <div class="upi-box">QR Code</div>
-      ${prof.phone?`<div class="upi-id">UPI: ${prof.phone}@upi</div>`:''}
-    </div>
+<div class="bot">
+  <div class="notes">
+    <div class="wbox"><div class="wl">Amount in Words</div><div class="wv">${words(inv.total)}</div></div>
+    ${inv.notes||inv.terms?`<div class="tcbox">${inv.terms||''}${inv.notes?'<br>'+inv.notes:''}</div>`:''}
+    ${upiBlock}
   </div>
-  <div class="right-col">
-    <div class="totals-wrap">
+  <div class="tright">
+    <div class="twrap">
       <div class="trow"><span>Subtotal</span><span>${inr(inv.subtotal)}</span></div>
-      ${inv.discount>0?`<div class="trow trow-muted"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`:''}
-      <div class="trow"><span>Taxable Amount</span><span>${inr(inv.taxable)}</span></div>
-      ${isInter?`<div class="trow trow-muted"><span>IGST</span><span>${inr(inv.igst)}</span></div>`
-      :`<div class="trow trow-muted"><span>CGST</span><span>${inr(inv.cgst)}</span></div><div class="trow trow-muted"><span>SGST</span><span>${inr(inv.sgst)}</span></div>`}
-      ${inv.paid>0?`<div class="trow trow-muted"><span>Paid</span><span>${inr(inv.paid)}</span></div>`:''}
-      ${balance>0.01?`<div class="trow trow-danger"><span>Balance Due</span><span>${inr(balance)}</span></div>`:''}
-      <div class="trow-grand"><span>Grand Total</span><span>${inr(inv.total)}</span></div>
+      ${inv.discount>0?`<div class="trow tm"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`:''}
+      <div class="trow"><span>Taxable</span><span>${inr(inv.taxable)}</span></div>
+      ${isInter?`<div class="trow tm"><span>IGST</span><span>${inr(inv.igst)}</span></div>`:`<div class="trow tm"><span>CGST</span><span>${inr(inv.cgst)}</span></div><div class="trow tm"><span>SGST</span><span>${inr(inv.sgst)}</span></div>`}
+      ${inv.paid>0?`<div class="trow tm"><span>Paid</span><span>${inr(inv.paid)}</span></div>`:''}
+      ${balance>0.01?`<div class="trow td2"><span>Balance Due</span><span>${inr(balance)}</span></div>`:''}
+      <div class="tgrand"><span>Grand Total</span><span>${inr(inv.total)}</span></div>
     </div>
-    ${prof.bank_name||prof.account_no?`<div class="bank-box"><div class="bank-label">Bank Details</div>${prof.bank_name?'<strong>'+prof.bank_name+'</strong><br>':''}${prof.account_no?'A/C: '+prof.account_no+'<br>':''}${prof.ifsc?'IFSC: '+prof.ifsc:''}</div>`:''}
-    <div class="sign-box">
-      <div class="sh">For ${prof.name||'Business'}</div>
-      <div class="sb"><div class="seal">SEAL</div><div class="sline">Authorised Signatory</div></div>
-    </div>
+    ${prof.bank_name||prof.account_no?`<div class="bank"><div class="blab">Bank Details</div>${prof.bank_name?'<b>'+prof.bank_name+'</b><br>':''}${prof.account_no?'A/C: '+prof.account_no+'<br>':''}${prof.ifsc?'IFSC: '+prof.ifsc:''}</div>`:''}
+    <div class="sign"><div class="sh">For ${prof.name||'Business'}</div><div class="sb"><div class="seal">SEAL</div><div class="sline">Authorised Signatory</div></div></div>
   </div>
 </div>
 </div>
-<div class="footer">
-  <div><div>${prof.name||'My Business'}</div><div class="footer-sub">${prof.gstin?'GSTIN: '+prof.gstin:''}</div></div>
-  <div style="text-align:right"><div>Thank you for your business!</div><div class="footer-sub">Powered by Locas</div></div>
-</div>
+<div class="footer"><div><div>${prof.name||'My Business'}</div><div class="fs">${prof.gstin?'GSTIN: '+prof.gstin:''}</div></div><div style="text-align:right"><div>Thank you for your business!</div></div></div>
 </body></html>`;
 }
