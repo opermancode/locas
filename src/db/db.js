@@ -289,6 +289,20 @@ export async function saveInvoice(invoice, lineItems) {
          invoice.notes||'',invoice.terms||'',invoice.id]
       );
       invoiceId = invoice.id;
+
+      // Restore stock for the old line items before wiping them.
+      // This reverses the deduction that happened when the invoice was originally saved,
+      // so the subsequent insert can deduct the correct new quantities cleanly.
+      const oldItems = await db.getAllAsync(
+        'SELECT item_id, qty FROM invoice_items WHERE invoice_id=?',
+        [invoiceId]
+      );
+      for (const old of oldItems) {
+        if (old.item_id && invoice.type === 'sale') {
+          await db.runAsync('UPDATE items SET stock=stock+? WHERE id=?', [old.qty, old.item_id]);
+        }
+      }
+
       await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
     } else {
       const invoiceNumber = await consumeNextInvoiceNumber(db);
