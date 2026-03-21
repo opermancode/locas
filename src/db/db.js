@@ -277,6 +277,10 @@ export async function saveInvoice(invoice, lineItems) {
   let invoiceId;
   await db.withTransactionAsync(async () => {
     if (invoice.id) {
+      // Fetch old total before updating so we can adjust the party balance by the delta.
+      const oldInvoice = await db.getFirstAsync(
+        'SELECT total, party_id, type FROM invoices WHERE id=?', [invoice.id]
+      );
       await db.runAsync(
         `UPDATE invoices SET party_id=?,party_name=?,party_gstin=?,party_state=?,party_state_code=?,party_address=?,
          date=?,due_date=?,subtotal=?,discount=?,taxable=?,cgst=?,sgst=?,igst=?,total_tax=?,total=?,
@@ -304,6 +308,14 @@ export async function saveInvoice(invoice, lineItems) {
       }
 
       await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
+
+      // Adjust party balance by the difference between new and old invoice total.
+      if (invoice.party_id && oldInvoice?.type === 'sale') {
+        const delta = (invoice.total || 0) - (oldInvoice.total || 0);
+        if (delta !== 0) {
+          await db.runAsync('UPDATE parties SET balance=balance+? WHERE id=?', [delta, invoice.party_id]);
+        }
+      }
     } else {
       const invoiceNumber = await consumeNextInvoiceNumber(db);
       const r = await db.runAsync(
@@ -318,6 +330,12 @@ export async function saveInvoice(invoice, lineItems) {
          invoice.total||0,invoice.supply_type||'intra',invoice.notes||'',invoice.terms||'']
       );
       invoiceId = r.lastInsertRowId;
+
+      // Increment party balance to reflect the new receivable.
+      if (invoice.party_id && (invoice.type || 'sale') === 'sale') {
+        await db.runAsync('UPDATE parties SET balance=balance+? WHERE id=?',
+          [invoice.total || 0, invoice.party_id]);
+      }
     }
     for (const item of lineItems) {
       await db.runAsync(
