@@ -1,5 +1,20 @@
-echo ".expo/" >> .gitignore
-git rm -r --cached .expo
-git commit -m "Ignore .expo directory"
-node_modules
+# Node
+node_modules/
 package-lock.json
+yarn.lock
+
+# Expo local state
+.expo/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+expo-error.log*
+
+# Build artifacts
+dist/
+build/
