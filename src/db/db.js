@@ -190,8 +190,19 @@ export async function saveProfile(data) {
 }
 
 // ─── Invoice Number ──────────────────────────────────────────────
-export async function getNextInvoiceNumber() {
+
+// Read-only preview — safe to call on screen mount without side effects.
+// Use this to display the upcoming invoice number to the user.
+export async function peekNextInvoiceNumber() {
   const db = await getDB();
+  const profile = await db.getFirstAsync('SELECT invoice_prefix, invoice_counter FROM business_profile WHERE id=1');
+  const next = (profile.invoice_counter || 0) + 1;
+  return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
+}
+
+// Increments the counter and returns the number. Called only from saveInvoice
+// so the counter only advances when an invoice is actually committed.
+async function consumeNextInvoiceNumber(db) {
   const profile = await db.getFirstAsync('SELECT invoice_prefix, invoice_counter FROM business_profile WHERE id=1');
   const next = (profile.invoice_counter || 0) + 1;
   await db.runAsync('UPDATE business_profile SET invoice_counter=? WHERE id=1', [next]);
@@ -279,11 +290,12 @@ export async function saveInvoice(invoice, lineItems) {
     invoiceId = invoice.id;
     await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
   } else {
+    const invoiceNumber = await consumeNextInvoiceNumber(db);
     const r = await db.runAsync(
       `INSERT INTO invoices (invoice_number,type,party_id,party_name,party_gstin,party_state,party_state_code,
        party_address,date,due_date,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [invoice.invoice_number,invoice.type||'sale',invoice.party_id||null,
+      [invoiceNumber,invoice.type||'sale',invoice.party_id||null,
        invoice.party_name||'',invoice.party_gstin||'',invoice.party_state||'',
        invoice.party_state_code||'',invoice.party_address||'',invoice.date,
        invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,invoice.taxable||0,
