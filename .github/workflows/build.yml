@@ -11,46 +11,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout the repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Set up Node — Expo 54 requires Node 18+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 3. Install dependencies
       - name: Install dependencies
         run: npm install
 
-      # 4. Install the EAS CLI globally
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      # 5. Run expo-doctor to catch config issues before wasting a build
-      - name: Run expo-doctor
-        run: npx expo-doctor
-        continue-on-error: true  # advisory only — don't fail the build on warnings
-
-      # 6. Log in to EAS using your Expo account credentials stored in GitHub Secrets.
-      #    Go to repo → Settings → Secrets and variables → Actions → New repository secret
-      #    Add: EXPO_USERNAME  (your Expo/EAS email)
-      #         EXPO_PASSWORD  (your Expo/EAS account password)
-      - name: Log in to EAS
-        run: eas whoami || eas login --non-interactive
-        env:
-          EXPO_USERNAME: ${{ secrets.EXPO_USERNAME }}
-          EXPO_PASSWORD: ${{ secrets.EXPO_PASSWORD }}
-
-      # 7. Build the preview APK on EAS servers.
-      #    --non-interactive  → no prompts
-      #    --no-wait          → fire the build and exit; EAS emails you when done.
-      #                         Remove this flag if you want the action to wait and
-      #                         show the download URL in the logs.
       - name: Build preview APK
         run: eas build --platform android --profile preview --non-interactive --no-wait
         env:
-          EXPO_USERNAME: ${{ secrets.EXPO_USERNAME }}
-          EXPO_PASSWORD: ${{ secrets.EXPO_PASSWORD }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
