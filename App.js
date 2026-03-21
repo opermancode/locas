@@ -7,6 +7,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { getDB } from './src/db/db';
+import { exportAllData } from './src/db/db';
+import { shouldRunDailyBackup, getToken, uploadBackup } from './src/utils/googleDrive';
 import AppNavigator from './src/navigation/AppNavigator';
 
 const BRAND   = '#FF6B00';
@@ -55,7 +57,20 @@ export default function App() {
 
     // Step 5 — init DB in background
     getDB()
-      .then(() => {
+      .then(async () => {
+        // Trigger daily backup silently if due
+        try {
+          const due = await shouldRunDailyBackup();
+          if (due) {
+            const token = await getToken();
+            if (token) {
+              const json = await exportAllData();
+              await uploadBackup(token, json);
+            }
+          }
+        } catch (_) {
+          // silent — never block launch for backup failure
+        }
         // Wait minimum 2s for splash, then fade out
         setTimeout(() => {
           Animated.timing(fadeOut, {
