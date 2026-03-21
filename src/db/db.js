@@ -421,7 +421,9 @@ export async function getDashboardStats() {
   const mm   = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = String(now.getFullYear());
   const monthStart = `${yyyy}-${mm}-01`;
-  const monthEnd   = `${yyyy}-${mm}-31`;
+  // Day 0 of next month = last day of current month, works correctly for all months.
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    .toISOString().split('T')[0];
 
   const [sales, expenses, receivables, payables, topCustomers, collected] = await Promise.all([
     db.getFirstAsync(
