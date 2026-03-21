@@ -1,0 +1,3 @@
+echo ".expo/" >> .gitignore
+git rm -r --cached .expo
+git commit -m "Ignore .expo directory"
