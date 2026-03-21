@@ -180,7 +180,7 @@ export default function DashboardScreen({ navigation }) {
         {invoiceCount === 0 && !refreshing && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🚀</Text>
-            <Text style={styles.emptyTitle}>Welcome to Locas!</Text>
+            <Text style={styles.emptyTitle}>Welcome to Locas! by Omkar Jagtap</Text>
             <Text style={styles.emptySub}>Create your first invoice to get started</Text>
             <TouchableOpacity
               style={styles.emptyBtn}
