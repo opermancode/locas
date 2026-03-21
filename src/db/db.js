@@ -148,6 +148,23 @@ async function createTables(db) {
     );
 
     INSERT OR IGNORE INTO business_profile (id, name) VALUES (1, 'My Business');
+
+    CREATE INDEX IF NOT EXISTS idx_invoices_deleted_date
+      ON invoices(deleted_at, date);
+    CREATE INDEX IF NOT EXISTS idx_invoices_party
+      ON invoices(party_id);
+    CREATE INDEX IF NOT EXISTS idx_invoices_type_status
+      ON invoices(type, status);
+    CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice
+      ON invoice_items(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_invoice
+      ON payments(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_expenses_deleted_date
+      ON expenses(deleted_at, date);
+    CREATE INDEX IF NOT EXISTS idx_parties_deleted
+      ON parties(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_items_deleted
+      ON items(deleted_at);
   `);
 }
 
