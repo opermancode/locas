@@ -1,0 +1,33 @@
+name: EAS OTA Update
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  update:
+    name: Publish OTA JS Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli
+
+      # Pushes updated JS bundle to existing installs.
+      # Users will see the update banner on Dashboard next launch.
+      - name: Publish OTA update
+        run: eas update --branch preview --message "OTA ${{ github.ref_name }}" --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

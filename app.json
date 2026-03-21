@@ -2,7 +2,6 @@
   "expo": {
     "name": "Locas",
     "slug": "locas",
-    "owner": "operman-code",
     "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -25,6 +24,16 @@
     "plugins": [
       "expo-sqlite"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/4ecd08a1-218e-44b8-8812-242559988c0b",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "owner": "operman-code",
     "extra": {
       "eas": {
         "projectId": "4ecd08a1-218e-44b8-8812-242559988c0b"
