@@ -275,47 +275,49 @@ export async function deleteItem(id) {
 export async function saveInvoice(invoice, lineItems) {
   const db = await getDB();
   let invoiceId;
-  if (invoice.id) {
-    await db.runAsync(
-      `UPDATE invoices SET party_id=?,party_name=?,party_gstin=?,party_state=?,party_state_code=?,party_address=?,
-       date=?,due_date=?,subtotal=?,discount=?,taxable=?,cgst=?,sgst=?,igst=?,total_tax=?,total=?,
-       supply_type=?,notes=?,terms=?,updated_at=datetime('now') WHERE id=?`,
-      [invoice.party_id||null,invoice.party_name||'',invoice.party_gstin||'',
-       invoice.party_state||'',invoice.party_state_code||'',invoice.party_address||'',
-       invoice.date,invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,
-       invoice.taxable||0,invoice.cgst||0,invoice.sgst||0,invoice.igst||0,
-       invoice.total_tax||0,invoice.total||0,invoice.supply_type||'intra',
-       invoice.notes||'',invoice.terms||'',invoice.id]
-    );
-    invoiceId = invoice.id;
-    await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
-  } else {
-    const invoiceNumber = await consumeNextInvoiceNumber(db);
-    const r = await db.runAsync(
-      `INSERT INTO invoices (invoice_number,type,party_id,party_name,party_gstin,party_state,party_state_code,
-       party_address,date,due_date,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [invoiceNumber,invoice.type||'sale',invoice.party_id||null,
-       invoice.party_name||'',invoice.party_gstin||'',invoice.party_state||'',
-       invoice.party_state_code||'',invoice.party_address||'',invoice.date,
-       invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,invoice.taxable||0,
-       invoice.cgst||0,invoice.sgst||0,invoice.igst||0,invoice.total_tax||0,
-       invoice.total||0,invoice.supply_type||'intra',invoice.notes||'',invoice.terms||'']
-    );
-    invoiceId = r.lastInsertRowId;
-  }
-  for (const item of lineItems) {
-    await db.runAsync(
-      `INSERT INTO invoice_items (invoice_id,item_id,name,hsn,unit,qty,rate,discount,taxable,gst_rate,cgst,sgst,igst,total)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [invoiceId,item.item_id||null,item.name,item.hsn||'',item.unit||'pcs',
-       item.qty,item.rate,item.discount||0,item.taxable,item.gst_rate||18,
-       item.cgst||0,item.sgst||0,item.igst||0,item.total]
-    );
-    if (item.item_id && invoice.type === 'sale') {
-      await db.runAsync('UPDATE items SET stock=stock-? WHERE id=?', [item.qty, item.item_id]);
+  await db.withTransactionAsync(async () => {
+    if (invoice.id) {
+      await db.runAsync(
+        `UPDATE invoices SET party_id=?,party_name=?,party_gstin=?,party_state=?,party_state_code=?,party_address=?,
+         date=?,due_date=?,subtotal=?,discount=?,taxable=?,cgst=?,sgst=?,igst=?,total_tax=?,total=?,
+         supply_type=?,notes=?,terms=?,updated_at=datetime('now') WHERE id=?`,
+        [invoice.party_id||null,invoice.party_name||'',invoice.party_gstin||'',
+         invoice.party_state||'',invoice.party_state_code||'',invoice.party_address||'',
+         invoice.date,invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,
+         invoice.taxable||0,invoice.cgst||0,invoice.sgst||0,invoice.igst||0,
+         invoice.total_tax||0,invoice.total||0,invoice.supply_type||'intra',
+         invoice.notes||'',invoice.terms||'',invoice.id]
+      );
+      invoiceId = invoice.id;
+      await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
+    } else {
+      const invoiceNumber = await consumeNextInvoiceNumber(db);
+      const r = await db.runAsync(
+        `INSERT INTO invoices (invoice_number,type,party_id,party_name,party_gstin,party_state,party_state_code,
+         party_address,date,due_date,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [invoiceNumber,invoice.type||'sale',invoice.party_id||null,
+         invoice.party_name||'',invoice.party_gstin||'',invoice.party_state||'',
+         invoice.party_state_code||'',invoice.party_address||'',invoice.date,
+         invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,invoice.taxable||0,
+         invoice.cgst||0,invoice.sgst||0,invoice.igst||0,invoice.total_tax||0,
+         invoice.total||0,invoice.supply_type||'intra',invoice.notes||'',invoice.terms||'']
+      );
+      invoiceId = r.lastInsertRowId;
     }
-  }
+    for (const item of lineItems) {
+      await db.runAsync(
+        `INSERT INTO invoice_items (invoice_id,item_id,name,hsn,unit,qty,rate,discount,taxable,gst_rate,cgst,sgst,igst,total)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [invoiceId,item.item_id||null,item.name,item.hsn||'',item.unit||'pcs',
+         item.qty,item.rate,item.discount||0,item.taxable,item.gst_rate||18,
+         item.cgst||0,item.sgst||0,item.igst||0,item.total]
+      );
+      if (item.item_id && invoice.type === 'sale') {
+        await db.runAsync('UPDATE items SET stock=stock-? WHERE id=?', [item.qty, item.item_id]);
+      }
+    }
+  });
   return invoiceId;
 }
 
