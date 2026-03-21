@@ -22,23 +22,20 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      # Build the APK on EAS — waits for completion so we can get the download URL
       - name: Build preview APK
         id: build
         run: |
           BUILD_JSON=$(eas build --platform android --profile preview --non-interactive --json --wait)
-          echo "build_json=$BUILD_JSON" >> $GITHUB_OUTPUT
           APK_URL=$(echo "$BUILD_JSON" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0]?.artifacts?.buildUrl || '')")
           echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      # Extract version from tag e.g. apk/v1.2.0 → 1.2.0
       - name: Extract version from tag
         id: version
         run: |
@@ -46,14 +43,12 @@ jobs:
           VERSION="${TAG#apk/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # Update version.json in repo with new version + APK URL
       - name: Update version.json
         run: |
           node -e "
             const fs = require('fs');
             const data = {
               version: '${{ steps.version.outputs.version }}',
-              versionCode: Date.now(),
               url: '${{ steps.build.outputs.apk_url }}',
               releaseNotes: 'Version ${{ steps.version.outputs.version }}'
             };
