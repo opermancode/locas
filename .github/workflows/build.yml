@@ -1,9 +1,9 @@
-name: EAS Preview Build
+name: EAS APK Build
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'apk/v*'
 
 jobs:
   build:
@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -25,7 +27,43 @@ jobs:
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
+      # Build the APK on EAS — waits for completion so we can get the download URL
       - name: Build preview APK
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+        id: build
+        run: |
+          BUILD_JSON=$(eas build --platform android --profile preview --non-interactive --json --wait)
+          echo "build_json=$BUILD_JSON" >> $GITHUB_OUTPUT
+          APK_URL=$(echo "$BUILD_JSON" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0]?.artifacts?.buildUrl || '')")
+          echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      # Extract version from tag e.g. apk/v1.2.0 → 1.2.0
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#apk/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # Update version.json in repo with new version + APK URL
+      - name: Update version.json
+        run: |
+          node -e "
+            const fs = require('fs');
+            const data = {
+              version: '${{ steps.version.outputs.version }}',
+              versionCode: Date.now(),
+              url: '${{ steps.build.outputs.apk_url }}',
+              releaseNotes: 'Version ${{ steps.version.outputs.version }}'
+            };
+            fs.writeFileSync('version.json', JSON.stringify(data, null, 2));
+          "
+
+      - name: Commit version.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git commit -m "chore: update version.json to ${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
