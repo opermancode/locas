@@ -378,20 +378,30 @@ export async function getInvoiceDetail(id) {
 
 export async function recordPayment(invoiceId, amount, method, reference, date, note) {
   const db = await getDB();
-  await db.runAsync(
-    `INSERT INTO payments (invoice_id,amount,method,reference,date,note) VALUES (?,?,?,?,?,?)`,
-    [invoiceId, amount, method||'cash', reference||'', date, note||'']
-  );
+
+  // Fetch first so we can validate before writing anything.
   const inv = await db.getFirstAsync('SELECT total, paid, party_id FROM invoices WHERE id=?', [invoiceId]);
-  const newPaid = (inv.paid || 0) + amount;
-  const status  = newPaid >= inv.total ? 'paid' : 'partial';
-  await db.runAsync(
-    `UPDATE invoices SET paid=?, status=?, updated_at=datetime('now') WHERE id=?`,
-    [newPaid, status, invoiceId]
-  );
-  if (inv.party_id) {
-    await db.runAsync('UPDATE parties SET balance=balance-? WHERE id=?', [amount, inv.party_id]);
+  const outstanding = (inv.total || 0) - (inv.paid || 0);
+  if (amount > outstanding + 0.001) {
+    // Allow a tiny floating-point tolerance; reject anything meaningfully over.
+    throw new Error(`Payment of ${amount} exceeds outstanding balance of ${outstanding.toFixed(2)}`);
   }
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT INTO payments (invoice_id,amount,method,reference,date,note) VALUES (?,?,?,?,?,?)`,
+      [invoiceId, amount, method||'cash', reference||'', date, note||'']
+    );
+    const newPaid = (inv.paid || 0) + amount;
+    const status  = newPaid >= inv.total ? 'paid' : 'partial';
+    await db.runAsync(
+      `UPDATE invoices SET paid=?, status=?, updated_at=datetime('now') WHERE id=?`,
+      [newPaid, status, invoiceId]
+    );
+    if (inv.party_id) {
+      await db.runAsync('UPDATE parties SET balance=balance-? WHERE id=?', [amount, inv.party_id]);
+    }
+  });
 }
 
 export async function deleteInvoice(id) {
