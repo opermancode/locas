@@ -27,7 +27,8 @@
     "expo-updates": "~0.26.0",
     "expo-auth-session": "~6.0.3",
     "expo-web-browser": "~14.0.2",
-    "@react-native-async-storage/async-storage": "1.23.1"
+    "@react-native-async-storage/async-storage": "1.23.1",
+    "fs-extra": "^11.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
