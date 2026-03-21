@@ -52,9 +52,9 @@ export function calcInvoiceTotals(lineItems, invoiceDiscount = 0, supplyType = '
     subtotal: round(subtotal),
     discount: round(invoiceDiscount),
     taxable:  round(finalTaxable),
-    cgst:     round(cgst - (supplyType === 'inter' ? 0 : (extraDiscount/taxable||0) * cgst)),
-    sgst:     round(sgst - (supplyType === 'inter' ? 0 : (extraDiscount/taxable||0) * sgst)),
-    igst:     round(igst - (supplyType === 'inter' ? (extraDiscount/taxable||0) * igst : 0)),
+    cgst:     round(cgst - (supplyType === 'inter' ? 0 : (taxable > 0 ? (extraDiscount / taxable) * cgst : 0))),
+    sgst:     round(sgst - (supplyType === 'inter' ? 0 : (taxable > 0 ? (extraDiscount / taxable) * sgst : 0))),
+    igst:     round(igst - (supplyType === 'inter' ? (taxable > 0 ? (extraDiscount / taxable) * igst : 0) : 0)),
     total_tax:round(finalTax),
     total:    round(total),
   };

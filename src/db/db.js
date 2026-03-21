@@ -148,6 +148,23 @@ async function createTables(db) {
     );
 
     INSERT OR IGNORE INTO business_profile (id, name) VALUES (1, 'My Business');
+
+    CREATE INDEX IF NOT EXISTS idx_invoices_deleted_date
+      ON invoices(deleted_at, date);
+    CREATE INDEX IF NOT EXISTS idx_invoices_party
+      ON invoices(party_id);
+    CREATE INDEX IF NOT EXISTS idx_invoices_type_status
+      ON invoices(type, status);
+    CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice
+      ON invoice_items(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_invoice
+      ON payments(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_expenses_deleted_date
+      ON expenses(deleted_at, date);
+    CREATE INDEX IF NOT EXISTS idx_parties_deleted
+      ON parties(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_items_deleted
+      ON items(deleted_at);
   `);
 }
 
@@ -190,8 +207,19 @@ export async function saveProfile(data) {
 }
 
 // ─── Invoice Number ──────────────────────────────────────────────
-export async function getNextInvoiceNumber() {
+
+// Read-only preview — safe to call on screen mount without side effects.
+// Use this to display the upcoming invoice number to the user.
+export async function peekNextInvoiceNumber() {
   const db = await getDB();
+  const profile = await db.getFirstAsync('SELECT invoice_prefix, invoice_counter FROM business_profile WHERE id=1');
+  const next = (profile.invoice_counter || 0) + 1;
+  return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
+}
+
+// Increments the counter and returns the number. Called only from saveInvoice
+// so the counter only advances when an invoice is actually committed.
+async function consumeNextInvoiceNumber(db) {
   const profile = await db.getFirstAsync('SELECT invoice_prefix, invoice_counter FROM business_profile WHERE id=1');
   const next = (profile.invoice_counter || 0) + 1;
   await db.runAsync('UPDATE business_profile SET invoice_counter=? WHERE id=1', [next]);
@@ -264,46 +292,81 @@ export async function deleteItem(id) {
 export async function saveInvoice(invoice, lineItems) {
   const db = await getDB();
   let invoiceId;
-  if (invoice.id) {
-    await db.runAsync(
-      `UPDATE invoices SET party_id=?,party_name=?,party_gstin=?,party_state=?,party_state_code=?,party_address=?,
-       date=?,due_date=?,subtotal=?,discount=?,taxable=?,cgst=?,sgst=?,igst=?,total_tax=?,total=?,
-       supply_type=?,notes=?,terms=?,updated_at=datetime('now') WHERE id=?`,
-      [invoice.party_id||null,invoice.party_name||'',invoice.party_gstin||'',
-       invoice.party_state||'',invoice.party_state_code||'',invoice.party_address||'',
-       invoice.date,invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,
-       invoice.taxable||0,invoice.cgst||0,invoice.sgst||0,invoice.igst||0,
-       invoice.total_tax||0,invoice.total||0,invoice.supply_type||'intra',
-       invoice.notes||'',invoice.terms||'',invoice.id]
-    );
-    invoiceId = invoice.id;
-    await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
-  } else {
-    const r = await db.runAsync(
-      `INSERT INTO invoices (invoice_number,type,party_id,party_name,party_gstin,party_state,party_state_code,
-       party_address,date,due_date,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [invoice.invoice_number,invoice.type||'sale',invoice.party_id||null,
-       invoice.party_name||'',invoice.party_gstin||'',invoice.party_state||'',
-       invoice.party_state_code||'',invoice.party_address||'',invoice.date,
-       invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,invoice.taxable||0,
-       invoice.cgst||0,invoice.sgst||0,invoice.igst||0,invoice.total_tax||0,
-       invoice.total||0,invoice.supply_type||'intra',invoice.notes||'',invoice.terms||'']
-    );
-    invoiceId = r.lastInsertRowId;
-  }
-  for (const item of lineItems) {
-    await db.runAsync(
-      `INSERT INTO invoice_items (invoice_id,item_id,name,hsn,unit,qty,rate,discount,taxable,gst_rate,cgst,sgst,igst,total)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [invoiceId,item.item_id||null,item.name,item.hsn||'',item.unit||'pcs',
-       item.qty,item.rate,item.discount||0,item.taxable,item.gst_rate||18,
-       item.cgst||0,item.sgst||0,item.igst||0,item.total]
-    );
-    if (item.item_id && invoice.type === 'sale') {
-      await db.runAsync('UPDATE items SET stock=stock-? WHERE id=?', [item.qty, item.item_id]);
+  await db.withTransactionAsync(async () => {
+    if (invoice.id) {
+      // Fetch old total before updating so we can adjust the party balance by the delta.
+      const oldInvoice = await db.getFirstAsync(
+        'SELECT total, party_id, type FROM invoices WHERE id=?', [invoice.id]
+      );
+      await db.runAsync(
+        `UPDATE invoices SET party_id=?,party_name=?,party_gstin=?,party_state=?,party_state_code=?,party_address=?,
+         date=?,due_date=?,subtotal=?,discount=?,taxable=?,cgst=?,sgst=?,igst=?,total_tax=?,total=?,
+         supply_type=?,notes=?,terms=?,updated_at=datetime('now') WHERE id=?`,
+        [invoice.party_id||null,invoice.party_name||'',invoice.party_gstin||'',
+         invoice.party_state||'',invoice.party_state_code||'',invoice.party_address||'',
+         invoice.date,invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,
+         invoice.taxable||0,invoice.cgst||0,invoice.sgst||0,invoice.igst||0,
+         invoice.total_tax||0,invoice.total||0,invoice.supply_type||'intra',
+         invoice.notes||'',invoice.terms||'',invoice.id]
+      );
+      invoiceId = invoice.id;
+
+      // Restore stock for the old line items before wiping them.
+      // This reverses the deduction that happened when the invoice was originally saved,
+      // so the subsequent insert can deduct the correct new quantities cleanly.
+      const oldItems = await db.getAllAsync(
+        'SELECT item_id, qty FROM invoice_items WHERE invoice_id=?',
+        [invoiceId]
+      );
+      for (const old of oldItems) {
+        if (old.item_id && invoice.type === 'sale') {
+          await db.runAsync('UPDATE items SET stock=stock+? WHERE id=?', [old.qty, old.item_id]);
+        }
+      }
+
+      await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
+
+      // Adjust party balance by the difference between new and old invoice total.
+      if (invoice.party_id && oldInvoice?.type === 'sale') {
+        const delta = (invoice.total || 0) - (oldInvoice.total || 0);
+        if (delta !== 0) {
+          await db.runAsync('UPDATE parties SET balance=balance+? WHERE id=?', [delta, invoice.party_id]);
+        }
+      }
+    } else {
+      const invoiceNumber = await consumeNextInvoiceNumber(db);
+      const r = await db.runAsync(
+        `INSERT INTO invoices (invoice_number,type,party_id,party_name,party_gstin,party_state,party_state_code,
+         party_address,date,due_date,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [invoiceNumber,invoice.type||'sale',invoice.party_id||null,
+         invoice.party_name||'',invoice.party_gstin||'',invoice.party_state||'',
+         invoice.party_state_code||'',invoice.party_address||'',invoice.date,
+         invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,invoice.taxable||0,
+         invoice.cgst||0,invoice.sgst||0,invoice.igst||0,invoice.total_tax||0,
+         invoice.total||0,invoice.supply_type||'intra',invoice.notes||'',invoice.terms||'']
+      );
+      invoiceId = r.lastInsertRowId;
+
+      // Increment party balance to reflect the new receivable.
+      if (invoice.party_id && (invoice.type || 'sale') === 'sale') {
+        await db.runAsync('UPDATE parties SET balance=balance+? WHERE id=?',
+          [invoice.total || 0, invoice.party_id]);
+      }
     }
-  }
+    for (const item of lineItems) {
+      await db.runAsync(
+        `INSERT INTO invoice_items (invoice_id,item_id,name,hsn,unit,qty,rate,discount,taxable,gst_rate,cgst,sgst,igst,total)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [invoiceId,item.item_id||null,item.name,item.hsn||'',item.unit||'pcs',
+         item.qty,item.rate,item.discount||0,item.taxable,item.gst_rate||18,
+         item.cgst||0,item.sgst||0,item.igst||0,item.total]
+      );
+      if (item.item_id && invoice.type === 'sale') {
+        await db.runAsync('UPDATE items SET stock=stock-? WHERE id=?', [item.qty, item.item_id]);
+      }
+    }
+  });
   return invoiceId;
 }
 
@@ -332,20 +395,30 @@ export async function getInvoiceDetail(id) {
 
 export async function recordPayment(invoiceId, amount, method, reference, date, note) {
   const db = await getDB();
-  await db.runAsync(
-    `INSERT INTO payments (invoice_id,amount,method,reference,date,note) VALUES (?,?,?,?,?,?)`,
-    [invoiceId, amount, method||'cash', reference||'', date, note||'']
-  );
+
+  // Fetch first so we can validate before writing anything.
   const inv = await db.getFirstAsync('SELECT total, paid, party_id FROM invoices WHERE id=?', [invoiceId]);
-  const newPaid = (inv.paid || 0) + amount;
-  const status  = newPaid >= inv.total ? 'paid' : 'partial';
-  await db.runAsync(
-    `UPDATE invoices SET paid=?, status=?, updated_at=datetime('now') WHERE id=?`,
-    [newPaid, status, invoiceId]
-  );
-  if (inv.party_id) {
-    await db.runAsync('UPDATE parties SET balance=balance-? WHERE id=?', [amount, inv.party_id]);
+  const outstanding = (inv.total || 0) - (inv.paid || 0);
+  if (amount > outstanding + 0.001) {
+    // Allow a tiny floating-point tolerance; reject anything meaningfully over.
+    throw new Error(`Payment of ${amount} exceeds outstanding balance of ${outstanding.toFixed(2)}`);
   }
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT INTO payments (invoice_id,amount,method,reference,date,note) VALUES (?,?,?,?,?,?)`,
+      [invoiceId, amount, method||'cash', reference||'', date, note||'']
+    );
+    const newPaid = (inv.paid || 0) + amount;
+    const status  = newPaid >= inv.total ? 'paid' : 'partial';
+    await db.runAsync(
+      `UPDATE invoices SET paid=?, status=?, updated_at=datetime('now') WHERE id=?`,
+      [newPaid, status, invoiceId]
+    );
+    if (inv.party_id) {
+      await db.runAsync('UPDATE parties SET balance=balance-? WHERE id=?', [amount, inv.party_id]);
+    }
+  });
 }
 
 export async function deleteInvoice(id) {
@@ -393,7 +466,9 @@ export async function getDashboardStats() {
   const mm   = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = String(now.getFullYear());
   const monthStart = `${yyyy}-${mm}-01`;
-  const monthEnd   = `${yyyy}-${mm}-31`;
+  // Day 0 of next month = last day of current month, works correctly for all months.
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    .toISOString().split('T')[0];
 
   const [sales, expenses, receivables, payables, topCustomers, collected] = await Promise.all([
     db.getFirstAsync(
