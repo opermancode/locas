@@ -6,8 +6,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  getNextInvoiceNumber, getParties, getItems,
-  saveInvoice, getProfile,
+  getParties, getItems,
+  saveInvoice, getProfile, peekNextInvoiceNumber,
 } from '../../db/db';
 import {
   calcLineItem, calcInvoiceTotals, detectSupplyType,
@@ -59,7 +59,7 @@ export default function CreateInvoice({ navigation, route }) {
 
   const init = async () => {
     const [num, p, itms, prof] = await Promise.all([
-      getNextInvoiceNumber(),
+      peekNextInvoiceNumber(),
       getParties(),
       getItems(),
       getProfile(),
@@ -174,7 +174,6 @@ export default function CreateInvoice({ navigation, route }) {
     setSaving(true);
     try {
       const invoice = {
-        invoice_number:   invoiceNo,
         type:             'sale',
         party_id:         party?.id || null,
         party_name:       party?.name || '',
