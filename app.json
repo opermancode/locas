@@ -15,10 +15,11 @@
       "bundleIdentifier": "com.neurader.locas"
     },
     "android": {
+      "package": "com.neurader.locas",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#FF6B00"
-      },
-      "package": "com.neurader.locas"
+      }
     },
     "plugins": [
       "expo-sqlite"
