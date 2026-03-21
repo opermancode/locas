@@ -26,14 +26,16 @@ function getRange(key) {
   switch (key) {
     case 'thisMonth': {
       const from = `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
-      const to   = `${yy}-${String(mm + 1).padStart(2, '0')}-31`;
+      const to   = new Date(yy, mm + 1, 0).toISOString().split('T')[0];
       return { from, to };
     }
     case 'lastMonth': {
       const d    = new Date(yy, mm - 1, 1);
       const ly   = d.getFullYear();
-      const lm   = String(d.getMonth() + 1).padStart(2, '0');
-      return { from: `${ly}-${lm}-01`, to: `${ly}-${lm}-31` };
+      const lm   = d.getMonth(); // 0-indexed
+      const from = `${ly}-${String(lm + 1).padStart(2, '0')}-01`;
+      const to   = new Date(ly, lm + 1, 0).toISOString().split('T')[0];
+      return { from, to };
     }
     case 'thisYear':
       return { from: `${yy}-01-01`, to: `${yy}-12-31` };
@@ -70,21 +72,19 @@ export default function ReportsScreen({ navigation }) {
   const switchPreset = (p) => { setPreset(p); load(p); };
 
   // ── Derived numbers ───────────────────────────────────────────
-  const totalSales     = data?.sales?.reduce((s, i) => s + (i.total     || 0), 0) || 0;
-  const totalCollected = data?.sales?.reduce((s, i) => s + (i.paid      || 0), 0) || 0;
+  const totalSales       = data?.sales?.reduce((s, i) => s + (i.total  || 0), 0) || 0;
+  const totalCollected   = data?.sales?.reduce((s, i) => s + (i.paid   || 0), 0) || 0;
   const totalOutstanding = totalSales - totalCollected;
-  const totalPurchases = data?.purchases?.reduce((s, i) => s + (i.total || 0), 0) || 0;
-  const totalExpenses  = data?.expenses?.reduce((s, e) => s + (e.amount || 0), 0) || 0;
-  const grossProfit    = totalSales - totalPurchases - totalExpenses;
+  const totalExpenses    = data?.expenses?.reduce((s, e) => s + (e.amount || 0), 0) || 0;
+  const grossProfit      = totalSales - totalExpenses;
 
   const totalCGST      = data?.gst?.cgst  || 0;
   const totalSGST      = data?.gst?.sgst  || 0;
   const totalIGST      = data?.gst?.igst  || 0;
   const totalTax       = data?.gst?.total || 0;
 
-  const salesCount     = data?.sales?.length     || 0;
-  const purchaseCount  = data?.purchases?.length || 0;
-  const expenseCount   = data?.expenses?.length  || 0;
+  const salesCount   = data?.sales?.length    || 0;
+  const expenseCount = data?.expenses?.length || 0;
 
   // ── CSV Export ────────────────────────────────────────────────
   const exportCSV = async () => {
@@ -99,12 +99,6 @@ export default function ReportsScreen({ navigation }) {
         `${i.invoice_number},${i.date},"${i.party_name || ''}",${i.taxable},${i.cgst},${i.sgst},${i.igst},${i.total_tax},${i.total},${i.paid},${i.status}`
       ).join('\n');
 
-      // Purchases CSV
-      const purchHeader  = 'Invoice No,Date,Party,Total,Paid,Status\n';
-      const purchRows    = (data.purchases || []).map(i =>
-        `${i.invoice_number},${i.date},"${i.party_name || ''}",${i.total},${i.paid},${i.status}`
-      ).join('\n');
-
       // Expenses CSV
       const expHeader    = 'Date,Category,Party,Bill No,Method,Amount,Note\n';
       const expRows      = (data.expenses || []).map(e =>
@@ -117,9 +111,6 @@ Generated: ${new Date().toLocaleString('en-IN')}
 
 === SALES ===
 ${salesHeader}${salesRows}
-
-=== PURCHASES ===
-${purchHeader}${purchRows}
 
 === EXPENSES ===
 ${expHeader}${expRows}
@@ -190,10 +181,9 @@ ${totalCGST.toFixed(2)},${totalSGST.toFixed(2)},${totalIGST.toFixed(2)},${totalT
           <View style={styles.plCard}>
             <Text style={styles.plTitle}>P&amp;L Summary</Text>
             <View style={styles.plRow}>
-              <PLItem label="Sales"      value={totalSales}     color={COLORS.primary} />
-              <PLItem label="Purchases"  value={totalPurchases} color={COLORS.info} />
-              <PLItem label="Expenses"   value={totalExpenses}  color={COLORS.danger} />
-              <PLItem label="Net Profit" value={grossProfit}    color={grossProfit >= 0 ? COLORS.success : COLORS.danger} />
+              <PLItem label="Sales"      value={totalSales}    color={COLORS.primary} />
+              <PLItem label="Expenses"   value={totalExpenses} color={COLORS.danger} />
+              <PLItem label="Net Profit" value={grossProfit}   color={grossProfit >= 0 ? COLORS.success : COLORS.danger} />
             </View>
           </View>
 
@@ -237,19 +227,6 @@ ${totalCGST.toFixed(2)},${totalSGST.toFixed(2)},${totalIGST.toFixed(2)},${totalT
             );
           })()}
 
-          {/* Purchases block */}
-          <SectionTitle title="Purchases" count={purchaseCount} />
-          <View style={styles.card}>
-            {purchaseCount > 0 ? (
-              <>
-                <StatRow label="Total Purchased" value={formatINR(totalPurchases)} />
-                <StatRow label="Bills"           value={String(purchaseCount)} />
-              </>
-            ) : (
-              <Text style={styles.nilText}>No purchases this period</Text>
-            )}
-          </View>
-
           {/* Expenses block */}
           <SectionTitle title="Expenses" count={expenseCount} />
           <View style={styles.card}>
@@ -292,7 +269,7 @@ ${totalCGST.toFixed(2)},${totalSGST.toFixed(2)},${totalIGST.toFixed(2)},${totalT
             <Text style={styles.exportHintIcon}>📊</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.exportHintTitle}>Export for CA / Accountant</Text>
-              <Text style={styles.exportHintSub}>Sales, purchases, expenses & GST in CSV</Text>
+              <Text style={styles.exportHintSub}>Sales, expenses & GST in CSV</Text>
             </View>
             <Text style={styles.exportHintArrow}>→</Text>
           </TouchableOpacity>
