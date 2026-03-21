@@ -24,15 +24,6 @@
     "plugins": [
       "expo-sqlite"
     ],
-    "updates": {
-      "url": "https://u.expo.dev/4ecd08a1-218e-44b8-8812-242559988c0b",
-      "enabled": true,
-      "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
     "owner": "operman-code",
     "extra": {
       "eas": {
