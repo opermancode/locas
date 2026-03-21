@@ -1,11 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, StatusBar, Image,
+  RefreshControl, StatusBar, Image, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDashboardStats, getProfile } from '../../db/db';
+import * as Updates from 'expo-updates';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 import { formatINRCompact, formatINR } from '../../utils/gst';
 
@@ -14,6 +15,9 @@ export default function DashboardScreen({ navigation }) {
   const [stats, setStats]           = useState(null);
   const [profile, setProfile] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [apkUpdate, setApkUpdate] = useState(null); // { version, url }
 
   const load = async () => {
     try {
@@ -28,6 +32,45 @@ export default function DashboardScreen({ navigation }) {
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  // Check for OTA update and new APK once on mount only
+  useEffect(() => {
+    (async () => {
+      // OTA check
+      try {
+        if (!__DEV__) {
+          const check = await Updates.checkForUpdateAsync();
+          if (check.isAvailable) setUpdateAvailable(true);
+        }
+      } catch (_) {}
+
+      // APK version check via version.json in GitHub repo
+      try {
+        const res = await fetch(
+          'https://raw.githubusercontent.com/operman-code/locas/main/version.json',
+          { cache: 'no-store' }
+        );
+        if (res.ok) {
+          const remote = await res.json();
+          const current = require('../../../app.json').expo.version;
+          // Simple semver compare — show banner if remote version is newer
+          if (remote.version && remote.url && remote.version !== current) {
+            setApkUpdate({ version: remote.version, url: remote.url });
+          }
+        }
+      } catch (_) {}
+    })();
+  }, []);
+
+  const handleUpdate = async () => {
+    setUpdating(true);
+    try {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    } catch (e) {
+      setUpdating(false);
+    }
+  };
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const now       = new Date();
@@ -194,6 +237,38 @@ export default function DashboardScreen({ navigation }) {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* ── OTA Update Banner ───────────────────────── */}
+      {updateAvailable && !apkUpdate && (
+        <TouchableOpacity
+          style={styles.updateBanner}
+          onPress={handleUpdate}
+          disabled={updating}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.updateBannerIcon}>🔄</Text>
+          <Text style={styles.updateBannerText}>
+            {updating ? 'Installing update…' : 'New update available — tap to install'}
+          </Text>
+          {!updating && <Text style={styles.updateBannerArrow}>→</Text>}
+        </TouchableOpacity>
+      )}
+
+      {/* ── APK Update Banner ───────────────────────── */}
+      {apkUpdate && (
+        <TouchableOpacity
+          style={[styles.updateBanner, styles.apkBanner]}
+          onPress={() => Linking.openURL(apkUpdate.url)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.updateBannerIcon}>📦</Text>
+          <Text style={styles.updateBannerText}>
+            New version {apkUpdate.version} available — tap to download & install
+          </Text>
+          <Text style={styles.updateBannerArrow}>↓</Text>
+        </TouchableOpacity>
+      )}
+
     </View>
   );
 }
@@ -338,6 +413,24 @@ const styles = StyleSheet.create({
   summaryDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginVertical: 4 },
   summaryVal:     { fontSize: 13, fontWeight: FONTS.bold, marginBottom: 4 },
   summaryLbl:     { fontSize: 10, color: 'rgba(255,255,255,0.55)', textAlign: 'center' },
+
+  // OTA update banner
+  updateBanner: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  updateBannerIcon:  { fontSize: 18 },
+  updateBannerText:  { flex: 1, fontSize: 13, fontWeight: FONTS.semibold, color: '#fff' },
+  updateBannerArrow: { fontSize: 16, color: '#fff' },
+  apkBanner: { backgroundColor: '#15803D' }, // green — distinct from OTA blue
 
   // Empty
   emptyState:   { alignItems: 'center', paddingVertical: 32, backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginBottom: 16, ...SHADOW.sm },

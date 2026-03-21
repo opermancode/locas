@@ -1,12 +1,17 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, StatusBar, Switch,
-  FlatList,
+  FlatList, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getProfile, saveProfile } from '../../db/db';
+import { getProfile, saveProfile, exportAllData, importAllData } from '../../db/db';
+import {
+  useGoogleAuth, saveToken, getToken, getUserEmail, fetchUserEmail,
+  uploadBackup, downloadBackup, signOut, getBackupTime, setBackupTime,
+  getLastBackupTime,
+} from '../../utils/googleDrive';
 import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 
@@ -18,6 +23,15 @@ export default function SettingsScreen({ navigation }) {
   const [stateModal, setStateModal]   = useState(false);
   const [stateSearch, setStateSearch] = useState('');
 
+  // Backup state
+  const [driveEmail, setDriveEmail]     = useState(null);
+  const [lastBackup, setLastBackup]     = useState(null);
+  const [backupTime, setBackupTimeVal]  = useState('00:00');
+  const [syncing, setSyncing]           = useState(false);
+  const [restoring, setRestoring]       = useState(false);
+  const [timeModal, setTimeModal]       = useState(false);
+  const { request, response, promptAsync } = useGoogleAuth();
+
   const load = async () => {
     try {
       const p = await getProfile();
@@ -26,7 +40,30 @@ export default function SettingsScreen({ navigation }) {
     } catch (e) { console.error(e); }
   };
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  const loadBackupInfo = async () => {
+    const email = await getUserEmail();
+    const last  = await getLastBackupTime();
+    const time  = await getBackupTime();
+    setDriveEmail(email);
+    setLastBackup(last);
+    setBackupTimeVal(time || '00:00');
+  };
+
+  useFocusEffect(useCallback(() => { load(); loadBackupInfo(); }, []));
+
+  // Handle Google OAuth response
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const token = response.authentication?.accessToken || response.params?.access_token;
+      if (token) {
+        fetchUserEmail(token).then(async email => {
+          await saveToken(token, email);
+          setDriveEmail(email);
+          Alert.alert('✅ Connected', `Google Drive linked to ${email}`);
+        }).catch(() => Alert.alert('Error', 'Could not fetch Google account info'));
+      }
+    }
+  }, [response]);
 
   const set = (key, value) => {
     setForm(f => ({ ...f, [key]: value }));
@@ -54,6 +91,69 @@ export default function SettingsScreen({ navigation }) {
   const filteredStates = INDIAN_STATES.filter(s =>
     s.name.toLowerCase().includes(stateSearch.toLowerCase()) || s.code.includes(stateSearch)
   );
+
+  const handleSync = async () => {
+    const token = await getToken();
+    if (!token) { Alert.alert('Not connected', 'Connect Google Drive first'); return; }
+    setSyncing(true);
+    try {
+      const json = await exportAllData();
+      await uploadBackup(token, json);
+      const last = await getLastBackupTime();
+      setLastBackup(last);
+      Alert.alert('✅ Backup saved', 'Your data has been backed up to Google Drive');
+    } catch (e) { Alert.alert('Backup failed', e.message); }
+    finally { setSyncing(false); }
+  };
+
+  const handleRestore = async () => {
+    const token = await getToken();
+    if (!token) { Alert.alert('Not connected', 'Connect Google Drive first'); return; }
+    Alert.alert(
+      '⚠️ Restore Backup',
+      'This will replace ALL current data with your Google Drive backup. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore', style: 'destructive',
+          onPress: async () => {
+            setRestoring(true);
+            try {
+              const json = await downloadBackup(token);
+              if (!json) { Alert.alert('No backup found', 'No backup file found in your Google Drive'); return; }
+              await importAllData(json);
+              Alert.alert('✅ Restored', 'Your data has been restored successfully');
+            } catch (e) { Alert.alert('Restore failed', e.message); }
+            finally { setRestoring(false); }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDisconnect = () => {
+    Alert.alert('Disconnect Google Drive', 'Stop backing up to Google Drive?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Disconnect', style: 'destructive', onPress: async () => {
+        await signOut(); setDriveEmail(null); setLastBackup(null);
+      }},
+    ]);
+  };
+
+  const handleSaveBackupTime = async (time) => {
+    await setBackupTime(time);
+    setBackupTimeVal(time);
+    setTimeModal(false);
+  };
+
+  const formatLastBackup = (iso) => {
+    if (!iso) return 'Never';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const BACKUP_TIMES = ['00:00','06:00','08:00','10:00','12:00','18:00','20:00','22:00'];
 
   if (!form) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 
@@ -203,6 +303,71 @@ export default function SettingsScreen({ navigation }) {
           ):null}
         </View>
 
+        {/* ── Backup & Restore ──────────────────────────── */}
+        <SectionHeader icon="☁️" title="Backup & Restore" />
+        <View style={styles.card}>
+          {driveEmail ? (
+            <>
+              <View style={styles.driveConnected}>
+                <Text style={styles.driveIcon}>✅</Text>
+                <View style={{flex:1}}>
+                  <Text style={styles.driveEmail}>{driveEmail}</Text>
+                  <Text style={styles.driveLastBackup}>Last backup: {formatLastBackup(lastBackup)}</Text>
+                </View>
+                <TouchableOpacity onPress={handleDisconnect}>
+                  <Text style={styles.disconnectBtn}>Disconnect</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.backupTimeRow}>
+                <View style={{flex:1}}>
+                  <Text style={styles.toggleLabel}>Daily Backup Time</Text>
+                  <Text style={styles.toggleSub}>Auto backup runs once per day</Text>
+                </View>
+                <TouchableOpacity style={styles.timeChip} onPress={()=>setTimeModal(true)}>
+                  <Text style={styles.timeChipText}>{backupTime}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.backupActions}>
+                <TouchableOpacity
+                  style={[styles.backupBtn, syncing && {opacity:0.5}]}
+                  onPress={handleSync}
+                  disabled={syncing}
+                >
+                  {syncing
+                    ? <ActivityIndicator size="small" color={COLORS.white}/>
+                    : <Text style={styles.backupBtnText}>☁️ Sync Now</Text>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.restoreBtn, restoring && {opacity:0.5}]}
+                  onPress={handleRestore}
+                  disabled={restoring}
+                >
+                  {restoring
+                    ? <ActivityIndicator size="small" color={COLORS.primary}/>
+                    : <Text style={styles.restoreBtnText}>↩️ Restore</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.driveDesc}>
+                Connect Google Drive to automatically backup your data daily. Restore anytime after reinstalling the app.
+              </Text>
+              <TouchableOpacity
+                style={styles.connectBtn}
+                onPress={() => promptAsync()}
+                disabled={!request}
+              >
+                <Text style={styles.connectBtnText}>🔗 Connect Google Drive</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
         {/* ── About ─────────────────────────────────────── */}
         <SectionHeader icon="ℹ️" title="About" />
         <View style={styles.card}>
@@ -221,6 +386,26 @@ export default function SettingsScreen({ navigation }) {
 
         <View style={{height:80}}/>
       </ScrollView>
+
+      {/* Backup time picker */}
+      {timeModal && (
+        <Modal transparent animationType="slide" onRequestClose={()=>setTimeModal(false)}>
+          <View style={styles.stateOverlay}>
+            <View style={styles.stateSheet}>
+              <View style={styles.stateHeader}>
+                <Text style={styles.stateTitle}>Select Backup Time</Text>
+                <TouchableOpacity onPress={()=>setTimeModal(false)}><Text style={styles.stateClose}>✕</Text></TouchableOpacity>
+              </View>
+              {BACKUP_TIMES.map(t => (
+                <TouchableOpacity key={t} style={styles.stateItem} onPress={()=>handleSaveBackupTime(t)}>
+                  <Text style={[styles.stateName, backupTime===t&&{color:COLORS.primary,fontWeight:FONTS.bold}]}>{t}</Text>
+                  {backupTime===t && <Text style={{color:COLORS.primary}}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* State picker */}
       {stateModal&&(
@@ -308,6 +493,23 @@ const styles = StyleSheet.create({
   stateSearchBox:{padding:12,borderBottomWidth:1,borderBottomColor:COLORS.border},
   stateSearchInput:{backgroundColor:COLORS.bg,borderWidth:1,borderColor:COLORS.border,borderRadius:RADIUS.sm,paddingHorizontal:12,paddingVertical:9,fontSize:14,color:COLORS.text},
   stateItem:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',padding:14,borderBottomWidth:1,borderBottomColor:COLORS.border},
+  // Backup styles
+  driveConnected:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:10},
+  driveIcon:{fontSize:22},
+  driveEmail:{fontSize:14,fontWeight:FONTS.bold,color:COLORS.text},
+  driveLastBackup:{fontSize:11,color:COLORS.textMute,marginTop:2},
+  disconnectBtn:{fontSize:12,color:COLORS.danger,fontWeight:FONTS.semibold},
+  backupTimeRow:{flexDirection:'row',alignItems:'center',paddingVertical:14,borderTopWidth:1,borderTopColor:COLORS.border,gap:12},
+  timeChip:{backgroundColor:COLORS.primaryLight,paddingHorizontal:14,paddingVertical:8,borderRadius:RADIUS.md},
+  timeChipText:{fontSize:14,fontWeight:FONTS.bold,color:COLORS.primary},
+  backupActions:{flexDirection:'row',gap:10,marginTop:14},
+  backupBtn:{flex:1,backgroundColor:COLORS.primary,borderRadius:RADIUS.md,paddingVertical:12,alignItems:'center'},
+  backupBtnText:{color:COLORS.white,fontWeight:FONTS.bold,fontSize:14},
+  restoreBtn:{flex:1,backgroundColor:COLORS.bg,borderRadius:RADIUS.md,paddingVertical:12,alignItems:'center',borderWidth:1,borderColor:COLORS.primary},
+  restoreBtnText:{color:COLORS.primary,fontWeight:FONTS.bold,fontSize:14},
+  driveDesc:{fontSize:13,color:COLORS.textSub,lineHeight:20,marginBottom:14},
+  connectBtn:{backgroundColor:COLORS.primary,borderRadius:RADIUS.md,paddingVertical:13,alignItems:'center'},
+  connectBtnText:{color:COLORS.white,fontWeight:FONTS.bold,fontSize:15},
   stateName:{fontSize:15,color:COLORS.text,fontWeight:FONTS.medium},
   stateCode:{fontSize:13,color:COLORS.textSub,fontWeight:FONTS.bold},
 });

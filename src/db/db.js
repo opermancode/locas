@@ -530,3 +530,115 @@ export async function getReportData(from, to) {
   ]);
   return { sales, purchases, expenses, gst };
 }
+
+// ─── Backup / Restore ────────────────────────────────────────────
+export async function exportAllData() {
+  const db = await getDB();
+  const [profile, parties, items, invoices, invoiceItems, payments, expenses] = await Promise.all([
+    db.getAllAsync('SELECT * FROM business_profile'),
+    db.getAllAsync('SELECT * FROM parties'),
+    db.getAllAsync('SELECT * FROM items'),
+    db.getAllAsync('SELECT * FROM invoices'),
+    db.getAllAsync('SELECT * FROM invoice_items'),
+    db.getAllAsync('SELECT * FROM payments'),
+    db.getAllAsync('SELECT * FROM expenses'),
+  ]);
+  return JSON.stringify({
+    version: 1,
+    exported_at: new Date().toISOString(),
+    profile,
+    parties,
+    items,
+    invoices,
+    invoice_items: invoiceItems,
+    payments,
+    expenses,
+  }, null, 2);
+}
+
+export async function importAllData(jsonString) {
+  const data = JSON.parse(jsonString);
+  if (data.version !== 1) throw new Error('Unsupported backup version');
+  const db = await getDB();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM payments');
+    await db.runAsync('DELETE FROM invoice_items');
+    await db.runAsync('DELETE FROM invoices');
+    await db.runAsync('DELETE FROM expenses');
+    await db.runAsync('DELETE FROM items');
+    await db.runAsync('DELETE FROM parties');
+
+    if (data.profile?.[0]) {
+      const p = data.profile[0];
+      await db.runAsync(
+        `UPDATE business_profile SET
+          name=?,address=?,phone=?,email=?,gstin=?,state=?,state_code=?,pan=?,
+          bank_name=?,account_no=?,ifsc=?,invoice_prefix=?,invoice_counter=?,
+          upi_id=?,show_upi_qr=?,updated_at=datetime('now')
+         WHERE id=1`,
+        [p.name||'',p.address||'',p.phone||'',p.email||'',p.gstin||'',
+         p.state||'',p.state_code||'',p.pan||'',p.bank_name||'',p.account_no||'',
+         p.ifsc||'',p.invoice_prefix||'INV',p.invoice_counter||0,
+         p.upi_id||'',p.show_upi_qr||0]
+      );
+    }
+    for (const row of data.parties||[]) {
+      await db.runAsync(
+        `INSERT INTO parties (id,name,phone,email,address,gstin,state,state_code,pan,type,balance,created_at,updated_at,deleted_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id,row.name,row.phone||'',row.email||'',row.address||'',row.gstin||'',
+         row.state||'',row.state_code||'',row.pan||'',row.type||'customer',
+         row.balance||0,row.created_at,row.updated_at,row.deleted_at||null]
+      );
+    }
+    for (const row of data.items||[]) {
+      await db.runAsync(
+        `INSERT INTO items (id,name,code,unit,hsn,sale_price,purchase_price,gst_rate,stock,min_stock,created_at,updated_at,deleted_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id,row.name,row.code||'',row.unit||'pcs',row.hsn||'',
+         row.sale_price||0,row.purchase_price||0,row.gst_rate||18,
+         row.stock||0,row.min_stock||0,row.created_at,row.updated_at,row.deleted_at||null]
+      );
+    }
+    for (const row of data.invoices||[]) {
+      await db.runAsync(
+        `INSERT INTO invoices (id,invoice_number,type,party_id,party_name,party_gstin,party_state,
+         party_state_code,party_address,date,due_date,subtotal,discount,taxable,cgst,sgst,igst,
+         total_tax,total,paid,status,supply_type,notes,terms,created_at,updated_at,deleted_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id,row.invoice_number,row.type||'sale',row.party_id||null,
+         row.party_name||'',row.party_gstin||'',row.party_state||'',row.party_state_code||'',
+         row.party_address||'',row.date,row.due_date||'',row.subtotal||0,row.discount||0,
+         row.taxable||0,row.cgst||0,row.sgst||0,row.igst||0,row.total_tax||0,row.total||0,
+         row.paid||0,row.status||'unpaid',row.supply_type||'intra',
+         row.notes||'',row.terms||'',row.created_at,row.updated_at,row.deleted_at||null]
+      );
+    }
+    for (const row of data.invoice_items||[]) {
+      await db.runAsync(
+        `INSERT INTO invoice_items (id,invoice_id,item_id,name,hsn,unit,qty,rate,discount,taxable,gst_rate,cgst,sgst,igst,total)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id,row.invoice_id,row.item_id||null,row.name,row.hsn||'',row.unit||'pcs',
+         row.qty,row.rate,row.discount||0,row.taxable,row.gst_rate||18,
+         row.cgst||0,row.sgst||0,row.igst||0,row.total]
+      );
+    }
+    for (const row of data.payments||[]) {
+      await db.runAsync(
+        `INSERT INTO payments (id,invoice_id,amount,method,reference,date,note,created_at)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [row.id,row.invoice_id,row.amount,row.method||'cash',
+         row.reference||'',row.date,row.note||'',row.created_at]
+      );
+    }
+    for (const row of data.expenses||[]) {
+      await db.runAsync(
+        `INSERT INTO expenses (id,category,amount,date,party_name,bill_no,method,note,created_at,updated_at,deleted_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id,row.category||'Other',row.amount,row.date,
+         row.party_name||'',row.bill_no||'',row.method||'cash',
+         row.note||'',row.created_at,row.updated_at,row.deleted_at||null]
+      );
+    }
+  });
+}
