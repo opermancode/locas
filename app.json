@@ -18,8 +18,7 @@
       "adaptiveIcon": {
         "backgroundColor": "#FF6B00"
       },
-      "package": "com.neurader.locas",
-      "edgeToEdge": true
+      "package": "com.neurader.locas"
     },
     "plugins": [
       "expo-sqlite"
