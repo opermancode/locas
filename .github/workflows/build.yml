@@ -32,21 +32,26 @@ jobs:
           VERSION="${TAG#apk/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Bump version in app.json
+      # Step 1 — bump versions BEFORE building
+      - name: Bump versions in app.json and package.json
         run: |
           node -e "
             const fs = require('fs');
             const v = '${{ steps.version.outputs.version }}';
+
             const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
             app.expo.version = v;
             app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1;
             fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             pkg.version = v;
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-            console.log('version:', v, 'versionCode:', app.expo.android.versionCode);
+
+            console.log('Bumped to version:', v, '| versionCode:', app.expo.android.versionCode);
           "
 
+      # Step 2 — install with updated package.json
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
@@ -56,6 +61,7 @@ jobs:
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
+      # Step 3 — build with correct version baked in
       - name: Build preview APK
         id: build
         run: |
@@ -65,7 +71,8 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Update version.json and commit all
+      # Step 4 — update version.json and commit everything back to main
+      - name: Update version.json and commit
         run: |
           node -e "
             const fs = require('fs');
@@ -77,6 +84,6 @@ jobs:
           "
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add app.json version.json package.json
+          git add app.json package.json version.json
           git commit -m "chore: bump to v${{ steps.version.outputs.version }}"
           git push origin HEAD:main
