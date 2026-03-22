@@ -42,8 +42,9 @@ export default function DashboardScreen({ navigation }) {
         if (res.ok) {
           const remote = await res.json();
           const current = require('../../../app.json').expo.version;
-          if (remote.version && remote.url && remote.version !== current) {
-            setApkUpdate({ version: remote.version, url: remote.url });
+          if (remote.version && remote.version !== current) {
+            const url = remote.downloadPage || remote.url;
+            if (url) setApkUpdate({ version: remote.version, url });
           }
         }
       } catch (_) {}
