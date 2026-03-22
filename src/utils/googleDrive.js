@@ -5,7 +5,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-WebBrowser.maybeCompleteAuthSession();
+try { WebBrowser.maybeCompleteAuthSession(); } catch (_) {}
 
 const CLIENT_ID = '968124204652-sil111te8fqqd3asfa6eoc7cj1bn4iv8.apps.googleusercontent.com';
 const BACKUP_FILENAME = 'locas_backup.json';
