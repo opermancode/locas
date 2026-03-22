@@ -1,0 +1,45 @@
+name: Firebase App Distribution
+
+on:
+  # Triggers after build.yml commits version.json with new APK URL
+  push:
+    branches:
+      - main
+    paths:
+      - 'version.json'
+
+jobs:
+  distribute:
+    name: Upload APK to Firebase App Distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Read APK URL and version from version.json
+      - name: Read version.json
+        id: versioninfo
+        run: |
+          VERSION=$(node -e "console.log(require('./version.json').version)")
+          APK_URL=$(node -e "console.log(require('./version.json').url)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+          echo "APK URL: $APK_URL"
+
+      # Download APK from EAS using the URL in version.json
+      - name: Download APK from EAS
+        run: |
+          curl -L "${{ steps.versioninfo.outputs.apk_url }}" -o locas.apk
+          echo "Downloaded APK size: $(du -sh locas.apk)"
+
+      # Upload to Firebase App Distribution
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: 1:835960594579:android:99ab49d5b8f08847176d66
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          groups: testers
+          file: locas.apk
+          releaseNotes: "Version ${{ steps.versioninfo.outputs.version }}"
