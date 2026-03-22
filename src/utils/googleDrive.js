@@ -7,7 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const CLIENT_ID = '968124204652-9g7lbfoj6fov5uka5nsrq1vkbph1acra.apps.googleusercontent.com';
+const CLIENT_ID = '968124204652-sil111te8fqqd3asfa6eoc7cj1bn4iv8.apps.googleusercontent.com';
 const BACKUP_FILENAME = 'locas_backup.json';
 const STORAGE_KEY_TOKEN = 'gdrive_access_token';
 const STORAGE_KEY_EMAIL = 'gdrive_user_email';
