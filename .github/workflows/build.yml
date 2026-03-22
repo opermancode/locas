@@ -25,6 +25,28 @@ jobs:
         with:
           node-version: 20
 
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#apk/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version in app.json
+        run: |
+          node -e "
+            const fs = require('fs');
+            const v = '${{ steps.version.outputs.version }}';
+            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            app.expo.version = v;
+            app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1;
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = v;
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+            console.log('version:', v, 'versionCode:', app.expo.android.versionCode);
+          "
+
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
@@ -43,29 +65,18 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Extract version from tag
-        id: version
-        run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#apk/v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Update version.json
+      - name: Update version.json and commit all
         run: |
           node -e "
             const fs = require('fs');
-            const data = {
+            fs.writeFileSync('version.json', JSON.stringify({
               version: '${{ steps.version.outputs.version }}',
               url: '${{ steps.build.outputs.apk_url }}',
               releaseNotes: 'Version ${{ steps.version.outputs.version }}'
-            };
-            fs.writeFileSync('version.json', JSON.stringify(data, null, 2));
+            }, null, 2));
           "
-
-      - name: Commit version.json
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          git commit -m "chore: update version.json to ${{ steps.version.outputs.version }}"
+          git add app.json version.json package.json
+          git commit -m "chore: bump to v${{ steps.version.outputs.version }}"
           git push origin HEAD:main

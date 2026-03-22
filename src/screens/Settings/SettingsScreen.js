@@ -14,6 +14,7 @@ import {
 } from '../../utils/googleDrive';
 import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
+import { version } from '../../../app.json';
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -372,7 +373,7 @@ export default function SettingsScreen({ navigation }) {
         <SectionHeader icon="ℹ️" title="About" />
         <View style={styles.card}>
           <InfoRow label="App"      value="Your Billing App" />
-          <InfoRow label="Version"  value="1.0.0" />
+          <InfoRow label="Version"  value={version} />
           <InfoRow label="GST"      value="CGST / SGST / IGST" />
           <InfoRow label="Storage"  value="Local SQLite (offline)" />
         </View>
