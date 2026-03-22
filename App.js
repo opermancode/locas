@@ -7,6 +7,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { getDB } from './src/db/db';
+import { onAuthStateChanged } from './src/utils/firebase';
+import LoginScreen from './src/screens/Auth/LoginScreen';
 import { exportAllData } from './src/db/db';
 import AppNavigator from './src/navigation/AppNavigator';
 
@@ -16,6 +18,7 @@ const LIGHT   = '#FFF8F4';
 
 export default function App() {
   const [phase, setPhase] = useState('splash'); // 'splash' | 'ready' | 'error'
+  const [user, setUser]   = useState(undefined); // undefined=checking, null=logged out, object=logged in
   const [error, setError] = useState(null);
 
   // Animations
@@ -55,6 +58,9 @@ export default function App() {
     }, 900);
 
     // Step 5 — init DB in background
+    // Listen to Firebase auth state
+    const unsubscribe = onAuthStateChanged(u => setUser(u));
+
     getDB()
       .then(async () => {
         // Trigger daily backup silently if due
@@ -82,6 +88,8 @@ export default function App() {
         setError(e.message);
         setPhase('error');
       });
+
+    return () => unsubscribe();
   }, []);
 
   if (phase === 'error') {
@@ -95,6 +103,25 @@ export default function App() {
   }
 
   if (phase === 'ready') {
+    // Still checking auth state
+    if (user === undefined) {
+      return (
+        <View style={{ flex: 1, backgroundColor: '#FFF8F4' }}>
+          <StatusBar style="dark" />
+        </View>
+      );
+    }
+    // Not logged in — show login screen
+    if (!user) {
+      return (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            <LoginScreen />
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      );
+    }
+    // Logged in — show main app
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>

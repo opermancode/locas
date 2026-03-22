@@ -7,6 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { getProfile, saveProfile, exportAllData, importAllData } from '../../db/db';
+import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase';
 import {
   useGoogleAuth, saveToken, getToken, getUserEmail, fetchUserEmail,
   uploadBackup, downloadBackup, signOut, getBackupTime, setBackupTime,
@@ -138,6 +139,13 @@ export default function SettingsScreen({ navigation }) {
       { text: 'Disconnect', style: 'destructive', onPress: async () => {
         await signOut(); setDriveEmail(null); setLastBackup(null);
       }},
+    ]);
+  };
+
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: () => firebaseSignOut() },
     ]);
   };
 
@@ -372,11 +380,17 @@ export default function SettingsScreen({ navigation }) {
         {/* ── About ─────────────────────────────────────── */}
         <SectionHeader icon="ℹ️" title="About" />
         <View style={styles.card}>
-          <InfoRow label="App"      value="Your Billing App" />
+          <InfoRow label="App"      value="Locas" />
           <InfoRow label="Version"  value={version} />
           <InfoRow label="GST"      value="CGST / SGST / IGST" />
           <InfoRow label="Storage"  value="Local SQLite (offline)" />
+          <InfoRow label="Account"  value={getCurrentUser()?.email || ''} />
         </View>
+
+        {/* Sign Out */}
+        <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+          <Text style={styles.signOutText}>🚪 Sign Out</Text>
+        </TouchableOpacity>
 
         {/* Bottom save button */}
         {dirty&&(
@@ -512,5 +526,7 @@ const styles = StyleSheet.create({
   connectBtn:{backgroundColor:COLORS.primary,borderRadius:RADIUS.md,paddingVertical:13,alignItems:'center'},
   connectBtnText:{color:COLORS.white,fontWeight:FONTS.bold,fontSize:15},
   stateName:{fontSize:15,color:COLORS.text,fontWeight:FONTS.medium},
+  signOutBtn:{backgroundColor:'#FEE2E2',borderRadius:RADIUS.lg,paddingVertical:14,alignItems:'center',marginTop:8,marginBottom:4},
+  signOutText:{color:'#991B1B',fontWeight:FONTS.bold,fontSize:15},
   stateCode:{fontSize:13,color:COLORS.textSub,fontWeight:FONTS.bold},
 });
