@@ -20,10 +20,13 @@
       "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#FF6B00"
-      }
+      },
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
     ],
     "owner": "operman-code",
     "extra": {

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "835960594579",
+    "project_id": "locas-business",
+    "storage_bucket": "locas-business.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:835960594579:android:99ab49d5b8f08847176d66",
+        "android_client_info": {
+          "package_name": "com.neurader.locas"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "835960594579-1kuhp6kppiv1bag5esvf35ncv6t6bnm0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsUivRaiSK1ZZ9AA3Et-k1eIon5l0Y3hc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "835960594579-1kuhp6kppiv1bag5esvf35ncv6t6bnm0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
