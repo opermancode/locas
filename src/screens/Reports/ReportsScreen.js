@@ -93,34 +93,60 @@ export default function ReportsScreen({ navigation }) {
     try {
       const { from, to } = getRange(preset);
 
-      // Sales CSV
-      const salesHeader  = 'Invoice No,Date,Party,Taxable,CGST,SGST,IGST,Total Tax,Total,Paid,Status\n';
-      const salesRows    = (data.sales || []).map(i =>
-        `${i.invoice_number},${i.date},"${i.party_name || ''}",${i.taxable},${i.cgst},${i.sgst},${i.igst},${i.total_tax},${i.total},${i.paid},${i.status}`
-      ).join('\n');
+      // Helper: escape a value for CSV
+      const esc = (v) => {
+        if (v === null || v === undefined) return '';
+        const s = String(v);
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+          return `"${s.replace(/"/g, '""')}"`;
+        }
+        return s;
+      };
+      const n = (v) => Number(v || 0).toFixed(2);
 
-      // Expenses CSV
-      const expHeader    = 'Date,Category,Party,Bill No,Method,Amount,Note\n';
-      const expRows      = (data.expenses || []).map(e =>
-        `${e.date},${e.category},"${e.party_name || ''}","${e.bill_no || ''}",${e.method},${e.amount},"${e.note || ''}"`
-      ).join('\n');
+      // Sales section
+      const salesRows = (data.sales || []).map(i =>
+        [i.invoice_number, i.date, esc(i.party_name), esc(i.party_gstin),
+         n(i.taxable), n(i.cgst), n(i.sgst), n(i.igst), n(i.total_tax),
+         n(i.total), n(i.paid), n(i.total - i.paid), i.status].join(',')
+      );
 
-      const csv =
-`LOCAS REPORT — ${from} to ${to}
-Generated: ${new Date().toLocaleString('en-IN')}
+      // Expenses section
+      const expRows = (data.expenses || []).map(e =>
+        [e.date, esc(e.category), esc(e.party_name), esc(e.bill_no),
+         esc(e.method), n(e.amount), esc(e.note)].join(',')
+      );
 
-=== SALES ===
-${salesHeader}${salesRows}
+      const csv = [
+        // Report header as comments (starts with #, ignored by most parsers)
+        `# LOCAS REPORT`,
+        `# Period: ${from} to ${to}`,
+        `# Generated: ${new Date().toLocaleDateString('en-IN')}`,
+        ``,
+        // Sales
+        `# SALES`,
+        `Invoice No,Date,Party,GSTIN,Taxable,CGST,SGST,IGST,Total Tax,Total,Paid,Outstanding,Status`,
+        ...salesRows,
+        salesRows.length === 0 ? '# No sales in this period' : '',
+        ``,
+        // Expenses
+        `# EXPENSES`,
+        `Date,Category,Party,Bill No,Method,Amount,Note`,
+        ...expRows,
+        expRows.length === 0 ? '# No expenses in this period' : '',
+        ``,
+        // GST Summary
+        `# GST SUMMARY`,
+        `CGST,SGST,IGST,Total Tax`,
+        `${n(totalCGST)},${n(totalSGST)},${n(totalIGST)},${n(totalTax)}`,
+        ``,
+        // P&L Summary
+        `# P&L SUMMARY`,
+        `Total Sales,Total Expenses,Net Profit`,
+        `${n(totalSales)},${n(totalExpenses)},${n(grossProfit)}`,
+      ].join('\n');
 
-=== EXPENSES ===
-${expHeader}${expRows}
-
-=== GST SUMMARY ===
-CGST,SGST,IGST,Total Tax
-${totalCGST.toFixed(2)},${totalSGST.toFixed(2)},${totalIGST.toFixed(2)},${totalTax.toFixed(2)}
-`;
-
-      const filename = `Locas_Report_${from}_${to}.csv`;
+      const filename = `Locas_${from}_${to}.csv`;
       const path = FileSystem.documentDirectory + filename;
       await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
       await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: 'Export Report' });
