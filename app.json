@@ -23,8 +23,7 @@
       }
     },
     "plugins": [
-      "expo-sqlite",
-      "expo-web-browser"
+      "expo-sqlite"
     ],
     "owner": "operman-code",
     "extra": {
