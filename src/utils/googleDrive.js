@@ -27,14 +27,17 @@ const SCOPES = [
 // ─── Auth ─────────────────────────────────────────────────────────
 
 export function useGoogleAuth() {
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'locas', path: 'auth' });
-  console.log('REDIRECT URI:', redirectUri);
+  const redirectUri = AuthSession.makeRedirectUri({
+    useProxy: true,
+    projectNameForProxy: '@operman-code/locas',
+  });
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
       clientId: CLIENT_ID,
       redirectUri,
       scopes: SCOPES,
       responseType: AuthSession.ResponseType.Token,
+      usePKCE: false,
     },
     DISCOVERY
   );
