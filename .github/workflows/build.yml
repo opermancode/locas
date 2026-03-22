@@ -29,7 +29,7 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Fix and deduplicate Expo packages
-        run: npx expo install --fix --legacy-peer-deps
+        run: npx expo install --fix
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
