@@ -28,6 +28,7 @@ const SCOPES = [
 
 export function useGoogleAuth() {
   const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+  console.log('REDIRECT URI:', redirectUri);
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
       clientId: CLIENT_ID,
