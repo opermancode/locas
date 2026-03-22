@@ -148,7 +148,7 @@ export default function ReportsScreen({ navigation }) {
 
       const filename = `Locas_${from}_${to}.csv`;
       const path = FileSystem.documentDirectory + filename;
-      await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      await FileSystem.writeAsStringAsync(path, csv, { encoding: 'utf8' });
       await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: 'Export Report' });
     } catch (e) {
       Alert.alert('Export Error', e.message);
