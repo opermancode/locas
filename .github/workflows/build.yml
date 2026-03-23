@@ -72,24 +72,7 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      # Step 4 — download APK and push to locas-apk repo
-      - name: Download APK from EAS
-        run: |
-          curl -L "${{ steps.build.outputs.apk_url }}" -o locas.apk
-          echo "APK size: $(du -sh locas.apk)"
-
-      - name: Push APK to locas-apk repo
-        run: |
-          git clone https://x-access-token:${{ secrets.APK_REPO_TOKEN }}@github.com/opermancode/locas-apk.git apk-repo
-          cp locas.apk apk-repo/locas.apk
-          cd apk-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add locas.apk
-          git commit -m "chore: update APK to v${{ steps.version.outputs.version }}"
-          git push origin main
-
-      # Step 5 — update version.json with GitHub raw URL and commit back
+      # Step 4 — update version.json and commit
       - name: Update version.json and commit
         run: |
           node -e "
