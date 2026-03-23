@@ -40,7 +40,7 @@ jobs:
         run: npm install --global expo-cli
 
       - name: Build Expo web bundle
-        run: npx expo export --platform web
+        run: npx expo export
 
       - name: Install Electron dependencies
         working-directory: electron
