@@ -5,8 +5,24 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
+import { Platform as _RPlatform } from 'react-native';
+const Sharing = _RPlatform.OS === 'web'
+  ? { shareAsync: async () => {} }
+  : require('expo-sharing');
+const FileSystem = _RPlatform.OS === 'web'
+  ? {
+      documentDirectory: '',
+      EncodingType: { UTF8: 'utf8' },
+      writeAsStringAsync: async (path, data) => {
+        // Web: trigger browser download instead
+        const blob = new Blob([data], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = path.split('/').pop() || 'report.csv';
+        a.click(); URL.revokeObjectURL(url);
+      },
+    }
+  : require('expo-file-system/legacy');
 import { getReportData } from '../../db';
 import { formatINR, formatINRCompact } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
@@ -149,7 +165,9 @@ export default function ReportsScreen({ navigation }) {
       const filename = `Locas_${from}_${to}.csv`;
       const path = FileSystem.documentDirectory + filename;
       await FileSystem.writeAsStringAsync(path, csv, { encoding: 'utf8' });
-      await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: 'Export Report' });
+      if (_RPlatform.OS !== 'web') {
+        await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: 'Export Report' });
+      }
     } catch (e) {
       Alert.alert('Export Error', e.message);
     } finally {

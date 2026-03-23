@@ -7,12 +7,27 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { getProfile, saveProfile, exportAllData, importAllData } from '../../db';
-import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase/firebase.index';
-import {
-  useGoogleAuth, saveToken, getToken, getUserEmail, fetchUserEmail,
-  uploadBackup, downloadBackup, signOut, getBackupTime, setBackupTime,
-  getLastBackupTime,
-} from '../../utils/googleDrive';
+import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase/index';
+import { Platform } from 'react-native';
+
+// Google Drive is mobile-only — lazy load to prevent web crash
+const isNative = Platform.OS !== 'web';
+const {
+  useGoogleAuth: _useGoogleAuth,
+  saveToken, getToken, getUserEmail, fetchUserEmail,
+  uploadBackup, downloadBackup,
+  signOut: gdriveSignOut,
+  getBackupTime, setBackupTime, getLastBackupTime,
+} = isNative ? require('../../utils/googleDrive') : {
+  useGoogleAuth: () => ({ request: null, response: null, promptAsync: () => {} }),
+  saveToken: async () => {}, getToken: async () => null,
+  getUserEmail: async () => null, fetchUserEmail: async () => '',
+  uploadBackup: async () => {}, downloadBackup: async () => null,
+  signOut: async () => {},
+  getBackupTime: async () => '00:00', setBackupTime: async () => {},
+  getLastBackupTime: async () => null,
+};
+function useGoogleAuth() { return _useGoogleAuth(); }
 import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 import { version } from '../../../app.json';
@@ -137,7 +152,7 @@ export default function SettingsScreen({ navigation }) {
     Alert.alert('Disconnect Google Drive', 'Stop backing up to Google Drive?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Disconnect', style: 'destructive', onPress: async () => {
-        await signOut(); setDriveEmail(null); setLastBackup(null);
+        await gdriveSignOut(); setDriveEmail(null); setLastBackup(null);
       }},
     ]);
   };

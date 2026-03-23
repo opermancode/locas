@@ -4,11 +4,27 @@ import {
   Alert, Modal, TextInput, ActivityIndicator, Share,
   FlatList, Dimensions,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { Platform } from 'react-native';
+// WebView is not available on web — use iframe instead
+const WebView = Platform.OS === 'web'
+  ? ({ source, style, onMessage }) => {
+      const ref = React.useRef(null);
+      return React.createElement('iframe', {
+        ref,
+        src: source?.html ? `data:text/html,${encodeURIComponent(source.html)}` : source?.uri,
+        style: { border: 'none', width: '100%', height: style?.height || 900 },
+      });
+    }
+  : require('react-native-webview').WebView;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
+import { Platform as _Platform } from 'react-native';
+const Print = _Platform.OS === 'web'
+  ? { printToFileAsync: async () => ({ uri: '' }), printAsync: async () => {} }
+  : require('expo-print');
+const Sharing = _Platform.OS === 'web'
+  ? { shareAsync: async (url) => { window.open(url, '_blank'); } }
+  : require('expo-sharing');
 import { getInvoiceDetail, recordPayment, deleteInvoice, getProfile } from '../../db';
 import { formatINR, PAYMENT_METHODS, today } from '../../utils/gst';
 import { TEMPLATES, buildHTML } from '../../utils/templates/index';
