@@ -2,7 +2,7 @@
 "name": "locas-desktop",
 "version": "1.0.0",
 "description": "Locas — Smart Billing for India (Desktop)",
-"main": "electron/main.js",
+"main": "main.js",
 "private": true,
 
 "repository": {
