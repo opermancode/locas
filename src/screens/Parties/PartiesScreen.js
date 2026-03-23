@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getParties, saveParty, deleteParty } from '../../db/db';
+import { getParties, saveParty, deleteParty } from '../../db';
 import { INDIAN_STATES, formatINR } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 

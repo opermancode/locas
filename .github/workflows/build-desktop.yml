@@ -1,0 +1,74 @@
+name: Build Windows Desktop App
+
+on:
+  push:
+    tags:
+      - 'desktop/v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#desktop/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install app dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Install Expo CLI
+        run: npm install --global expo-cli
+
+      - name: Build Expo web bundle
+        run: npx expo export --platform web
+
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build Windows installer
+        working-directory: electron
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: electron/dist-electron/*.exe
+          tag_name: ${{ github.ref_name }}
+          name: "Locas Desktop v${{ steps.version.outputs.version }}"
+          body: |
+            ## Locas Desktop v${{ steps.version.outputs.version }}
+
+            ### Installation
+            1. Download `Locas-Setup-${{ steps.version.outputs.version }}.exe`
+            2. Run the installer
+            3. Launch Locas from Desktop shortcut
+            4. Login with your Locas credentials
+
+            ### Requirements
+            - Windows 10 or later
+            - Internet connection for first login only
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

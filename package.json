@@ -1,6 +1,6 @@
 {
   "name": "locas",
-  "version": "1.5.5",
+  "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
@@ -28,7 +28,10 @@
     "expo-web-browser": "~15.0.10",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-firebase/app": "^21.0.0",
-    "@react-native-firebase/auth": "^21.0.0"
+    "@react-native-firebase/auth": "^21.0.0",
+    "localforage": "^1.10.0",
+    "react-native-web": "~0.19.13",
+    "@expo/webpack-config": "^19.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -41,5 +44,8 @@
     "install": {
       "exclude": []
     }
+  },
+  "resolution": {
+    "locas/src/db/db": "./src/db/db.web.js"
   }
 }
