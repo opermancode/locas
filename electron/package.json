@@ -21,10 +21,10 @@
 "directories": {
 "output": "dist-electron"
 },
-"files": [
-"web-build/**/*",
-"electron/**/*",
-"assets/icon.png"
+"files": [ 
+    "main.js",
+    "../web-build/**/*",
+    "../assets/icon.png" 
 ],
 "win": {
 "target": "nsis",
