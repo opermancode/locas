@@ -19,15 +19,26 @@ function createWindow() {
     show: false,
   });
 
-  // Load the Expo web build — always from dist/ folder inside electron/
   const startUrl = path.join(__dirname, 'dist', 'index.html');
   mainWindow.loadFile(startUrl);
+
+  // Open DevTools to see errors — remove this after debugging
+  mainWindow.webContents.openDevTools();
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
 
-  // Open external links in system browser
+  // Log any page crashes
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('Renderer crashed:', details);
+  });
+
+  // Log console messages from the web page
+  mainWindow.webContents.on('console-message', (event, level, message) => {
+    console.log('PAGE LOG:', message);
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
