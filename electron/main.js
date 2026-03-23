@@ -20,7 +20,11 @@ function createWindow() {
   });
 
   // Load the Expo web build
-  mainWindow.loadFile(path.join(__dirname, '../web-build/index.html'));
+  const startUrl = app.isPackaged
+  ? path.join(process.resourcesPath, 'app.asar', 'web-build', 'index.html')
+  : path.join(__dirname, '../web-build/index.html');
+
+mainWindow.loadFile(startUrl);
 
   // Show window when ready to avoid white flash
   mainWindow.once('ready-to-show', () => {
