@@ -4,6 +4,11 @@
 "description": "Locas — Smart Billing for India (Desktop)",
 "main": "electron/main.js",
 "private": true,
+
+"repository": {
+"type": "git",
+"url": "https://github.com/opermancode/locas.git"
+},
 "scripts": {
 "electron": "electron .",
 "build:web": "cd .. && npx expo export",
