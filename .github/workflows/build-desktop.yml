@@ -36,9 +36,11 @@ jobs:
       - name: Install app dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Install Expo CLI
-        run: npm install --global expo-cli
+      # ✅ Install required web dependencies (VERY IMPORTANT)
+      - name: Install web dependencies
+        run: npx expo install react-dom react-native-web
 
+      # ✅ Build Expo web bundle (ONLY ONCE)
       - name: Build Expo web bundle
         run: npx expo export
 
@@ -46,6 +48,7 @@ jobs:
         working-directory: electron
         run: npm install
 
+      # ✅ Build Windows installer
       - name: Build Windows installer
         working-directory: electron
         run: npm run build:win

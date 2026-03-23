@@ -1,46 +1,46 @@
 {
-  "name": "locas-desktop",
-  "version": "1.0.0",
-  "description": "Locas — Smart Billing for India (Desktop)",
-  "main": "electron/main.js",
-  "private": true,
-  "scripts": {
-    "electron": "electron .",
-    "build:web": "expo export",
-    "build:win": "npm run build:web && electron-builder --win"
-  },
-  "build": {
-    "appId": "com.neurader.locas",
-    "productName": "Locas",
-    "copyright": "Copyright © 2026 Omkar Jagtap",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "web-build/**/*",
-      "electron/**/*",
-      "assets/icon.png"
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "assets/icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/icon.png",
-      "uninstallerIcon": "assets/icon.png",
-      "installerHeaderIcon": "assets/icon.png",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Locas"
-    }
-  },
-  "devDependencies": {
-    "electron": "^28.0.0",
-    "electron-builder": "^24.0.0"
-  },
-  "dependencies": {
-    "localforage": "^1.10.0"
-  }
+"name": "locas-desktop",
+"version": "1.0.0",
+"description": "Locas — Smart Billing for India (Desktop)",
+"main": "electron/main.js",
+"private": true,
+"scripts": {
+"electron": "electron .",
+"build:web": "cd .. && npx expo export",
+"build:win": "npm run build:web && electron-builder --win"
+},
+"build": {
+"appId": "com.neurader.locas",
+"productName": "Locas",
+"copyright": "Copyright © 2026 Omkar Jagtap",
+"directories": {
+"output": "dist-electron"
+},
+"files": [
+"web-build/**/*",
+"electron/**/*",
+"assets/icon.png"
+],
+"win": {
+"target": "nsis",
+"icon": "assets/icon.png"
+},
+"nsis": {
+"oneClick": false,
+"allowToChangeInstallationDirectory": true,
+"installerIcon": "assets/icon.png",
+"uninstallerIcon": "assets/icon.png",
+"installerHeaderIcon": "assets/icon.png",
+"createDesktopShortcut": true,
+"createStartMenuShortcut": true,
+"shortcutName": "Locas"
+}
+},
+"devDependencies": {
+"electron": "^28.0.0",
+"electron-builder": "^24.0.0"
+},
+"dependencies": {
+"localforage": "^1.10.0"
+}
 }
