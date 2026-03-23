@@ -7,7 +7,7 @@ let firebase;
 if (Platform.OS === 'web') {
   firebase = require('./firebase.web');
 } else {
-  firebase = require('./firebase.native');
+  firebase = require('./native');
 }
 
 export const signIn             = firebase.signIn;

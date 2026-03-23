@@ -4,7 +4,7 @@ import {
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
   Platform, Image, StatusBar,
 } from 'react-native';
-import { signIn } from '../../utils/firebase/index';
+import { signIn } from '../../utils/firebase/firebase.index';
 import { COLORS, RADIUS, FONTS, SHADOW } from '../../theme';
 
 const BRAND = '#FF6B00';
