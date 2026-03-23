@@ -36,22 +36,20 @@ jobs:
       - name: Install app dependencies
         run: npm install --legacy-peer-deps
 
-      # ✅ Install required web dependencies (VERY IMPORTANT)
       - name: Install web dependencies
-        run: npx expo install react-dom react-native-web
+        run: npm install react-dom react-native-web --legacy-peer-deps
 
-      # ✅ Build Expo web bundle (ONLY ONCE)
+      # Build Expo web bundle directly into electron/dist/
       - name: Build Expo web bundle
-        run: npx expo export
+        run: npx expo export --output-dir electron/dist --platform web
 
       - name: Install Electron dependencies
         working-directory: electron
         run: npm install
 
-      # ✅ Build Windows installer
       - name: Build Windows installer
         working-directory: electron
-        run: npm run build:win
+        run: npx electron-builder --win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
