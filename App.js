@@ -6,10 +6,9 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
-import { getDB } from './src/db';
-import { onAuthStateChanged } from './src/utils/firebase';
+import { getDB, exportAllData } from './src/db';
+import { onAuthStateChanged } from './src/utils/firebase/index';
 import LoginScreen from './src/screens/Auth/LoginScreen';
-import { exportAllData } from './src/db/db';
 import AppNavigator from './src/navigation/AppNavigator';
 
 const BRAND   = '#FF6B00';
