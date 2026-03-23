@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getParties, getItems,
   saveInvoice, getProfile, peekNextInvoiceNumber,
-} from '../../db/db';
+} from '../../db';
 import {
   calcLineItem, calcInvoiceTotals, detectSupplyType,
   GST_RATES, formatINR, today, addDays, PAYMENT_METHODS, round,

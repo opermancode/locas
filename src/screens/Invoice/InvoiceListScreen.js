@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getInvoices } from '../../db/db';
+import { getInvoices } from '../../db';
 import { formatINR, formatINRCompact, today } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 

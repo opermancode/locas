@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { getInvoiceDetail, recordPayment, deleteInvoice, getProfile } from '../../db/db';
+import { getInvoiceDetail, recordPayment, deleteInvoice, getProfile } from '../../db';
 import { formatINR, PAYMENT_METHODS, today } from '../../utils/gst';
 import { TEMPLATES, buildHTML } from '../../utils/templates/index';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';

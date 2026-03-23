@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getProfile, saveProfile, exportAllData, importAllData } from '../../db/db';
+import { getProfile, saveProfile, exportAllData, importAllData } from '../../db';
 import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase';
 import {
   useGoogleAuth, saveToken, getToken, getUserEmail, fetchUserEmail,
