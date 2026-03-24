@@ -12,6 +12,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false, // required for local file:// asset loading
     },
     icon: path.join(__dirname, '../assets/icon.png'),
     title: 'Locas — Smart Billing',
@@ -22,21 +23,11 @@ function createWindow() {
   const startUrl = path.join(__dirname, 'dist', 'index.html');
   mainWindow.loadFile(startUrl);
 
-  // Open DevTools to see errors — remove this after debugging
-  mainWindow.webContents.openDevTools();
+  // Uncomment for debugging:
+  // mainWindow.webContents.openDevTools();
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-  });
-
-  // Log any page crashes
-  mainWindow.webContents.on('render-process-gone', (event, details) => {
-    console.error('Renderer crashed:', details);
-  });
-
-  // Log console messages from the web page
-  mainWindow.webContents.on('console-message', (event, level, message) => {
-    console.log('PAGE LOG:', message);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
