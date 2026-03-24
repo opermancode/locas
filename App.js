@@ -7,7 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { getDB, exportAllData } from './src/db';
-import { onAuthStateChanged } from './src/utils/firebase/firebase.index';
+import { onAuthStateChanged } from './src/utils/firebase';
 import LoginScreen from './src/screens/Auth/LoginScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 
