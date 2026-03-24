@@ -20,7 +20,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Platform as _Platform } from 'react-native';
 const Print = _Platform.OS === 'web'
-  ? { printToFileAsync: async () => ({ uri: '' }), printAsync: async () => {} }
+  ? { 
+      printToFileAsync: async ({ html }) => {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        iframe.contentDocument.write(html);
+        iframe.contentDocument.close();
+        
+        // Wait for styles/images to load before capturing
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // For Web, we return a data URI of the HTML content 
+        // which the Sharing logic below will convert to a real PDF
+        const uri = `data:text/html;base64,${btoa(unescape(encodeURIComponent(html)))}`;
+        return { uri };
+      }
+    }
   : require('expo-print');
 const Sharing = _Platform.OS === 'web'
   ? { 
