@@ -25,13 +25,33 @@ const Print = _Platform.OS === 'web'
 const Sharing = _Platform.OS === 'web'
   ? { 
       shareAsync: async (url, options) => { 
-        const link = document.createElement('a');
-        link.href = url;
-        // This ensures the browser downloads it as a PDF file
-        link.download = options?.dialogTitle ? `${options.dialogTitle}.pdf` : 'invoice.pdf';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+          // 1. Fetch the blob data from the URI
+          const response = await fetch(url);
+          const blob = await response.blob();
+          
+          // 2. Create a fresh Object URL specifically for the download
+          const blobUrl = window.URL.createObjectURL(blob);
+          
+          // 3. Create the hidden download link
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          
+          // Use the invoice number for the filename
+          const fileName = options?.dialogTitle ? `${options.dialogTitle}.pdf` : 'invoice.pdf';
+          link.setAttribute('download', fileName);
+          
+          // 4. Append, Click, and Cleanup
+          document.body.appendChild(link);
+          link.click();
+          
+          // Clean up the DOM and the Revoke the URL to free memory
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        } catch (err) {
+          console.error("Download failed:", err);
+          alert("Failed to save the PDF. Please try again.");
+        }
       } 
     }
   : require('expo-sharing');
