@@ -39,9 +39,31 @@ jobs:
       - name: Install web dependencies
         run: npm install react-dom react-native-web --legacy-peer-deps
 
-      # Build Expo web bundle directly into electron/dist/
+      # Build Expo web bundle into electron/dist/
       - name: Build Expo web bundle
         run: npx expo export --output-dir electron/dist --platform web
+
+      # Fix absolute paths in index.html to be relative (required for file:// protocol)
+      - name: Fix asset paths for Electron
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const indexPath = path.join('electron', 'dist', 'index.html');
+          let html = fs.readFileSync(indexPath, 'utf8');
+          
+          // Replace absolute paths starting with / to relative ./
+          html = html.replace(/src="\//g, 'src="./');
+          html = html.replace(/href="\//g, 'href="./');
+          html = html.replace(/src='\//g, "src='./");
+          html = html.replace(/href='\//g, "href='./");
+          
+          // Also fix any url() in inline styles
+          html = html.replace(/url\(\//g, 'url(./');
+          
+          fs.writeFileSync(indexPath, html);
+          console.log('Fixed asset paths in index.html');
+          console.log('Preview:', html.substring(0, 500));
 
       - name: Install Electron dependencies
         working-directory: electron
