@@ -23,7 +23,17 @@ const Print = _Platform.OS === 'web'
   ? { printToFileAsync: async () => ({ uri: '' }), printAsync: async () => {} }
   : require('expo-print');
 const Sharing = _Platform.OS === 'web'
-  ? { shareAsync: async (url) => { window.open(url, '_blank'); } }
+  ? { 
+      shareAsync: async (url, options) => { 
+        const link = document.createElement('a');
+        link.href = url;
+        // This ensures the browser downloads it as a PDF file
+        link.download = options?.dialogTitle ? `${options.dialogTitle}.pdf` : 'invoice.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } 
+    }
   : require('expo-sharing');
 import { getInvoiceDetail, recordPayment, deleteInvoice, getProfile } from '../../db';
 import { formatINR, PAYMENT_METHODS, today } from '../../utils/gst';
@@ -134,14 +144,23 @@ export default function InvoiceDetail({ navigation, route }) {
   };
 
   const doPDF = async () => {
-    setPrinting(true);
-    try {
-      const html = buildHTML(selectedTpl, invoice, profile, accentColor);
-      const { uri } = await Print.printToFileAsync({ html, base64: false });
-      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Invoice ${invoice.invoice_number}`, UTI: 'com.adobe.pdf' });
-    } catch (e) { Alert.alert('Error', e.message); }
-    finally { setPrinting(false); }
-  };
+  setPrinting(true);
+  try {
+    const html = buildHTML(selectedTpl, invoice, profile, accentColor);
+    const { uri } = await Print.printToFileAsync({ html, base64: false });
+    
+    // On Phone: This opens the Share Sheet (WhatsApp, Save to Files, etc.)
+    // On Web/Desktop: This will now trigger a direct file download
+    await Sharing.shareAsync(uri, { 
+      mimeType: 'application/pdf', 
+      dialogTitle: `Invoice_${invoice.invoice_number}`, 
+      UTI: 'com.adobe.pdf' 
+    });
+  } catch (e) { 
+    Alert.alert('Error', e.message); 
+  }
+  finally { setPrinting(false); }
+};
 
   const doPrint = async () => {
     setPrinting(true);
@@ -336,7 +355,11 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           <View style={[styles.activeTemplateBar, { borderLeftColor: accentColor }]}>
             <View style={[styles.activeTemplateDot, { backgroundColor: accentColor }]} />
             <Text style={styles.activeTemplateText}>{activeTpl.name} · {activeTpl.subtitle}</Text>
-            <TouchableOpacity onPress={doPDF} disabled={printing} style={[styles.exportNowBtn, { backgroundColor: accentColor }]}>
+            <TouchableOpacity 
+              onPress={doPDF} // Make sure this calls doPDF
+              disabled={printing} 
+              style={[styles.exportNowBtn, { backgroundColor: accentColor }]}
+            >
               {printing
                 ? <ActivityIndicator size="small" color="#fff" />
                 : <Text style={styles.exportNowText}>Export PDF</Text>
