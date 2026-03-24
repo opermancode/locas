@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Modal, FlatList, Alert, ActivityIndicator,
@@ -56,6 +57,16 @@ export default function CreateInvoice({ navigation, route }) {
 
   // ── Load ──────────────────────────────────────────────────────
   useEffect(() => { init(); }, []);
+
+  // Reload parties and items every time screen comes into focus
+  // so new entries added elsewhere appear immediately
+  useFocusEffect(useCallback(() => {
+    (async () => {
+      const [p, itms] = await Promise.all([getParties(), getItems()]);
+      setParties(p);
+      setItems(itms);
+    })();
+  }, []));
 
   const init = async () => {
     const [num, p, itms, prof] = await Promise.all([

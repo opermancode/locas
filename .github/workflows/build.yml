@@ -2,7 +2,7 @@ name: EAS APK Build
 
 on:
   push:
-    tags:
+    branches:
       - 'apk/v*'
 
 permissions:
@@ -25,11 +25,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: Extract version from tag
+      - name: Extract version from branch
         id: version
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#apk/v}"
+          BRANCH="${{ github.ref_name }}"
+          VERSION="${BRANCH#apk/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # Step 1 — bump versions BEFORE building
