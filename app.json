@@ -3,7 +3,7 @@
     "name": "Locas",
     "slug": "locas",
     "scheme": "locas",
-    "version": "1.7.17",
+    "version": "1.5.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,8 @@
       "package": "com.neurader.locas",
       "versionCode": 10,
       "adaptiveIcon": {
-        "backgroundColor": "#FF6B00"
+        "backgroundColor": "#FF6B00",
+        "foregroundImage": "./assets/icon.png"
       },
       "googleServicesFile": "./google-services.json",
       "newArchEnabled": false
@@ -26,7 +27,8 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#FF6B00",
-          "resizeMode": "contain"
+          "resizeMode": "contain",
+          "image": "./assets/icon.png"
         }
       ],
       "expo-sqlite",

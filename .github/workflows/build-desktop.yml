@@ -32,26 +32,35 @@ jobs:
           TAG="${{ github.ref_name }}"
           VERSION="${TAG#desktop/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
 
-      - name: Bump app.json, package.json and version.json
+      - name: Bump versions and fix dependencies
         shell: node {0}
         run: |
           const fs = require('fs');
           const v = '${{ steps.version.outputs.version }}';
 
+          // Bump app.json version
           const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
           app.expo.version = v;
           fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
 
+          // Bump package.json version + fix bad dependency versions
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           pkg.version = v;
+          // These are corrected here so desktop npm install never hits ETARGET
+          pkg.dependencies['expo-splash-screen'] = '~0.29.21';
+          pkg.dependencies['react']              = '18.3.1';
+          pkg.dependencies['react-dom']          = '18.3.1';
+          pkg.dependencies['react-native']       = '0.76.9';
+          if (!pkg.devDependencies) pkg.devDependencies = {};
+          pkg.devDependencies['@types/react']    = '~18.3.0';
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
 
-          // Update version.json so the in-app update check reflects the latest
-          // desktop release (not a stale APK version).
+          // Update version.json for in-app update check
           const versionJson = {
             version: v,
-            downloadPage: `https://github.com/${{ github.repository }}/releases/tag/desktop/v${v}`,
+            downloadPage: `https://github.com/${{ github.repository }}/releases/tag/desktop%2Fv${v}`,
             releaseNotes: `Locas Desktop v${v}`,
           };
           fs.writeFileSync('version.json', JSON.stringify(versionJson, null, 2));
@@ -69,34 +78,23 @@ jobs:
       - name: Install app dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Install web dependencies
-        run: npm install react-dom react-native-web --legacy-peer-deps
-
-      # Build Expo web bundle into electron/dist/
       - name: Build Expo web bundle
         run: npx expo export --output-dir electron/dist --platform web
 
-      # Fix absolute paths in index.html to be relative (required for file:// protocol)
-      - name: Fix asset paths for Electron
+      - name: Fix asset paths for Electron (file:// protocol)
         shell: node {0}
         run: |
           const fs = require('fs');
           const path = require('path');
           const indexPath = path.join('electron', 'dist', 'index.html');
           let html = fs.readFileSync(indexPath, 'utf8');
-          
-          // Replace absolute paths starting with / to relative ./
           html = html.replace(/src="\//g, 'src="./');
           html = html.replace(/href="\//g, 'href="./');
           html = html.replace(/src='\//g, "src='./");
           html = html.replace(/href='\//g, "href='./");
-          
-          // Also fix any url() in inline styles
           html = html.replace(/url\(\//g, 'url(./');
-          
           fs.writeFileSync(indexPath, html);
           console.log('Fixed asset paths in index.html');
-          console.log('Preview:', html.substring(0, 500));
 
       - name: Install Electron dependencies
         working-directory: electron
