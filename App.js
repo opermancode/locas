@@ -56,9 +56,11 @@ export default function App() {
       Animated.timing(tagOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     }, 900);
 
-    // Step 5 — init DB in background
-    // Listen to Firebase auth state
-    const unsubscribe = onAuthStateChanged(u => setUser(u));
+    // Step 5 — init DB, then subscribe to auth state.
+    // Auth listener is registered AFTER DB is ready so we never render the
+    // main app before the database is initialised (avoids a split-second
+    // blank screen when Firebase has a cached session and resolves fast).
+    let unsubscribe = () => {};
 
     getDB()
       .then(async () => {
@@ -76,6 +78,9 @@ export default function App() {
         } catch (_) {
           // silent — never block launch for backup failure
         }
+        // Subscribe to Firebase auth only after DB is confirmed ready
+        unsubscribe = onAuthStateChanged(u => setUser(u));
+
         // Wait minimum 2s for splash, then fade out
         setTimeout(() => {
           Animated.timing(fadeOut, {
