@@ -58,36 +58,33 @@ jobs:
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             pkg.version = v;
             
-            // Fix: expo-splash-screen version correction
+            // Fix: Correct non-existent expo-splash-screen version
             if (pkg.dependencies['expo-splash-screen']) {
               pkg.dependencies['expo-splash-screen'] = '~0.29.21';
             }
 
-            // Fix: Pin React 18 for SDK 54 stability
+            // Fix: Force React 18.3.1 for SDK 54 stability
             pkg.dependencies['react'] = '18.3.1';
             pkg.dependencies['react-dom'] = '18.3.1';
-            
             if (!pkg.devDependencies) pkg.devDependencies = {};
             pkg.devDependencies['@types/react'] = '~18.3.0';
 
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
 
-            // 3. Fix eas.json warning
+            // 3. Fix eas.json (Move appVersionSource to the correct TOP-LEVEL 'cli' block)
             if (fs.existsSync('eas.json')) {
               const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
-              if (!eas.build) eas.build = {};
-              if (!eas.build.preview) eas.build.preview = {};
-              eas.build.preview.appVersionSource = 'remote';
+              if (!eas.cli) eas.cli = {};
+              eas.cli.appVersionSource = 'remote';
               fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2));
             }
           "
 
-      # Step 2: Install dependencies with global peer-dependency bypass
+      # Step 2: Install dependencies
       - name: Install dependencies
         env:
           NPM_CONFIG_LEGACY_PEER_DEPS: true
-        run: |
-          npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Verify Expo package alignment
         env:
@@ -119,7 +116,7 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      # Step 4: Update and Commit
+      # Step 4: Update version.json and commit
       - name: Update version.json and commit
         run: |
           node -e "
