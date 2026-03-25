@@ -25,7 +25,6 @@ jobs:
         with:
           node-version: 20
 
-      # NEW: Cache node_modules to speed up builds (skips download if package-lock hasn't changed)
       - name: Cache node modules
         uses: actions/cache@v4
         id: npm-cache
@@ -42,7 +41,7 @@ jobs:
           VERSION="${BRANCH#apk/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # Step 1 — bump versions BEFORE building
+      # Step 1 — bump versions
       - name: Bump versions in app.json and package.json
         run: |
           node -e "
@@ -56,18 +55,23 @@ jobs:
 
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             pkg.version = v;
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+            
+            // MANUAL FIX FOR NON-EXISTENT VERSION
+            if (pkg.dependencies['expo-splash-screen']) {
+              console.log('Manually fixing expo-splash-screen version...');
+              pkg.dependencies['expo-splash-screen'] = '~0.29.21'; 
+            }
 
-            console.log('Bumped to version:', v, '| versionCode:', app.expo.android.versionCode);
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+            console.log('Bumped to version:', v);
           "
 
-      # Step 2 — Fix and Install (Critical: Fix runs BEFORE install)
-      - name: Fix Expo package versions
-        run: CI=1 npx expo install --fix
-
+      # Step 2 — Install with corrected package.json
       - name: Install dependencies
-        if: steps.npm-cache.outputs.cache-hit != 'true'
         run: npm install --legacy-peer-deps
+
+      - name: Verify and Deduplicate Expo packages
+        run: CI=1 npx expo install --fix
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
@@ -91,10 +95,8 @@ jobs:
             exit 1
           fi
 
-          # Extract APK URL from the log output
           APK_URL=$(grep -o 'https://expo\.dev/artifacts[^ ]*\.apk' /tmp/eas_output.txt | tail -1 || echo "")
           echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
-          echo "APK URL: $APK_URL"
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
