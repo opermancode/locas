@@ -57,10 +57,12 @@ export default function CreateInvoice({ navigation, route }) {
 
   // ── Load ──────────────────────────────────────────────────────
   useEffect(() => { init(); }, []);
+  const isMounted = React.useRef(false);
 
   // Reload parties and items every time screen comes into focus
   // so new entries added elsewhere appear immediately
   useFocusEffect(useCallback(() => {
+    if (!isMounted.current) { isMounted.current = true; return; } // skip first mount — init() handles it
     (async () => {
       const [p, itms] = await Promise.all([getParties(), getItems()]);
       setParties(p);
@@ -75,10 +77,55 @@ export default function CreateInvoice({ navigation, route }) {
       getItems(),
       getProfile(),
     ]);
-    setInvoiceNo(num);
     setParties(p);
     setItems(itms);
     setProfile(prof);
+
+    if (editInvoice) {
+      // ── Edit mode: pre-populate all fields from existing invoice ──
+      setInvoiceNo(editInvoice.invoice_number);
+      setInvoiceDate(editInvoice.date);
+      setDueDate(editInvoice.due_date || addDays(editInvoice.date, 30));
+      setNotes(editInvoice.notes || '');
+      setTerms(editInvoice.terms || 'Payment due within 30 days.');
+      setInvoiceDiscount(String(editInvoice.discount || 0));
+      setSupplyType(editInvoice.supply_type || 'intra');
+
+      // Restore party from parties list (to get full object), fallback to invoice snapshot
+      const matchedParty = editInvoice.party_id
+        ? p.find(pt => pt.id === editInvoice.party_id) || null
+        : null;
+      setParty(matchedParty || (editInvoice.party_name ? {
+        id: editInvoice.party_id,
+        name: editInvoice.party_name,
+        gstin: editInvoice.party_gstin,
+        state: editInvoice.party_state,
+        state_code: editInvoice.party_state_code,
+        address: editInvoice.party_address,
+      } : null));
+
+      // Restore line items from invoice detail (items were loaded in InvoiceDetail)
+      if (editInvoice.items && editInvoice.items.length > 0) {
+        setLineItems(editInvoice.items.map(it => ({
+          item_id:  it.item_id || null,
+          name:     it.name,
+          hsn:      it.hsn || '',
+          unit:     it.unit || 'pcs',
+          qty:      it.qty,
+          rate:     it.rate,
+          discount: it.discount || 0,
+          gst_rate: it.gst_rate || 18,
+          taxable:  it.taxable,
+          cgst:     it.cgst || 0,
+          sgst:     it.sgst || 0,
+          igst:     it.igst || 0,
+          total:    it.total,
+          total_tax: (it.cgst || 0) + (it.sgst || 0) + (it.igst || 0),
+        })));
+      }
+    } else {
+      setInvoiceNo(num);
+    }
   };
 
   // ── Recalc totals ─────────────────────────────────────────────
@@ -185,6 +232,7 @@ export default function CreateInvoice({ navigation, route }) {
     setSaving(true);
     try {
       const invoice = {
+        ...(editInvoice ? { id: editInvoice.id } : {}),  // pass id for UPDATE
         type:             'sale',
         party_id:         party?.id || null,
         party_name:       party?.name || '',
@@ -202,8 +250,8 @@ export default function CreateInvoice({ navigation, route }) {
         igst:             totals.igst || 0,
         total_tax:        totals.total_tax || 0,
         total:            totals.total || 0,
-        paid:             0,
-        status:           'unpaid',
+        paid:             editInvoice?.paid || 0,
+        status:           editInvoice?.status || 'unpaid',
         supply_type:      supplyType,
         notes,
         terms,
@@ -258,7 +306,7 @@ export default function CreateInvoice({ navigation, route }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>New Invoice</Text>
+          <Text style={styles.headerTitle}>{editInvoice ? 'Edit Invoice' : 'New Invoice'}</Text>
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.5 }]}
             onPress={handleSave}
