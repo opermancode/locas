@@ -25,6 +25,16 @@ jobs:
         with:
           node-version: 20
 
+      # NEW: Cache node_modules to speed up builds (skips download if package-lock hasn't changed)
+      - name: Cache node modules
+        uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - name: Extract version from branch
         id: version
         run: |
@@ -51,12 +61,13 @@ jobs:
             console.log('Bumped to version:', v, '| versionCode:', app.expo.android.versionCode);
           "
 
-      # Step 2 — install dependencies
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+      # Step 2 — Fix and Install (Critical: Fix runs BEFORE install)
+      - name: Fix Expo package versions
+        run: CI=1 npx expo install --fix
 
-      - name: Fix and deduplicate Expo packages
-        run: npx expo install --fix --non-interactive
+      - name: Install dependencies
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        run: npm install --legacy-peer-deps
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
