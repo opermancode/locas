@@ -33,6 +33,39 @@ jobs:
           VERSION="${TAG#desktop/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Bump app.json, package.json and version.json
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const v = '${{ steps.version.outputs.version }}';
+
+          const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+          app.expo.version = v;
+          fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.version = v;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+
+          // Update version.json so the in-app update check reflects the latest
+          // desktop release (not a stale APK version).
+          const versionJson = {
+            version: v,
+            downloadPage: `https://github.com/${{ github.repository }}/releases/tag/desktop/v${v}`,
+            releaseNotes: `Locas Desktop v${v}`,
+          };
+          fs.writeFileSync('version.json', JSON.stringify(versionJson, null, 2));
+          console.log('Bumped to version:', v);
+
+      - name: Commit version bumps
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app.json package.json version.json
+          git diff --staged --quiet || git commit -m "chore: bump desktop to v${{ steps.version.outputs.version }}"
+          git push origin HEAD:main || true
+
       - name: Install app dependencies
         run: npm install --legacy-peer-deps
 
