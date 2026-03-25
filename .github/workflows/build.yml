@@ -25,6 +25,7 @@ jobs:
         with:
           node-version: 20
 
+      # Step 1: Cache node_modules to speed up subsequent builds
       - name: Cache node modules
         uses: actions/cache@v4
         id: npm-cache
@@ -41,42 +42,61 @@ jobs:
           VERSION="${BRANCH#apk/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # Step 1 — bump versions
-      - name: Bump versions in app.json and package.json
+      # Step 2: Critical Patching of package.json and eas.json
+      # This fixes the non-existent splash-screen and React 19 incompatibilities
+      - name: Patch environment and bump versions
         run: |
           node -e "
             const fs = require('fs');
             const v = '${{ steps.version.outputs.version }}';
 
+            // 1. Update app.json
             const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
             app.expo.version = v;
             app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1;
             fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
 
+            // 2. Update package.json
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             pkg.version = v;
             
-            // MANUAL FIX FOR NON-EXISTENT VERSION
+            // Fix: expo-splash-screen ~4.0.12 does not exist. Use SDK 54 compatible version.
             if (pkg.dependencies['expo-splash-screen']) {
-              console.log('Manually fixing expo-splash-screen version...');
-              pkg.dependencies['expo-splash-screen'] = '~0.29.21'; 
+              pkg.dependencies['expo-splash-screen'] = '~0.29.21';
+            }
+
+            // Fix: Expo SDK 54 / RN 0.81 requires React 18.3.1. React 19 crashes the bundler.
+            pkg.dependencies['react'] = '18.3.1';
+            pkg.dependencies['react-dom'] = '18.3.1';
+            if (pkg.devDependencies && pkg.devDependencies['@types/react']) {
+              pkg.devDependencies['@types/react'] = '~18.3.0';
             }
 
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-            console.log('Bumped to version:', v);
+
+            // 3. Fix eas.json warning (cli.appVersionSource)
+            if (fs.existsSync('eas.json')) {
+              const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+              if (!eas.build) eas.build = {};
+              if (!eas.build.preview) eas.build.preview = {};
+              eas.build.preview.appVersionSource = 'remote';
+              fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2));
+            }
+
+            console.log('Environment patched: React 18.3.1, Splash-Screen 0.29.21, Version ' + v);
           "
 
-      # Step 2 — Install with corrected package.json
+      # Step 3: Install dependencies
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Verify and Deduplicate Expo packages
+      - name: Verify Expo package alignment
         run: CI=1 npx expo install --fix
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      # Step 3 — build APK on EAS
+      # Step 4: Build APK on EAS
       - name: Build preview APK
         id: build
         run: |
@@ -85,6 +105,7 @@ jobs:
             --profile preview \
             --non-interactive \
             --wait \
+            --clear-cache \
             2>&1 | tee /tmp/eas_output.txt
           
           BUILD_EXIT=${PIPESTATUS[0]}
@@ -95,12 +116,14 @@ jobs:
             exit 1
           fi
 
+          # Extract APK URL from the log output
           APK_URL=$(grep -o 'https://expo\.dev/artifacts[^ ]*\.apk' /tmp/eas_output.txt | tail -1 || echo "")
           echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
+          echo "APK URL: $APK_URL"
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      # Step 4 — update version.json and commit
+      # Step 5: Update version.json and commit changes
       - name: Update version.json and commit
         run: |
           node -e "
@@ -114,6 +137,6 @@ jobs:
           "
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add app.json package.json version.json
-          git diff --staged --quiet || git commit -m "chore: bump to v${{ steps.version.outputs.version }}"
+          git add app.json package.json version.json eas.json
+          git diff --staged --quiet || git commit -m "chore: build v${{ steps.version.outputs.version }}"
           git push origin HEAD:main
