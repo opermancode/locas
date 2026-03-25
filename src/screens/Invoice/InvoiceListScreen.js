@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, RefreshControl, StatusBar,
+  TextInput, RefreshControl, StatusBar, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -11,11 +11,11 @@ import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 
 const STATUS_FILTERS = ['All', 'Unpaid', 'Partial', 'Paid', 'Overdue'];
 
-const STATUS_STYLE = {
-  paid:    { bg: '#D1FAE5', text: '#065F46' },
-  partial: { bg: '#FEF3C7', text: '#92400E' },
-  unpaid:  { bg: '#FEE2E2', text: '#991B1B' },
-  overdue: { bg: '#FECACA', text: '#7F1D1D' },
+const STATUS_CONFIG = {
+  paid:    { bg: COLORS.successLight, text: COLORS.success,  label: 'PAID'    },
+  partial: { bg: COLORS.warningLight, text: COLORS.warning,  label: 'PARTIAL' },
+  unpaid:  { bg: COLORS.dangerLight,  text: COLORS.danger,   label: 'UNPAID'  },
+  overdue: { bg: '#FECACA',           text: '#7F1D1D',       label: 'OVERDUE' },
 };
 
 function resolveStatus(inv) {
@@ -26,13 +26,12 @@ function resolveStatus(inv) {
 
 export default function InvoiceListScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-
-  const [invoices, setInvoices]       = useState([]);
-  const [filtered, setFiltered]       = useState([]);
-  const [search, setSearch]           = useState('');
+  const [invoices, setInvoices]         = useState([]);
+  const [filtered, setFiltered]         = useState([]);
+  const [search, setSearch]             = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [refreshing, setRefreshing]   = useState(false);
-  const [stats, setStats]             = useState({ total: 0, unpaid: 0, count: 0 });
+  const [refreshing, setRefreshing]     = useState(false);
+  const [stats, setStats]               = useState({ total: 0, unpaid: 0, count: 0 });
 
   const load = async () => {
     try {
@@ -40,11 +39,8 @@ export default function InvoiceListScreen({ navigation }) {
       setInvoices(data);
       calcStats(data);
       apply(data, search, statusFilter);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setRefreshing(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setRefreshing(false); }
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
@@ -71,116 +67,123 @@ export default function InvoiceListScreen({ navigation }) {
     setFiltered(out);
   };
 
-  const handleSearch = (q) => {
-    setSearch(q);
-    apply(invoices, q, statusFilter);
-  };
+  const handleSearch = (q) => { setSearch(q); apply(invoices, q, statusFilter); };
+  const handleFilter = (f) => { setStatusFilter(f); apply(invoices, search, f); };
+  const onRefresh    = () => { setRefreshing(true); load(); };
 
-  const handleFilter = (f) => {
-    setStatusFilter(f);
-    apply(invoices, search, f);
-  };
-
-  const onRefresh = () => { setRefreshing(true); load(); };
-
-  // ── Render item ───────────────────────────────────────────────
-  const renderInvoice = ({ item }) => {
-    const status = resolveStatus(item);
-    const ss = STATUS_STYLE[status] || STATUS_STYLE.unpaid;
+  const renderInvoice = ({ item, index }) => {
+    const status  = resolveStatus(item);
+    const sc      = STATUS_CONFIG[status] || STATUS_CONFIG.unpaid;
     const balance = (item.total || 0) - (item.paid || 0);
+    const isOverdue = status === 'overdue';
 
     return (
       <TouchableOpacity
-        style={styles.invoiceCard}
+        style={[styles.card, isOverdue && styles.cardOverdue]}
         onPress={() => navigation.navigate('InvoiceDetail', { invoiceId: item.id })}
-        activeOpacity={0.85}
+        activeOpacity={0.82}
       >
-        <View style={styles.cardTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.invoiceNum}>{item.invoice_number}</Text>
-            <Text style={styles.partyName} numberOfLines={1}>
-              {item.party_name || 'Walk-in Customer'}
-            </Text>
-            <Text style={styles.invoiceDate}>{item.date}</Text>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.invoiceTotal}>{formatINR(item.total)}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: ss.bg }]}>
-              <Text style={[styles.statusText, { color: ss.text }]}>
-                {status.toUpperCase()}
+        {/* Left accent bar */}
+        <View style={[styles.cardAccent, { backgroundColor: sc.text }]} />
+
+        <View style={styles.cardBody}>
+          <View style={styles.cardTop}>
+            <View style={styles.cardTopLeft}>
+              <Text style={styles.invoiceNum}>{item.invoice_number}</Text>
+              <Text style={styles.partyName} numberOfLines={1}>
+                {item.party_name || 'Walk-in Customer'}
               </Text>
             </View>
+            <View style={styles.cardTopRight}>
+              <Text style={styles.invoiceTotal}>{formatINR(item.total)}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
+                <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.cardMeta}>
+            <Text style={styles.metaDate}>📅 {item.date}</Text>
+            {item.due_date && status !== 'paid' && (
+              <Text style={[styles.metaDue, isOverdue && styles.metaDueOverdue]}>
+                Due: {item.due_date}
+              </Text>
+            )}
+            {balance > 0.01 && status !== 'paid' && (
+              <Text style={[styles.metaBalance, { color: sc.text }]}>
+                Balance: {formatINR(balance)}
+              </Text>
+            )}
           </View>
         </View>
-
-        {balance > 0.01 && status !== 'paid' && (
-          <View style={styles.cardBottom}>
-            <Text style={styles.balanceLabel}>Balance Due</Text>
-            <Text style={styles.balanceValue}>{formatINR(balance)}</Text>
-          </View>
-        )}
       </TouchableOpacity>
     );
   };
 
-  // ─────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.card} />
 
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Invoices</Text>
+        <View>
+          <Text style={styles.headerTitle}>Invoices</Text>
+          <Text style={styles.headerSub}>{stats.count} total</Text>
+        </View>
         <TouchableOpacity
           style={styles.newBtn}
           onPress={() => navigation.navigate('CreateInvoice')}
+          activeOpacity={0.85}
         >
-          <Text style={styles.newBtnText}>+ New</Text>
+          <Text style={styles.newBtnText}>+ New Invoice</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Stats strip */}
-      <View style={styles.statsStrip}>
-        <StatChip label="Total Sales"  value={formatINRCompact(stats.total)}  color={COLORS.primary} />
-        <View style={styles.statsDivider} />
-        <StatChip label="Outstanding"  value={formatINRCompact(stats.unpaid)} color={COLORS.danger} />
-        <View style={styles.statsDivider} />
-        <StatChip label="Invoices"     value={String(stats.count)}            color={COLORS.secondary} />
+      {/* ── Stats strip ─────────────────────────────────── */}
+      <View style={styles.statsRow}>
+        <StatCard label="Total Sales"  value={formatINRCompact(stats.total)}  color={COLORS.primary} icon="📈" />
+        <StatCard label="Outstanding"  value={formatINRCompact(stats.unpaid)} color={COLORS.danger}  icon="⏳" />
+        <StatCard label="Invoices"     value={String(stats.count)}            color={COLORS.info}    icon="🧾" />
       </View>
 
-      {/* Search */}
-      <View style={styles.searchBox}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search invoice # or party..."
-          placeholderTextColor={COLORS.textMute}
-          value={search}
-          onChangeText={handleSearch}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => handleSearch('')}>
-            <Text style={styles.clearSearch}>✕</Text>
-          </TouchableOpacity>
-        )}
+      {/* ── Search ──────────────────────────────────────── */}
+      <View style={styles.searchWrap}>
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search invoice or party..."
+            placeholderTextColor={COLORS.textMute}
+            value={search}
+            onChangeText={handleSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => handleSearch('')} style={styles.clearBtn}>
+              <Text style={styles.clearText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
-      {/* Status filter chips */}
-      <View style={styles.filterRow}>
+      {/* ── Status filter tabs ──────────────────────────── */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
         {STATUS_FILTERS.map(f => (
           <TouchableOpacity
             key={f}
             style={[styles.filterChip, statusFilter === f && styles.filterChipActive]}
             onPress={() => handleFilter(f)}
+            activeOpacity={0.8}
           >
-            <Text style={[styles.filterText, statusFilter === f && styles.filterTextActive]}>
-              {f}
-            </Text>
+            <Text style={[styles.filterText, statusFilter === f && styles.filterTextActive]}>{f}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
-      {/* List */}
+      {/* ── List ────────────────────────────────────────── */}
       <FlatList
         data={filtered}
         keyExtractor={i => String(i.id)}
@@ -191,21 +194,23 @@ export default function InvoiceListScreen({ navigation }) {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>🧾</Text>
+            <View style={styles.emptyIconWrap}>
+              <Text style={styles.emptyIcon}>🧾</Text>
+            </View>
             <Text style={styles.emptyTitle}>
-              {search || statusFilter !== 'All' ? 'No invoices found' : 'No invoices yet'}
+              {search || statusFilter !== 'All' ? 'No results found' : 'No invoices yet'}
             </Text>
             <Text style={styles.emptySub}>
               {search || statusFilter !== 'All'
                 ? 'Try a different search or filter'
-                : 'Tap + New to create your first invoice'}
+                : 'Tap + New Invoice to create your first invoice'}
             </Text>
             {!search && statusFilter === 'All' && (
               <TouchableOpacity
                 style={styles.emptyBtn}
                 onPress={() => navigation.navigate('CreateInvoice')}
               >
-                <Text style={styles.emptyBtnText}>Create Invoice</Text>
+                <Text style={styles.emptyBtnText}>+ Create Invoice</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -215,100 +220,100 @@ export default function InvoiceListScreen({ navigation }) {
   );
 }
 
-// ─── Sub components ───────────────────────────────────────────────
-
-function StatChip({ label, value, color }) {
+function StatCard({ label, value, color, icon }) {
   return (
-    <View style={styles.statChip}>
+    <View style={styles.statCard}>
+      <Text style={styles.statIcon}>{icon}</Text>
       <Text style={[styles.statValue, { color }]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1, backgroundColor: COLORS.bg },
 
+  // Header
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 14,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
     backgroundColor: COLORS.card,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  headerTitle: { fontSize: 20, fontWeight: FONTS.heavy, color: COLORS.text },
-  newBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: RADIUS.md },
-  newBtnText:  { color: COLORS.white, fontWeight: FONTS.bold, fontSize: 14 },
+  headerTitle: { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text },
+  headerSub:   { fontSize: 12, color: COLORS.textMute, marginTop: 1 },
+  newBtn: {
+    backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: RADIUS.lg, ...SHADOW.brand,
+  },
+  newBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
 
-  // Stats strip
-  statsStrip: {
+  // Stats
+  statsRow: {
     flexDirection: 'row', backgroundColor: COLORS.card,
-    paddingVertical: 12, paddingHorizontal: 8,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  statChip:    { flex: 1, alignItems: 'center' },
-  statValue:   { fontSize: 16, fontWeight: FONTS.heavy },
-  statLabel:   { fontSize: 11, color: COLORS.textMute, marginTop: 2 },
-  statsDivider:{ width: 1, backgroundColor: COLORS.border, marginVertical: 4 },
+  statCard:  { flex: 1, alignItems: 'center', paddingVertical: 12, gap: 3 },
+  statIcon:  { fontSize: 18, marginBottom: 2 },
+  statValue: { fontSize: 16, fontWeight: FONTS.black },
+  statLabel: { fontSize: 10, color: COLORS.textMute, fontWeight: FONTS.medium, letterSpacing: 0.3 },
 
   // Search
+  searchWrap: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 6, backgroundColor: COLORS.card },
   searchBox: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.card, margin: 12, marginBottom: 8,
-    borderRadius: RADIUS.md, paddingHorizontal: 12,
-    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.bg, borderRadius: RADIUS.md,
+    paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.border,
   },
-  searchIcon:  { fontSize: 16, marginRight: 8 },
+  searchIcon:  { fontSize: 15, marginRight: 8, color: COLORS.textMute },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 10 },
-  clearSearch: { fontSize: 16, color: COLORS.textMute, padding: 4 },
+  clearBtn:    { padding: 4 },
+  clearText:   { fontSize: 14, color: COLORS.textMute },
 
   // Filters
-  filterRow: {
-    flexDirection: 'row', paddingHorizontal: 12,
-    marginBottom: 8, gap: 8,
-  },
+  filterRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   filterChip: {
-    paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: RADIUS.full, backgroundColor: COLORS.card,
+    paddingHorizontal: 16, paddingVertical: 7,
+    borderRadius: RADIUS.full, backgroundColor: COLORS.bg,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterChipActive: { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
   filterText:       { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  filterTextActive: { color: COLORS.white, fontWeight: FONTS.bold },
+  filterTextActive: { color: '#fff', fontWeight: FONTS.bold },
 
   // List
-  list: { padding: 12, paddingTop: 4, paddingBottom: 80 },
+  list: { padding: 12, paddingBottom: 90 },
 
-  // Invoice card
-  invoiceCard: {
+  // Card
+  card: {
+    flexDirection: 'row',
     backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
     marginBottom: 10, ...SHADOW.sm, overflow: 'hidden',
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  cardTop: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    justifyContent: 'space-between', padding: 14,
-  },
-  invoiceNum:   { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  partyName:    { fontSize: 13, color: COLORS.textSub, marginBottom: 3 },
-  invoiceDate:  { fontSize: 12, color: COLORS.textMute },
-  invoiceTotal: { fontSize: 17, fontWeight: FONTS.heavy, color: COLORS.text, marginBottom: 6 },
-  statusBadge:  { paddingHorizontal: 10, paddingVertical: 3, borderRadius: RADIUS.full },
-  statusText:   { fontSize: 11, fontWeight: FONTS.heavy, letterSpacing: 0.5 },
-
-  cardBottom: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8,
-    backgroundColor: '#FFF5F5', borderTopWidth: 1, borderTopColor: '#FEE2E2',
-  },
-  balanceLabel: { fontSize: 12, color: COLORS.danger, fontWeight: FONTS.semibold },
-  balanceValue: { fontSize: 13, color: COLORS.danger, fontWeight: FONTS.heavy },
+  cardOverdue: { borderColor: '#FECACA' },
+  cardAccent:  { width: 4 },
+  cardBody:    { flex: 1, padding: 14 },
+  cardTop:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  cardTopLeft: { flex: 1, marginRight: 12 },
+  cardTopRight:{ alignItems: 'flex-end' },
+  invoiceNum:  { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
+  partyName:   { fontSize: 13, color: COLORS.textSub },
+  invoiceTotal:{ fontSize: 18, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 5 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
+  statusText:  { fontSize: 10, fontWeight: FONTS.black, letterSpacing: 0.5 },
+  cardMeta:    { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
+  metaDate:    { fontSize: 12, color: COLORS.textMute },
+  metaDue:     { fontSize: 12, color: COLORS.warning, fontWeight: FONTS.medium },
+  metaDueOverdue: { color: COLORS.danger },
+  metaBalance: { fontSize: 12, fontWeight: FONTS.bold },
 
   // Empty
-  empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 },
-  emptyIcon:  { fontSize: 56, marginBottom: 16 },
-  emptyTitle: { fontSize: 18, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 8, textAlign: 'center' },
-  emptySub:   { fontSize: 14, color: COLORS.textMute, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  emptyBtn:   { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS.lg },
-  emptyBtnText:{ color: COLORS.white, fontWeight: FONTS.bold, fontSize: 15 },
+  empty:       { alignItems: 'center', paddingTop: 70, paddingHorizontal: 32 },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: RADIUS.full, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyIcon:   { fontSize: 36 },
+  emptyTitle:  { fontSize: 18, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 8, textAlign: 'center' },
+  emptySub:    { fontSize: 14, color: COLORS.textMute, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  emptyBtn:    { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS.lg, ...SHADOW.brand },
+  emptyBtnText:{ color: '#fff', fontWeight: FONTS.bold, fontSize: 14 },
 });
