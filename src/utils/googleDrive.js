@@ -44,13 +44,29 @@ export function useGoogleAuth() {
   return { request, response, promptAsync };
 }
 
-export async function saveToken(token, email) {
-  await AsyncStorage.setItem(STORAGE_KEY_TOKEN, token);
-  await AsyncStorage.setItem(STORAGE_KEY_EMAIL, email || '');
+const STORAGE_KEY_EXPIRY = 'gdrive_token_expiry';
+
+// expiresIn: seconds until expiry as returned by OAuth (default 3600)
+export async function saveToken(token, email, expiresIn = 3600) {
+  // Subtract a 2-minute buffer so we refresh before actual expiry
+  const expiresAt = Date.now() + Math.max(0, expiresIn - 120) * 1000;
+  await AsyncStorage.multiSet([
+    [STORAGE_KEY_TOKEN,  token],
+    [STORAGE_KEY_EMAIL,  email || ''],
+    [STORAGE_KEY_EXPIRY, String(expiresAt)],
+  ]);
 }
 
 export async function getToken() {
-  return await AsyncStorage.getItem(STORAGE_KEY_TOKEN);
+  const [token, expiry] = await AsyncStorage.multiGet([STORAGE_KEY_TOKEN, STORAGE_KEY_EXPIRY])
+    .then(pairs => pairs.map(p => p[1]));
+  if (!token) return null;
+  if (expiry && Date.now() > Number(expiry)) {
+    // Token has expired — clear it so the UI shows 'Connect Google Drive' again
+    await AsyncStorage.multiRemove([STORAGE_KEY_TOKEN, STORAGE_KEY_EXPIRY]);
+    return null;
+  }
+  return token;
 }
 
 export async function getUserEmail() {
@@ -58,9 +74,12 @@ export async function getUserEmail() {
 }
 
 export async function signOut() {
-  await AsyncStorage.removeItem(STORAGE_KEY_TOKEN);
-  await AsyncStorage.removeItem(STORAGE_KEY_EMAIL);
-  await AsyncStorage.removeItem(STORAGE_KEY_LAST_BACKUP);
+  await AsyncStorage.multiRemove([
+    STORAGE_KEY_TOKEN,
+    STORAGE_KEY_EMAIL,
+    STORAGE_KEY_LAST_BACKUP,
+    'gdrive_token_expiry',
+  ]);
 }
 
 export async function fetchUserEmail(accessToken) {
@@ -93,6 +112,11 @@ async function findBackupFileId(accessToken) {
     `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${BACKUP_FILENAME}'&fields=files(id,name)`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
+  if (res.status === 401) {
+    // Token rejected by Google — clear it so user is prompted to reconnect
+    await AsyncStorage.multiRemove([STORAGE_KEY_TOKEN, 'gdrive_token_expiry']);
+    throw new Error('Google Drive session expired. Please reconnect in Settings.');
+  }
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
