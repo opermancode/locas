@@ -8,11 +8,24 @@ import { Platform } from 'react-native';
 // WebView is not available on web — use iframe instead
 const WebView = Platform.OS === 'web'
   ? ({ source, style, onMessage }) => {
-      const ref = React.useRef(null);
+      const iframeRef = React.useRef(null);
+      const [iframeHeight, setIframeHeight] = React.useState(style?.height || 900);
+      React.useEffect(() => {
+        const iframe = iframeRef.current;
+        if (!iframe) return;
+        const handleLoad = () => {
+          try {
+            const h = iframe.contentDocument?.body?.scrollHeight;
+            if (h && h > 100) setIframeHeight(h + 32);
+          } catch (_) {}
+        };
+        iframe.addEventListener('load', handleLoad);
+        return () => iframe.removeEventListener('load', handleLoad);
+      }, [source?.html]);
       return React.createElement('iframe', {
-        ref,
+        ref: iframeRef,
         src: source?.html ? `data:text/html,${encodeURIComponent(source.html)}` : source?.uri,
-        style: { border: 'none', width: '100%', height: style?.height || 900 },
+        style: { border: 'none', width: '100%', height: iframeHeight },
       });
     }
   : require('react-native-webview').WebView;
@@ -20,55 +33,52 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Platform as _Platform } from 'react-native';
 const Print = _Platform.OS === 'web'
-  ? { 
+  ? {
+      // Opens browser Print dialog → user can Save as PDF.
+      // Injects the invoice HTML into a hidden iframe, waits for assets,
+      // then triggers window.print() so the browser handles PDF generation.
       printToFileAsync: async ({ html }) => {
+        // Return a sentinel so doPDF knows to call window.print() instead
+        // of trying to fetch a real file URI.
+        return { uri: '__web_print__', html };
+      },
+      printAsync: async ({ html }) => {
         const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;';
         document.body.appendChild(iframe);
+        iframe.contentDocument.open();
         iframe.contentDocument.write(html);
         iframe.contentDocument.close();
-        
-        // Wait for styles/images to load before capturing
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // For Web, we return a data URI of the HTML content 
-        // which the Sharing logic below will convert to a real PDF
-        const uri = `data:text/html;base64,${btoa(unescape(encodeURIComponent(html)))}`;
-        return { uri };
-      }
+        await new Promise(resolve => setTimeout(resolve, 600));
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        // Remove after a short delay to allow print dialog to open
+        setTimeout(() => document.body.removeChild(iframe), 2000);
+      },
     }
   : require('expo-print');
 const Sharing = _Platform.OS === 'web'
-  ? { 
-      shareAsync: async (url, options) => { 
+  ? {
+      shareAsync: async (url, options) => {
+        // If the Print polyfill returned our sentinel, use browser print dialog
+        if (url === '__web_print__') return;
         try {
-          // 1. Fetch the blob data from the URI
           const response = await fetch(url);
           const blob = await response.blob();
-          
-          // 2. Create a fresh Object URL specifically for the download
           const blobUrl = window.URL.createObjectURL(blob);
-          
-          // 3. Create the hidden download link
           const link = document.createElement('a');
           link.href = blobUrl;
-          
-          // Use the invoice number for the filename
           const fileName = options?.dialogTitle ? `${options.dialogTitle}.pdf` : 'invoice.pdf';
           link.setAttribute('download', fileName);
-          
-          // 4. Append, Click, and Cleanup
           document.body.appendChild(link);
           link.click();
-          
-          // Clean up the DOM and the Revoke the URL to free memory
           document.body.removeChild(link);
           window.URL.revokeObjectURL(blobUrl);
         } catch (err) {
-          console.error("Download failed:", err);
-          alert("Failed to save the PDF. Please try again.");
+          console.error('Download failed:', err);
+          alert('Failed to save. Please use the Print button and save as PDF.');
         }
-      } 
+      },
     }
   : require('expo-sharing');
 import { getInvoiceDetail, recordPayment, deleteInvoice, getProfile } from '../../db';
@@ -170,6 +180,10 @@ export default function InvoiceDetail({ navigation, route }) {
     finally { setPaying(false); }
   };
 
+  const handleEdit = () => {
+    navigation.navigate('CreateInvoice', { invoice });
+  };
+
   const handleDelete = () => {
     Alert.alert('Delete Invoice', `Delete ${invoice.invoice_number}?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -180,23 +194,27 @@ export default function InvoiceDetail({ navigation, route }) {
   };
 
   const doPDF = async () => {
-  setPrinting(true);
-  try {
-    const html = buildHTML(selectedTpl, invoice, profile, accentColor);
-    const { uri } = await Print.printToFileAsync({ html, base64: false });
-    
-    // On Phone: This opens the Share Sheet (WhatsApp, Save to Files, etc.)
-    // On Web/Desktop: This will now trigger a direct file download
-    await Sharing.shareAsync(uri, { 
-      mimeType: 'application/pdf', 
-      dialogTitle: `Invoice_${invoice.invoice_number}`, 
-      UTI: 'com.adobe.pdf' 
-    });
-  } catch (e) { 
-    Alert.alert('Error', e.message); 
-  }
-  finally { setPrinting(false); }
-};
+    setPrinting(true);
+    try {
+      const html = buildHTML(selectedTpl, invoice, profile, accentColor);
+      if (_Platform.OS === 'web') {
+        // On web: open the browser print dialog — user saves as PDF
+        await Print.printAsync({ html });
+      } else {
+        // On native: generate a real PDF file and share it
+        const { uri } = await Print.printToFileAsync({ html, base64: false });
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `Invoice_${invoice.invoice_number}`,
+          UTI: 'com.adobe.pdf',
+        });
+      }
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   const doPrint = async () => {
     setPrinting(true);
@@ -251,6 +269,9 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
         <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
           <Text style={[styles.statusPillText, { color: statusStyle.text }]}>{statusKey.toUpperCase()}</Text>
         </View>
+        <TouchableOpacity onPress={handleEdit} style={styles.editBtn}>
+          <Text style={styles.editIcon}>✏️</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
           <Text style={styles.deleteIcon}>🗑️</Text>
         </TouchableOpacity>
@@ -497,6 +518,8 @@ const styles = StyleSheet.create({
   headerSub:    { fontSize: 11, color: COLORS.textSub, marginTop: 1 },
   statusPill:   { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full, marginRight: 6 },
   statusPillText:{ fontSize: 10, fontWeight: FONTS.heavy, letterSpacing: 0.5 },
+  editBtn:      { padding: 8 },
+  editIcon:     { fontSize: 20 },
   deleteBtn:    { padding: 8 },
   deleteIcon:   { fontSize: 20 },
 
