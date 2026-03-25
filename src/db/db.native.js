@@ -326,11 +326,23 @@ export async function saveInvoice(invoice, lineItems) {
 
       await db.runAsync('DELETE FROM invoice_items WHERE invoice_id=?', [invoiceId]);
 
-      // Adjust party balance by the difference between new and old invoice total.
-      if (invoice.party_id && oldInvoice?.type === 'sale') {
-        const delta = (invoice.total || 0) - (oldInvoice.total || 0);
-        if (delta !== 0) {
-          await db.runAsync('UPDATE parties SET balance=balance+? WHERE id=?', [delta, invoice.party_id]);
+      // Adjust party balance — handle party change correctly.
+      if (oldInvoice?.type === 'sale') {
+        const oldPartyId = oldInvoice.party_id;
+        const newPartyId = invoice.party_id;
+        if (oldPartyId && oldPartyId !== newPartyId) {
+          // Party changed: reverse old party's outstanding balance entirely
+          const outstanding = (oldInvoice.total || 0) - (oldInvoice.paid || 0);
+          if (outstanding !== 0)
+            await db.runAsync('UPDATE parties SET balance=balance-? WHERE id=?', [outstanding, oldPartyId]);
+          // Add full new total to the new party
+          if (newPartyId)
+            await db.runAsync('UPDATE parties SET balance=balance+? WHERE id=?', [invoice.total || 0, newPartyId]);
+        } else if (newPartyId) {
+          // Same party: apply only the delta
+          const delta = (invoice.total || 0) - (oldInvoice.total || 0);
+          if (delta !== 0)
+            await db.runAsync('UPDATE parties SET balance=balance+? WHERE id=?', [delta, newPartyId]);
         }
       }
     } else {
@@ -423,7 +435,31 @@ export async function recordPayment(invoiceId, amount, method, reference, date, 
 
 export async function deleteInvoice(id) {
   const db = await getDB();
-  await db.runAsync(`UPDATE invoices SET deleted_at=datetime('now') WHERE id=?`, [id]);
+  await db.withTransactionAsync(async () => {
+    const inv = await db.getFirstAsync('SELECT * FROM invoices WHERE id=?', [id]);
+    if (!inv || inv.deleted_at) return; // already deleted
+
+    // Soft-delete the invoice
+    await db.runAsync(`UPDATE invoices SET deleted_at=datetime('now') WHERE id=?`, [id]);
+
+    // Reverse party balance: subtract only the outstanding (unpaid) amount
+    if (inv.party_id && inv.type === 'sale') {
+      const outstanding = (inv.total || 0) - (inv.paid || 0);
+      if (outstanding !== 0)
+        await db.runAsync('UPDATE parties SET balance=balance-? WHERE id=?', [outstanding, inv.party_id]);
+    }
+
+    // Restore stock for each linked inventory item
+    if (inv.type === 'sale') {
+      const items = await db.getAllAsync(
+        'SELECT item_id, qty FROM invoice_items WHERE invoice_id=?', [id]
+      );
+      for (const it of items) {
+        if (it.item_id)
+          await db.runAsync('UPDATE items SET stock=stock+? WHERE id=?', [it.qty, it.item_id]);
+      }
+    }
+  });
 }
 
 // ─── Expenses ────────────────────────────────────────────────────
