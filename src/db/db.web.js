@@ -69,11 +69,19 @@ export async function peekNextInvoiceNumber() {
   return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
 }
 
+// Mutex to prevent concurrent invoice number generation on web
+let _invoiceNumberLock = Promise.resolve();
+
 async function consumeNextInvoiceNumber() {
-  const profile = await stores.profile.getItem('1');
-  const next = (profile.invoice_counter || 0) + 1;
-  await stores.profile.setItem('1', { ...profile, invoice_counter: next });
-  return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
+  // Chain onto the previous lock so concurrent calls are serialized
+  const result = _invoiceNumberLock.then(async () => {
+    const profile = await stores.profile.getItem('1');
+    const next = (profile.invoice_counter || 0) + 1;
+    await stores.profile.setItem('1', { ...profile, invoice_counter: next });
+    return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
+  });
+  _invoiceNumberLock = result.catch(() => {});
+  return result;
 }
 
 // ─── Parties ──────────────────────────────────────────────────────
@@ -150,7 +158,7 @@ export async function saveInvoice(invoice, lineItems) {
 
     // Restore stock for old items
     const oldItemsList = await getAll(stores.invoice_items,
-      i => i.invoice_id === invoice.id);
+      i => i.invoice_id === Number(invoice.id));
     for (const old of oldItemsList) {
       if (old.item_id && invoice.type === 'sale') {
         const item = await stores.items.getItem(String(old.item_id));
@@ -159,20 +167,40 @@ export async function saveInvoice(invoice, lineItems) {
       }
     }
 
-    // Adjust party balance
-    if (invoice.party_id && oldInvoice?.type === 'sale') {
-      const delta = (invoice.total || 0) - (oldInvoice.total || 0);
-      if (delta !== 0) {
-        const party = await stores.parties.getItem(String(invoice.party_id));
-        if (party) await stores.parties.setItem(String(invoice.party_id),
-          { ...party, balance: (party.balance || 0) + delta });
+    // Adjust party balance — handle party change correctly
+    if (oldInvoice?.type === 'sale') {
+      const oldPartyId = oldInvoice.party_id;
+      const newPartyId = invoice.party_id;
+      if (oldPartyId && String(oldPartyId) !== String(newPartyId)) {
+        // Party changed: reverse old party's outstanding balance entirely
+        const oldParty = await stores.parties.getItem(String(oldPartyId));
+        if (oldParty) await stores.parties.setItem(String(oldPartyId),
+          { ...oldParty, balance: (oldParty.balance || 0) - ((oldInvoice.total || 0) - (oldInvoice.paid || 0)) });
+        // Add full new total to the new party
+        if (newPartyId) {
+          const newParty = await stores.parties.getItem(String(newPartyId));
+          if (newParty) await stores.parties.setItem(String(newPartyId),
+            { ...newParty, balance: (newParty.balance || 0) + (invoice.total || 0) });
+        }
+      } else if (newPartyId) {
+        // Same party: apply only the delta
+        const delta = (invoice.total || 0) - (oldInvoice.total || 0);
+        if (delta !== 0) {
+          const party = await stores.parties.getItem(String(newPartyId));
+          if (party) await stores.parties.setItem(String(newPartyId),
+            { ...party, balance: (party.balance || 0) + delta });
+        }
       }
     }
 
-    // Delete old line items
-    await stores.invoice_items.iterate(async (val, key) => {
-      if (val.invoice_id === invoice.id) await stores.invoice_items.removeItem(key);
+    // Collect keys to delete BEFORE iterating to avoid mutating store mid-iteration
+    const keysToDelete = [];
+    await stores.invoice_items.iterate((val, key) => {
+      if (val.invoice_id === Number(invoice.id)) keysToDelete.push(key);
     });
+    for (const key of keysToDelete) {
+      await stores.invoice_items.removeItem(key);
+    }
 
     await stores.invoices.setItem(String(invoice.id), {
       ...oldInvoice, ...invoice, updated_at: new Date().toISOString(),
@@ -242,10 +270,11 @@ export async function getInvoices(filters = {}) {
 }
 
 export async function getInvoiceDetail(id) {
-  const invoice = await stores.invoices.getItem(String(id));
+  const numId = Number(id); // normalise — stored as number, route params may be string
+  const invoice = await stores.invoices.getItem(String(numId));
   if (!invoice) return null;
-  invoice.items    = await getAll(stores.invoice_items, i => i.invoice_id === id);
-  invoice.payments = (await getAll(stores.payments, p => p.invoice_id === id))
+  invoice.items    = await getAll(stores.invoice_items, i => i.invoice_id === numId);
+  invoice.payments = (await getAll(stores.payments, p => p.invoice_id === numId))
     .sort((a, b) => b.date.localeCompare(a.date));
   return invoice;
 }
@@ -279,8 +308,32 @@ export async function recordPayment(invoiceId, amount, method, reference, date, 
 
 export async function deleteInvoice(id) {
   const inv = await stores.invoices.getItem(String(id));
-  await stores.invoices.setItem(String(id),
-    { ...inv, deleted_at: new Date().toISOString() });
+  if (!inv || inv.deleted_at) return; // already deleted
+
+  // Soft-delete
+  await stores.invoices.setItem(String(id), { ...inv, deleted_at: new Date().toISOString() });
+
+  // Reverse party balance: subtract only the outstanding amount
+  if (inv.party_id && inv.type === 'sale') {
+    const outstanding = (inv.total || 0) - (inv.paid || 0);
+    if (outstanding !== 0) {
+      const party = await stores.parties.getItem(String(inv.party_id));
+      if (party) await stores.parties.setItem(String(inv.party_id),
+        { ...party, balance: (party.balance || 0) - outstanding });
+    }
+  }
+
+  // Restore stock for each linked inventory item
+  if (inv.type === 'sale') {
+    const lineItems = await getAll(stores.invoice_items, i => i.invoice_id === Number(id));
+    for (const it of lineItems) {
+      if (it.item_id) {
+        const item = await stores.items.getItem(String(it.item_id));
+        if (item) await stores.items.setItem(String(it.item_id),
+          { ...item, stock: (item.stock || 0) + it.qty });
+      }
+    }
+  }
 }
 
 // ─── Expenses ─────────────────────────────────────────────────────
@@ -427,4 +480,16 @@ export async function importAllData(jsonString) {
     await stores.payments.setItem(String(row.id), row);
   for (const row of data.expenses || [])
     await stores.expenses.setItem(String(row.id), row);
+
+  // CRITICAL: Reset sequence counters to max(id) of each table so new
+  // records after restore never collide with existing IDs.
+  const maxId = (rows) => rows.reduce((m, r) => Math.max(m, r.id || 0), 0);
+  await stores.meta.setItem('parties_seq',       maxId(data.parties       || []));
+  await stores.meta.setItem('items_seq',         maxId(data.items         || []));
+  await stores.meta.setItem('invoices_seq',      maxId(data.invoices      || []));
+  await stores.meta.setItem('invoice_items_seq', maxId(data.invoice_items || []));
+  await stores.meta.setItem('payments_seq',      maxId(data.payments      || []));
+  await stores.meta.setItem('expenses_seq',      maxId(data.expenses      || []));
+  // Reset the invoice mutex too
+  _invoiceNumberLock = Promise.resolve();
 }
