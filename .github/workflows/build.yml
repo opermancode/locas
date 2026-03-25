@@ -25,23 +25,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Cache node modules
-        uses: actions/cache@v4
-        id: npm-cache
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Extract version from branch
-        id: version
-        run: |
-          BRANCH="${{ github.ref_name }}"
-          VERSION="${BRANCH#apk/v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      # Step 1: Patch environment and bump versions
+      # Step 1: Patch environment (Pinning everything to SDK 54 standards)
       - name: Patch environment and bump versions
         run: |
           node -e "
@@ -51,19 +35,18 @@ jobs:
             // 1. Update app.json
             const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
             app.expo.version = v;
-            app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1;
+            // Remove versionCode as EAS remote handles this now
+            if (app.expo.android) delete app.expo.android.versionCode; 
             fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
 
             // 2. Update package.json
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             pkg.version = v;
             
-            // Fix: Correct non-existent expo-splash-screen version
-            if (pkg.dependencies['expo-splash-screen']) {
-              pkg.dependencies['expo-splash-screen'] = '~0.29.21';
-            }
+            // Fix Splash Screen
+            pkg.dependencies['expo-splash-screen'] = '~0.29.21';
 
-            // Fix: Force React 18.3.1 for SDK 54 stability
+            // STRICT DOWNGRADE TO REACT 18 (Required for SDK 54 Bundler)
             pkg.dependencies['react'] = '18.3.1';
             pkg.dependencies['react-dom'] = '18.3.1';
             if (!pkg.devDependencies) pkg.devDependencies = {};
@@ -71,7 +54,7 @@ jobs:
 
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
 
-            // 3. Fix eas.json (Move appVersionSource to the correct TOP-LEVEL 'cli' block)
+            // 3. Fix eas.json
             if (fs.existsSync('eas.json')) {
               const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
               if (!eas.cli) eas.cli = {};
@@ -80,24 +63,22 @@ jobs:
             }
           "
 
-      # Step 2: Install dependencies
-      - name: Install dependencies
+      # Step 2: Fresh Install (Nuclear Option)
+      - name: Clean Install
         env:
           NPM_CONFIG_LEGACY_PEER_DEPS: true
-        run: npm install --legacy-peer-deps
-
-      - name: Verify Expo package alignment
-        env:
-          NPM_CONFIG_LEGACY_PEER_DEPS: true
-        run: CI=1 npx expo install --fix
+        run: |
+          rm -f package-lock.json
+          npm install --legacy-peer-deps
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      # Step 3: Build APK on EAS
+      # Step 3: Build APK on EAS with Mandatory Cache Clear
       - name: Build preview APK
         id: build
         run: |
+          # Use --clear-cache to ensure EAS doesn't use old React 19 artifacts
           eas build \
             --platform android \
             --profile preview \
