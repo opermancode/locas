@@ -30,7 +30,9 @@ const {
 function useGoogleAuth() { return _useGoogleAuth(); }
 import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
-import { version } from '../../../app.json';
+// Use require() for app.json — named ESM imports from JSON can fail in some
+// webpack/Electron builds that don't enable JSON module assertions.
+const { expo: { version } } = require('../../../app.json');
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -72,9 +74,11 @@ export default function SettingsScreen({ navigation }) {
   useEffect(() => {
     if (response?.type === 'success') {
       const token = response.authentication?.accessToken || response.params?.access_token;
+      // expires_in comes back as a string in implicit flow params
+      const expiresIn = parseInt(response.authentication?.expiresIn || response.params?.expires_in || '3600', 10);
       if (token) {
         fetchUserEmail(token).then(async email => {
-          await saveToken(token, email);
+          await saveToken(token, email, expiresIn);
           setDriveEmail(email);
           Alert.alert('✅ Connected', `Google Drive linked to ${email}`);
         }).catch(() => Alert.alert('Error', 'Could not fetch Google account info'));
