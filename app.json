@@ -7,13 +7,10 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#FF6B00"
-    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.neurader.locas"
+      "bundleIdentifier": "com.neurader.locas",
+      "newArchEnabled": false
     },
     "android": {
       "package": "com.neurader.locas",
@@ -21,9 +18,17 @@
       "adaptiveIcon": {
         "backgroundColor": "#FF6B00"
       },
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "newArchEnabled": false
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FF6B00",
+          "resizeMode": "contain"
+        }
+      ],
       "expo-sqlite",
       "@react-native-firebase/app",
       "@react-native-firebase/auth"
