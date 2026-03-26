@@ -3,7 +3,7 @@ name: EAS APK Build
 on:
   push:
     branches:
-      - 'apk/v*'
+      - 'apk/*'   # ✅ fixed wildcard
 
 permissions:
   contents: write
@@ -12,6 +12,9 @@ jobs:
   build:
     name: Build Android APK (preview)
     runs-on: ubuntu-latest
+
+    # ✅ prevent infinite loop
+    if: "!contains(github.event.head_commit.message, 'chore: bump')"
 
     steps:
       - name: Checkout repository
@@ -33,26 +36,39 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
-      # Use python (always available on ubuntu-latest) — no shell quoting issues
+      # ✅ Validate JSON BEFORE modifying (prevents crash)
+      - name: Validate JSON before build
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('app.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+
+      # ✅ Bump versions safely
       - name: Bump versions
         run: |
           python3 - << 'PY'
           import json, os, sys
+
           v = os.environ['VERSION']
           if not v:
               print("ERROR: VERSION is empty"); sys.exit(1)
 
+          # --- app.json ---
           with open('app.json', 'r') as f:
               app = json.load(f)
+
           app['expo']['version'] = v
           app['expo']['android']['versionCode'] = (app['expo']['android'].get('versionCode') or 0) + 1
+
           with open('app.json', 'w') as f:
               json.dump(app, f, indent=2)
               f.write('\n')
 
+          # --- package.json ---
           with open('package.json', 'r') as f:
               pkg = json.load(f)
+
           pkg['version'] = v
+
           with open('package.json', 'w') as f:
               json.dump(pkg, f, indent=2)
               f.write('\n')
@@ -62,12 +78,17 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+      # ✅ Clean install (fixes dependency errors)
+      - name: Clean install dependencies
+        run: |
+          rm -rf node_modules package-lock.json
+          npm cache clean --force
+          npm install --legacy-peer-deps
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
+      # ✅ Build APK
       - name: Build preview APK
         id: build
         run: |
@@ -92,12 +113,15 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
+      # ✅ Update version.json
       - name: Update version.json
         run: |
           python3 - << 'PY'
           import json, os
+
           v   = os.environ['VERSION']
           url = os.environ.get('APK_URL', '')
+
           with open('version.json', 'w') as f:
               json.dump({
                   'version': v,
@@ -106,12 +130,14 @@ jobs:
                   'releaseNotes': f'Version {v}'
               }, f, indent=2)
               f.write('\n')
+
           print(f'version.json updated to {v}')
           PY
         env:
           VERSION: ${{ steps.version.outputs.version }}
           APK_URL:  ${{ steps.build.outputs.apk_url }}
 
+      # ✅ Commit safely (no loop now)
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
