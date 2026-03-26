@@ -57,7 +57,9 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Fix Expo package versions
-        run: npx expo install --fix --non-interactive
+        run: npx expo install --fix
+        env:
+          CI: 1
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
