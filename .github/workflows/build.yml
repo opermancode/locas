@@ -3,7 +3,7 @@ name: EAS APK Build
 on:
   push:
     branches:
-      - 'apk/*'   # ✅ fixed wildcard
+      - 'apk/v*'
 
 permissions:
   contents: write
@@ -12,9 +12,6 @@ jobs:
   build:
     name: Build Android APK (preview)
     runs-on: ubuntu-latest
-
-    # ✅ prevent infinite loop
-    if: "!contains(github.event.head_commit.message, 'chore: bump')"
 
     steps:
       - name: Checkout repository
@@ -36,59 +33,101 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
-      # ✅ Validate JSON BEFORE modifying (prevents crash)
-      - name: Validate JSON before build
-        run: |
-          node -e "JSON.parse(require('fs').readFileSync('app.json','utf8'))"
-          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
-
-      # ✅ Bump versions safely
-      - name: Bump versions
+      # Write app.json from scratch — fixes any corruption from previous runs
+      - name: Write clean app.json and bump version
         run: |
           python3 - << 'PY'
-          import json, os, sys
+import json, os, sys
 
-          v = os.environ['VERSION']
-          if not v:
-              print("ERROR: VERSION is empty"); sys.exit(1)
+v = os.environ['VERSION']
+if not v:
+    print("ERROR: VERSION is empty"); sys.exit(1)
 
-          # --- app.json ---
-          with open('app.json', 'r') as f:
-              app = json.load(f)
+# Read versionCode from existing app.json if readable, else default to 10
+try:
+    with open('app.json', 'r') as f:
+        old = json.load(f)
+    vc = (old.get('expo', {}).get('android', {}).get('versionCode') or 10) + 1
+except Exception:
+    vc = 11  # fallback if file is corrupt
 
-          app['expo']['version'] = v
-          app['expo']['android']['versionCode'] = (app['expo']['android'].get('versionCode') or 0) + 1
+app = {
+  "expo": {
+    "name": "Locas",
+    "slug": "locas",
+    "scheme": "locas",
+    "version": v,
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": False,
+      "bundleIdentifier": "com.neurader.locas",
+      "newArchEnabled": False
+    },
+    "android": {
+      "package": "com.neurader.locas",
+      "versionCode": vc,
+      "adaptiveIcon": {
+        "backgroundColor": "#FF6B00",
+        "foregroundImage": "./assets/icon.png"
+      },
+      "googleServicesFile": "./google-services.json",
+      "newArchEnabled": False
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.0.21"
+          }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FF6B00",
+          "resizeMode": "contain",
+          "image": "./assets/icon.png"
+        }
+      ],
+      "expo-sqlite",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
+    ],
+    "owner": "operman-code",
+    "extra": {
+      "eas": {
+        "projectId": "4ecd08a1-218e-44b8-8812-242559988c0b"
+      }
+    }
+  }
+}
 
-          with open('app.json', 'w') as f:
-              json.dump(app, f, indent=2)
-              f.write('\n')
+with open('app.json', 'w') as f:
+    json.dump(app, f, indent=2)
+    f.write('\n')
 
-          # --- package.json ---
-          with open('package.json', 'r') as f:
-              pkg = json.load(f)
+# Bump package.json version
+with open('package.json', 'r') as f:
+    pkg = json.load(f)
+pkg['version'] = v
+with open('package.json', 'w') as f:
+    json.dump(pkg, f, indent=2)
+    f.write('\n')
 
-          pkg['version'] = v
-
-          with open('package.json', 'w') as f:
-              json.dump(pkg, f, indent=2)
-              f.write('\n')
-
-          print(f"Bumped to version: {v} | versionCode: {app['expo']['android']['versionCode']}")
-          PY
+print(f"app.json written clean. version={v} versionCode={vc}")
+PY
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      # ✅ Clean install (fixes dependency errors)
-      - name: Clean install dependencies
-        run: |
-          rm -rf node_modules package-lock.json
-          npm cache clean --force
-          npm install --legacy-peer-deps
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      # ✅ Build APK
       - name: Build preview APK
         id: build
         run: |
@@ -113,35 +152,30 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      # ✅ Update version.json
       - name: Update version.json
         run: |
           python3 - << 'PY'
-          import json, os
-
-          v   = os.environ['VERSION']
-          url = os.environ.get('APK_URL', '')
-
-          with open('version.json', 'w') as f:
-              json.dump({
-                  'version': v,
-                  'url': url,
-                  'downloadPage': 'https://appdistribution.firebase.dev/i/aa46bb1c4e9a8dec',
-                  'releaseNotes': f'Version {v}'
-              }, f, indent=2)
-              f.write('\n')
-
-          print(f'version.json updated to {v}')
-          PY
+import json, os
+v   = os.environ['VERSION']
+url = os.environ.get('APK_URL', '')
+with open('version.json', 'w') as f:
+    json.dump({
+        'version': v,
+        'url': url,
+        'downloadPage': 'https://appdistribution.firebase.dev/i/aa46bb1c4e9a8dec',
+        'releaseNotes': f'Version {v}'
+    }, f, indent=2)
+    f.write('\n')
+print(f'version.json updated to {v}')
+PY
         env:
           VERSION: ${{ steps.version.outputs.version }}
           APK_URL:  ${{ steps.build.outputs.apk_url }}
 
-      # ✅ Commit safely (no loop now)
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add app.json package.json version.json
           git diff --staged --quiet || git commit -m "chore: bump to v${{ steps.version.outputs.version }}"
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin HEAD:main
