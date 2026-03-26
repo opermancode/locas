@@ -3,7 +3,7 @@
     "name": "Locas",
     "slug": "locas",
     "scheme": "locas",
-    "version": "1.7.17",
+    "version": "1.5.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,6 +23,14 @@
       "newArchEnabled": false
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.0.21"
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {
