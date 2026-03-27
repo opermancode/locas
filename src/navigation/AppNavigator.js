@@ -23,8 +23,7 @@ import SettingsScreen    from '../screens/Settings/SettingsScreen';
 const Stack = createStackNavigator();
 const Tab   = createBottomTabNavigator();
 
-// ─── Detect if we're on a wide screen (web/desktop) ──────────────
-// Uses Dimensions so it responds to window resize on web
+// ── Platform detection ────────────────────────────────────────────
 function useIsWide() {
   const [wide, setWide] = useState(
     Platform.OS === 'web' && Dimensions.get('window').width >= 768
@@ -39,27 +38,26 @@ function useIsWide() {
   return wide;
 }
 
-// ─── NAV ITEMS ────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { name: 'Dashboard',   label: 'Home',     icon: 'home',       idx: 0 },
-  { name: 'InvoicesTab', label: 'Invoices', icon: 'file-text',  idx: 1 },
-  { name: 'PartiesTab',  label: 'Parties',  icon: 'users',      idx: 2 },
-  { name: 'Inventory',   label: 'Items',    icon: 'package',    idx: 3 },
-  { name: 'More',        label: 'More',     icon: 'menu',       idx: 4 },
+// ── Nav config ────────────────────────────────────────────────────
+const MOBILE_TABS = [
+  { name: 'Dashboard',   label: 'Home',     icon: 'home',        idx: 0 },
+  { name: 'InvoicesTab', label: 'Invoices', icon: 'file-text',   idx: 1 },
+  { name: 'PartiesTab',  label: 'Parties',  icon: 'users',       idx: 2 },
+  { name: 'Inventory',   label: 'Items',    icon: 'package',     idx: 3 },
+  { name: 'More',        label: 'More',     icon: 'grid',        idx: 4 },
 ];
 
-// Full nav items for sidebar (More expands into its children)
-const SIDEBAR_ITEMS = [
-  { name: 'Dashboard',   label: 'Home',       icon: 'home'       },
-  { name: 'InvoicesTab', label: 'Invoices',   icon: 'file-text'  },
-  { name: 'PartiesTab',  label: 'Parties',    icon: 'users'      },
-  { name: 'Inventory',   label: 'Items',      icon: 'package'    },
-  { name: 'Expenses',    label: 'Expenses',   icon: 'credit-card', stack: 'More' },
-  { name: 'Reports',     label: 'Reports',    icon: 'bar-chart-2', stack: 'More' },
-  { name: 'Settings',    label: 'Settings',   icon: 'settings',    stack: 'More' },
+const SIDEBAR_SECTIONS = [
+  { name: 'Dashboard',   label: 'Home',     icon: 'home',        tab: 'Dashboard'   },
+  { name: 'InvoicesTab', label: 'Invoices', icon: 'file-text',   tab: 'InvoicesTab' },
+  { name: 'PartiesTab',  label: 'Parties',  icon: 'users',       tab: 'PartiesTab'  },
+  { name: 'Inventory',   label: 'Items',    icon: 'package',     tab: 'Inventory'   },
+  { name: 'Expenses',    label: 'Expenses', icon: 'credit-card', tab: 'More', screen: 'Expenses'  },
+  { name: 'Reports',     label: 'Reports',  icon: 'bar-chart-2', tab: 'More', screen: 'Reports'   },
+  { name: 'Settings',    label: 'Settings', icon: 'settings',    tab: 'More', screen: 'Settings'  },
 ];
 
-// ─── Stacks ───────────────────────────────────────────────────────
+// ── Stacks ────────────────────────────────────────────────────────
 function InvoiceStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -89,13 +87,11 @@ function MoreStack() {
   );
 }
 
-// ─── MOBILE: bottom tab bar ───────────────────────────────────────
+// ── Mobile bottom tab bar ─────────────────────────────────────────
 function MobileTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
-
   return (
     <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-      {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}
@@ -103,9 +99,8 @@ function MobileTabBar({ state, navigation }) {
       >
         <Feather name="plus" size={24} color="#fff" />
       </TouchableOpacity>
-
       <View style={styles.bottomRow}>
-        {NAV_ITEMS.map(tab => {
+        {MOBILE_TABS.map(tab => {
           const focused = state.index === tab.idx;
           return (
             <TouchableOpacity
@@ -115,7 +110,11 @@ function MobileTabBar({ state, navigation }) {
               activeOpacity={0.7}
             >
               <View style={[styles.tabPill, focused && styles.tabPillActive]}>
-                <Feather name={tab.icon} size={18} color={focused ? COLORS.primary : COLORS.textMute} />
+                <Feather
+                  name={tab.icon}
+                  size={18}
+                  color={focused ? COLORS.primary : COLORS.textMute}
+                />
               </View>
               <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
                 {tab.label}
@@ -128,102 +127,111 @@ function MobileTabBar({ state, navigation }) {
   );
 }
 
-// ─── DESKTOP/WEB: left sidebar ────────────────────────────────────
-function DesktopLayout({ state, navigation, descriptors }) {
+// ── Desktop sidebar ───────────────────────────────────────────────
+function DesktopSidebar({ state, navigation }) {
   const [collapsed, setCollapsed] = useState(false);
-  const activeTab = NAV_ITEMS[state.index]?.name;
+  const activeIdx = state.index;
+  const activeRoute = ['Dashboard','InvoicesTab','PartiesTab','Inventory','More'][activeIdx];
+
+  const isActive = (item) => {
+    if (item.screen) return activeRoute === 'More';
+    return activeRoute === item.tab;
+  };
+
+  const navigate = (item) => {
+    if (item.screen) {
+      navigation.navigate(item.tab, { screen: item.screen });
+    } else {
+      navigation.navigate(item.tab);
+    }
+  };
 
   return (
-    <View style={styles.desktopRoot}>
-      {/* Sidebar */}
-      <View style={[styles.sidebar, collapsed && styles.sidebarCollapsed]}>
-        {/* Logo / brand */}
-        <View style={styles.sidebarHeader}>
-          <View style={styles.sidebarLogo}>
-            <Image
-              source={require('../../assets/icon.png')}
-              style={styles.sidebarLogoImg}
-              resizeMode="contain"
-            />
-          </View>
-          {!collapsed && (
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sidebarBrand}>LOCAS</Text>
-              <Text style={styles.sidebarTagline}>Smart Billing</Text>
-            </View>
-          )}
-          <TouchableOpacity onPress={() => setCollapsed(c => !c)} style={styles.collapseBtn}>
-            <Feather name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} color="rgba(255,255,255,0.5)" />
-          </TouchableOpacity>
-        </View>
+    <View style={[styles.sidebar, collapsed && styles.sidebarCollapsed]}>
 
-        {/* New Invoice button */}
+      {/* Brand header */}
+      <View style={styles.sidebarHeader}>
+        {/* Logo — use a colored box with text since icon.png is landscape */}
+        <View style={styles.sidebarLogoBox}>
+          <Text style={styles.sidebarLogoText}>L</Text>
+        </View>
+        {!collapsed && (
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sidebarBrand}>LOCAS</Text>
+            <Text style={styles.sidebarTagline}>Smart Billing</Text>
+          </View>
+        )}
+        <TouchableOpacity onPress={() => setCollapsed(c => !c)} style={styles.collapseBtn}>
+          <Feather
+            name={collapsed ? 'chevron-right' : 'chevron-left'}
+            size={14}
+            color="rgba(255,255,255,0.4)"
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* New Invoice button */}
+      <View style={{ paddingHorizontal: 12, paddingTop: 16, paddingBottom: 8 }}>
         <TouchableOpacity
-          style={[styles.sidebarNewBtn, collapsed && styles.sidebarNewBtnCollapsed]}
+          style={[styles.newInvoiceBtn, collapsed && styles.newInvoiceBtnCollapsed]}
           onPress={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}
           activeOpacity={0.85}
         >
-          <Feather name="plus" size={16} color="#fff" />
-          {!collapsed && <Text style={styles.sidebarNewBtnText}>New Invoice</Text>}
+          <Feather name="plus" size={15} color="#fff" />
+          {!collapsed && <Text style={styles.newInvoiceBtnText}>New Invoice</Text>}
         </TouchableOpacity>
-
-        <View style={styles.sidebarDivider} />
-
-        {/* Nav items */}
-        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-          {SIDEBAR_ITEMS.map(item => {
-            const isActive = item.stack
-              ? activeTab === 'More'
-              : activeTab === item.name;
-
-            return (
-              <TouchableOpacity
-                key={item.name}
-                style={[styles.sidebarItem, isActive && styles.sidebarItemActive]}
-                onPress={() => {
-                  if (item.stack) {
-                    navigation.navigate(item.stack, { screen: item.name });
-                  } else {
-                    navigation.navigate(item.name);
-                  }
-                }}
-                activeOpacity={0.75}
-              >
-                <View style={[styles.sidebarIcon, isActive && styles.sidebarIconActive]}>
-                  <Feather
-                    name={item.icon}
-                    size={16}
-                    color={isActive ? COLORS.primary : 'rgba(255,255,255,0.5)'}
-                  />
-                </View>
-                {!collapsed && (
-                  <Text style={[styles.sidebarLabel, isActive && styles.sidebarLabelActive]}>
-                    {item.label}
-                  </Text>
-                )}
-                {isActive && !collapsed && <View style={styles.activeIndicator} />}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Bottom of sidebar */}
-        <View style={styles.sidebarFooter}>
-          <View style={styles.sidebarDivider} />
-          <TouchableOpacity
-            style={styles.sidebarItem}
-            onPress={() => navigation.navigate('More', { screen: 'Settings' })}
-            activeOpacity={0.75}
-          >
-            <View style={styles.sidebarIcon}>
-              <Feather name="settings" size={16} color="rgba(255,255,255,0.5)" />
-            </View>
-            {!collapsed && <Text style={styles.sidebarLabel}>Settings</Text>}
-          </TouchableOpacity>
-        </View>
       </View>
 
-      {/* Main content */}
+      <View style={styles.sidebarDivider} />
+
+      {/* Nav items */}
+      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 4 }}>
+        {SIDEBAR_SECTIONS.map((item) => {
+          const active = isActive(item);
+          return (
+            <TouchableOpacity
+              key={item.name}
+              style={[styles.navItem, active && styles.navItemActive]}
+              onPress={() => navigate(item)}
+              activeOpacity={0.75}
+            >
+              {/* Active bar */}
+              {active && <View style={styles.navActiveBar} />}
+
+              <View style={[styles.navIconWrap, active && styles.navIconWrapActive]}>
+                <Feather
+                  name={item.icon}
+                  size={16}
+                  color={active ? COLORS.primary : 'rgba(255,255,255,0.45)'}
+                  strokeWidth={active ? 2.5 : 1.5}
+                />
+              </View>
+
+              {!collapsed && (
+                <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+                  {item.label}
+                </Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Footer version */}
+      {!collapsed && (
+        <View style={styles.sidebarFooter}>
+          <Text style={styles.sidebarVersion}>Locas Billing</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Desktop layout wrapper ────────────────────────────────────────
+function DesktopLayout({ state, navigation, descriptors }) {
+  return (
+    <View style={styles.desktopRoot}>
+      <DesktopSidebar state={state} navigation={navigation} />
       <View style={styles.desktopContent}>
         {descriptors[state.routes[state.index].key].render()}
       </View>
@@ -231,45 +239,45 @@ function DesktopLayout({ state, navigation, descriptors }) {
   );
 }
 
-// ─── Root navigator ───────────────────────────────────────────────
+// ── Root ──────────────────────────────────────────────────────────
 export default function AppNavigator() {
   const isWide = useIsWide();
 
-  if (isWide) {
-    // Desktop/Web: render sidebar layout
-    return (
-      <Tab.Navigator
-        tabBar={props => <DesktopLayout {...props} />}
-        screenOptions={{ headerShown: false }}
-      >
-        <Tab.Screen name="Dashboard"   component={DashboardScreen} />
-        <Tab.Screen name="InvoicesTab" component={InvoiceStack} />
-        <Tab.Screen name="PartiesTab"  component={PartiesStack} />
-        <Tab.Screen name="Inventory"   component={InventoryScreen} />
-        <Tab.Screen name="More"        component={MoreStack} />
-      </Tab.Navigator>
-    );
-  }
-
-  // Mobile: render bottom tabs
-  return (
-    <Tab.Navigator
-      tabBar={props => <MobileTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
+  const screens = (
+    <>
       <Tab.Screen name="Dashboard"   component={DashboardScreen} />
       <Tab.Screen name="InvoicesTab" component={InvoiceStack} />
       <Tab.Screen name="PartiesTab"  component={PartiesStack} />
       <Tab.Screen name="Inventory"   component={InventoryScreen} />
       <Tab.Screen name="More"        component={MoreStack} />
+    </>
+  );
+
+  if (isWide) {
+    return (
+      <Tab.Navigator
+        tabBar={props => <DesktopLayout {...props} />}
+        screenOptions={{ headerShown: false }}
+      >
+        {screens}
+      </Tab.Navigator>
+    );
+  }
+
+  return (
+    <Tab.Navigator
+      tabBar={props => <MobileTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
+    >
+      {screens}
     </Tab.Navigator>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
 
-  // ── Mobile bottom bar ──────────────────────────────────────────
+  // Mobile
   bottomBar: {
     backgroundColor: COLORS.card,
     borderTopWidth: 1,
@@ -278,8 +286,7 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    top: -24,
-    alignSelf: 'center',
+    top: -24, alignSelf: 'center',
     width: 50, height: 50, borderRadius: 25,
     backgroundColor: COLORS.primary,
     alignItems: 'center', justifyContent: 'center',
@@ -294,112 +301,144 @@ const styles = StyleSheet.create({
   tabLabel:      { fontSize: 10, fontWeight: FONTS.medium, color: COLORS.textMute },
   tabLabelActive:{ color: COLORS.primary, fontWeight: FONTS.bold },
 
-  // ── Desktop sidebar layout ──────────────────────────────────────
+  // Desktop root
   desktopRoot: {
     flex: 1,
     flexDirection: 'row',
     backgroundColor: COLORS.bg,
   },
+  desktopContent: {
+    flex: 1,
+    overflow: 'hidden',
+    backgroundColor: COLORS.bg,
+  },
 
+  // Sidebar shell
   sidebar: {
     width: 220,
     backgroundColor: COLORS.secondary,
     flexDirection: 'column',
-    ...SHADOW.lg,
-    // Ensure sidebar sits above content
-    zIndex: 10,
+    // Web-specific: ensure full height
+    ...(Platform.OS === 'web' ? { minHeight: '100vh' } : { flex: 1 }),
   },
   sidebarCollapsed: {
     width: 64,
   },
 
+  // Brand header
   sidebarHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 18,
+    paddingTop: 20,
+    paddingBottom: 16,
     gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  sidebarLogo: {
-    width: 32, height: 32, borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  sidebarLogoBox: {
+    width: 34, height: 34,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
     alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
     flexShrink: 0,
+    ...SHADOW.brand,
   },
-  sidebarLogoImg: { width: 24, height: 24 },
-  sidebarBrand:   { fontSize: 13, fontWeight: FONTS.black, color: '#fff', letterSpacing: 3 },
-  sidebarTagline: { fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 },
+  sidebarLogoText: {
+    fontSize: 18, fontWeight: FONTS.black,
+    color: '#fff', lineHeight: 22,
+  },
+  sidebarBrand: {
+    fontSize: 14, fontWeight: FONTS.black,
+    color: '#fff', letterSpacing: 3,
+  },
+  sidebarTagline: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.3)',
+    marginTop: 1,
+  },
   collapseBtn: {
-    width: 24, height: 24, borderRadius: RADIUS.sm,
+    width: 22, height: 22,
+    borderRadius: 6,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     flexShrink: 0,
   },
 
-  sidebarNewBtn: {
+  // New invoice button
+  newInvoiceBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 12, marginTop: 14, marginBottom: 4,
     backgroundColor: COLORS.primary,
     paddingVertical: 10, paddingHorizontal: 14,
     borderRadius: RADIUS.md,
     ...SHADOW.brand,
   },
-  sidebarNewBtnCollapsed: {
+  newInvoiceBtnCollapsed: {
     justifyContent: 'center',
     paddingHorizontal: 0,
-    marginHorizontal: 10,
+    paddingVertical: 10,
   },
-  sidebarNewBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  newInvoiceBtnText: {
+    color: '#fff', fontWeight: FONTS.bold, fontSize: 13,
+  },
 
   sidebarDivider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    marginVertical: 8,
-    marginHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginHorizontal: 14,
+    marginVertical: 4,
   },
 
-  sidebarItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 9, paddingHorizontal: 12,
+  // Nav items
+  navItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 14,
     marginHorizontal: 8, marginVertical: 1,
     borderRadius: RADIUS.md,
+    gap: 10,
     position: 'relative',
+    overflow: 'hidden',
   },
-  sidebarItemActive: {
-    backgroundColor: 'rgba(255,107,0,0.12)',
+  navItemActive: {
+    backgroundColor: 'rgba(255,107,0,0.1)',
   },
-  sidebarIcon: {
-    width: 32, height: 32, borderRadius: RADIUS.sm,
+  navActiveBar: {
+    position: 'absolute',
+    left: 0, top: 6, bottom: 6,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+  },
+  navIconWrap: {
+    width: 30, height: 30,
+    borderRadius: RADIUS.sm,
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  sidebarIconActive: {
+  navIconWrapActive: {
     backgroundColor: 'rgba(255,107,0,0.15)',
   },
-  sidebarLabel: {
-    flex: 1, fontSize: 13, fontWeight: FONTS.medium,
-    color: 'rgba(255,255,255,0.55)',
+  navLabel: {
+    flex: 1,
+    fontSize: 13, fontWeight: FONTS.medium,
+    color: 'rgba(255,255,255,0.45)',
   },
-  sidebarLabelActive: {
+  navLabelActive: {
     color: COLORS.primary,
     fontWeight: FONTS.semibold,
   },
-  activeIndicator: {
-    width: 3, height: 16, borderRadius: 2,
-    backgroundColor: COLORS.primary,
-    position: 'absolute', right: 4,
-  },
 
+  // Footer
   sidebarFooter: {
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
   },
-
-  // Main content area
-  desktopContent: {
-    flex: 1,
-    overflow: 'hidden',
+  sidebarVersion: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.2)',
+    fontWeight: FONTS.medium,
   },
 });
