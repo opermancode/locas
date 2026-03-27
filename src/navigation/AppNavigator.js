@@ -129,24 +129,20 @@ function injectCSS() {
     html, body, #root { height: 100% !important; margin: 0 !important; overflow: hidden !important; }
     #locas-sidebar { transition: width 0.2s ease; }
     #locas-scene {
-      padding-left: ${W_COLLAPSED}px !important;
-      transition: padding-left 0.2s ease !important;
-      box-sizing: border-box !important;
+      left: ${W_COLLAPSED}px !important;
+      transition: left 0.2s ease !important;
     }
   `;
 }
 
 function setSidebarWidth(w) {
   if (Platform.OS !== 'web') return;
-  // Update sidebar width
   const sidebar = document.getElementById('locas-sidebar');
   if (sidebar) sidebar.style.width = w + 'px';
-  // Update scene container padding to push content right of sidebar
   const scene = document.getElementById('locas-scene');
   if (scene) {
-    scene.style.paddingLeft = w + 'px';
-    scene.style.transition = 'padding-left 0.2s ease';
-    scene.style.boxSizing = 'border-box';
+    scene.style.setProperty('left', w + 'px', 'important');
+    scene.style.transition = 'left 0.2s ease';
   }
 }
 
@@ -352,9 +348,9 @@ export default function AppNavigator() {
       });
       if (scene) {
         scene.id = 'locas-scene';
-        scene.style.paddingLeft = W_COLLAPSED + 'px';
-        scene.style.transition = 'padding-left 0.2s ease';
-        scene.style.boxSizing = 'border-box';
+        // Force correct left immediately (overrides sceneContainerStyle inline)
+        scene.style.setProperty('left', W_COLLAPSED + 'px', 'important');
+        scene.style.transition = 'left 0.2s ease';
       }
     }, 300);
   }, []);
@@ -366,7 +362,7 @@ export default function AppNavigator() {
       sceneContainerStyle={isWide ? {
         position: 'fixed',
         top: 0, right: 0, bottom: 0,
-        left: 0,
+        left: W_COLLAPSED,
         overflow: 'hidden',
       } : {}}
     >
