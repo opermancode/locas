@@ -1,7 +1,7 @@
 {
   "name": "locas-desktop",
-  "version": "1.8.3",
-  "description": "Locas — Smart Billing for India (Desktop)",
+  "version": "1.0.0",
+  "description": "Locas \u2014 Smart Billing for India (Desktop)",
   "main": "main.js",
   "private": true,
   "author": "Omkar Jagtap",
@@ -22,7 +22,8 @@
     },
     "files": [
       "main.js",
-      "dist/**/*"
+      "dist/**/*",
+      "license.txt"
     ],
     "win": {
       "target": "nsis",
@@ -33,7 +34,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Locas"
+      "shortcutName": "Locas",
+      "license": "license.txt"
     }
   },
   "devDependencies": {

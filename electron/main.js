@@ -9,7 +9,7 @@ let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
+    width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 600,
@@ -18,9 +18,9 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: false,
     },
-    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+    icon: path.join(__dirname, '../assets/icon.png'),
     title: 'Locas — Smart Billing',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#FFF8F4',
     show: false,
   });
 
@@ -28,7 +28,6 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', function() {
     mainWindow.show();
-    mainWindow.focus();
   });
 
   mainWindow.webContents.setWindowOpenHandler(function(details) {

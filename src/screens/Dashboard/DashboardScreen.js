@@ -10,8 +10,6 @@ import { getDashboardStats, getProfile } from '../../db';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 import { formatINRCompact, formatINR } from '../../utils/gst';
 
-const isDesktop = Platform.OS === 'web' && Dimensions.get('window').width >= 768;
-
 export default function DashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [stats, setStats]           = useState(null);
@@ -74,29 +72,27 @@ export default function DashboardScreen({ navigation }) {
   ];
 
   return (
-    <View style={[styles.container, { paddingTop: isDesktop ? 0 : insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.secondary} />
 
-      {/* Header — only on mobile, sidebar handles nav on desktop */}
-      {!isDesktop && (
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.logoWrap}>
-              <Image source={require('../../../assets/icon.png')} style={styles.logoImg} resizeMode="contain" />
-            </View>
-            <View>
-              <Text style={styles.greeting}>{greeting}</Text>
-              <Text style={styles.bizName} numberOfLines={1}>{profile?.name || 'LOCAS'}</Text>
-            </View>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.logoWrap}>
+            <Image source={require('../../../assets/icon.png')} style={styles.logoImg} resizeMode="contain" />
           </View>
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => navigation.navigate('More', { screen: 'Settings' })}
-          >
-            <Feather name="settings" size={18} color="rgba(255,255,255,0.7)" />
-          </TouchableOpacity>
+          <View>
+            <Text style={styles.greeting}>{greeting}</Text>
+            <Text style={styles.bizName} numberOfLines={1}>{profile?.name || 'LOCAS'}</Text>
+          </View>
         </View>
-      )}
+        <TouchableOpacity
+          style={styles.headerBtn}
+          onPress={() => navigation.navigate('More', { screen: 'Settings' })}
+        >
+          <Feather name="settings" size={18} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
