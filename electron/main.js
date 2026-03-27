@@ -20,13 +20,13 @@ function createWindow() {
     },
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     title: 'Locas — Smart Billing',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F1F5F9',
     show: false,
   });
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
-  mainWindow.once('ready-to-show', () => {
+  mainWindow.once('ready-to-show', function() {
     mainWindow.show();
     mainWindow.focus();
   });
