@@ -635,7 +635,6 @@ const styles = StyleSheet.create({
   sectionLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
   loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
   notFound:       { fontSize: 15, color: COLORS.textMute },
-  successBg:      '#F0FDF4',
 
   // Dashboard header
   logoWrap:    { width: 40, height: 40, borderRadius: RADIUS.md, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },

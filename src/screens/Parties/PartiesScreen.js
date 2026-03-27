@@ -758,7 +758,6 @@ const styles = StyleSheet.create({
   sectionLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
   loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
   notFound:       { fontSize: 15, color: COLORS.textMute },
-  successBg:      '#F0FDF4',
 
   typeRow:          { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 12 },
   typeBtn:          { flex: 1, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },

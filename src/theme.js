@@ -13,6 +13,7 @@ export const COLORS = {
   // Semantic
   success:      '#16A34A',
   successLight: '#DCFCE7',
+  successBg:    '#F0FDF4',
   warning:      '#D97706',
   warningLight: '#FEF3C7',
   warningBg:    '#FFFBEB',

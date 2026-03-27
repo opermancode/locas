@@ -490,7 +490,6 @@ const styles = StyleSheet.create({
   sectionLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
   loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
   notFound:       { fontSize: 15, color: COLORS.textMute },
-  successBg:      '#F0FDF4',
 
   logoWrap:    { alignItems: 'center', marginBottom: 8 },
   logoBox:     { width: 200, height: 60, alignItems: 'center', justifyContent: 'center' },
