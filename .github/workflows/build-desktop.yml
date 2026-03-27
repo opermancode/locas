@@ -57,6 +57,11 @@ jobs:
           pkg.devDependencies['@types/react']    = '~18.3.0';
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
 
+          // Bump electron/package.json so the EXE filename matches the version
+          const ePkg = JSON.parse(fs.readFileSync('electron/package.json', 'utf8'));
+          ePkg.version = v;
+          fs.writeFileSync('electron/package.json', JSON.stringify(ePkg, null, 2));
+
           // Update version.json for in-app update check
           const versionJson = {
             version: v,
@@ -71,7 +76,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add app.json package.json version.json
+          git add app.json package.json version.json electron/package.json
           git diff --staged --quiet || git commit -m "chore: bump desktop to v${{ steps.version.outputs.version }}"
           git push origin HEAD:main || true
 

@@ -230,7 +230,7 @@ function DesktopSidebar({ state, navigation }) {
 // ── Desktop layout wrapper ────────────────────────────────────────
 function DesktopLayout({ state, navigation, descriptors }) {
   return (
-    <View style={styles.desktopRoot}>
+    <View style={[styles.desktopRoot, Platform.OS === 'web' && { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }]}>
       <DesktopSidebar state={state} navigation={navigation} />
       <View style={styles.desktopContent}>
         {descriptors[state.routes[state.index].key].render()}
@@ -309,7 +309,6 @@ const styles = StyleSheet.create({
   },
   desktopContent: {
     flex: 1,
-    overflow: 'hidden',
     backgroundColor: COLORS.bg,
   },
 
@@ -319,7 +318,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.secondary,
     flexDirection: 'column',
     // Web-specific: ensure full height
-    ...(Platform.OS === 'web' ? { minHeight: '100vh' } : { flex: 1 }),
+    flex: 1,
   },
   sidebarCollapsed: {
     width: 64,
