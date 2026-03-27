@@ -459,7 +459,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Record Payment</Text>
-              <TouchableOpacity onPress={() => setPayModal(false)}><Feather name="x" size={18} color={COLORS.textMute} />ose}>✕</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setPayModal(false)} style={{padding:4}}><Feather name="x" size={18} color={COLORS.textMute} /></TouchableOpacity>
             </View>
             <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
               <View style={styles.payInvInfo}>
@@ -484,7 +484,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
               <FL>Note (optional)</FL>
               <TextInput style={styles.input} value={payNote} onChangeText={setPayNote} placeholder="Any note..." placeholderTextColor={COLORS.textMute} />
               <TouchableOpacity style={[styles.confirmBtn, paying && { opacity: 0.5 }]} onPress={handlePayment} disabled={paying}>
-                {paying ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.confirmBtnText}>✅ Confirm Payment</Text>}
+                {paying ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.confirmBtnText}>Confirm Payment</Text>}
               </TouchableOpacity>
               <View style={{ height: 40 }} />
             </ScrollView>

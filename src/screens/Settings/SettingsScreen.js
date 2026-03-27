@@ -33,7 +33,8 @@ import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 // Use require() for app.json — named ESM imports from JSON can fail in some
 // webpack/Electron builds that don't enable JSON module assertions.
-const { expo: { version } } = require('../../../app.json');
+let version = '—';
+try { version = require('../../../app.json').expo.version; } catch (_) {}
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -429,7 +430,7 @@ export default function SettingsScreen({ navigation }) {
             <View style={styles.stateSheet}>
               <View style={styles.stateHeader}>
                 <Text style={styles.stateTitle}>Select Backup Time</Text>
-                <TouchableOpacity onPress={()=>setTimeModal(false)}><Feather name='x' size={18} color={COLORS.textMute} />se}>✕</Text></TouchableOpacity>
+                <TouchableOpacity onPress={()=>setTimeModal(false)}><Feather name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
               </View>
               {BACKUP_TIMES.map(t => (
                 <TouchableOpacity key={t} style={styles.stateItem} onPress={()=>handleSaveBackupTime(t)}>
@@ -448,7 +449,7 @@ export default function SettingsScreen({ navigation }) {
           <View style={styles.stateSheet}>
             <View style={styles.stateHeader}>
               <Text style={styles.stateTitle}>Select State</Text>
-              <TouchableOpacity onPress={()=>setStateModal(false)}><Feather name='x' size={18} color={COLORS.textMute} />ose}>✕</Text></TouchableOpacity>
+              <TouchableOpacity onPress={()=>setStateModal(false)}><Feather name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
             </View>
             <View style={styles.stateSearchBox}>
               <TextInput style={styles.stateSearchInput} value={stateSearch} onChangeText={setStateSearch} placeholder="Search state..." placeholderTextColor={COLORS.textMute} autoFocus />
@@ -666,7 +667,8 @@ const styles = StyleSheet.create({
   kpiValue:         { fontSize: 14, fontWeight: FONTS.heavy, marginBottom: 2 },
   kpiLabel:         { fontSize: 10, color: COLORS.textMute },
   kpiDivider:       { width: 1, backgroundColor: COLORS.border, marginVertical: 8 },
-  sectionTitle:     { fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+  sectionHeader:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 },
+  sectionTitle:     { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7 },
   invRow: {
     backgroundColor: COLORS.card, marginHorizontal: 12, marginBottom: 8,
     borderRadius: RADIUS.lg, padding: 13, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.xs,

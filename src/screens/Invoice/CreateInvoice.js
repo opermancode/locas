@@ -391,7 +391,7 @@ export default function CreateInvoice({ navigation, route }) {
                 <Text style={styles.partyName}>{party.name}</Text>
                 {party.phone ? <View style={styles.subRow}><Feather name="phone" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {party.phone}</Text></View> : null}
                 {party.gstin   ? <Text style={styles.partySub}>GST: {party.gstin}</Text> : null}
-                {party.address ? <View style={styles.subRow}><Feather name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub} numberOfLines={1}> {party.address}</Text> : null}
+                {party.address ? <View style={styles.subRow}><Feather name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub} numberOfLines={1}> {party.address}</Text></View> : null}
                 <View style={supplyType === 'inter' ? styles.igstBadge : styles.intraBadge}>
                   <Text style={supplyType === 'inter' ? styles.igstBadgeText : styles.intraBadgeText}>
                     {supplyType === 'inter' ? 'IGST — Inter-state' : 'CGST+SGST — Intra-state'}
@@ -404,18 +404,18 @@ export default function CreateInvoice({ navigation, route }) {
                 <Text style={styles.partySelectorHint}>or leave empty for walk-in</Text>
               </View>
             )}
-            <View style={styles.partyChevron}>
-              <Text style={{ color: COLORS.primary, fontSize: 18 }}>
-                party ? <Feather name="x" size={16} color={COLORS.textMute} /> : <Feather name="chevron-right" size={16} color={COLORS.textMute} />
-              </Text>
-            </View>
-            {party && (
+            {party ? (
               <TouchableOpacity
+                style={styles.partyChevron}
                 onPress={(e) => { e.stopPropagation?.(); setParty(null); }}
-                style={styles.clearPartyBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Feather name="x" size={16} color={COLORS.textMute} />
               </TouchableOpacity>
+            ) : (
+              <View style={styles.partyChevron}>
+                <Feather name="chevron-right" size={16} color={COLORS.textMute} />
+              </View>
             )}
           </TouchableOpacity>
 
