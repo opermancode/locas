@@ -3,7 +3,11 @@
     "preview": {
       "android": {
         "buildType": "apk"
-      }
+      },
+      "node": "20.19.4"
     }
+  },
+  "cli": {
+    "appVersionSource": "local"
   }
 }
