@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -175,7 +176,7 @@ export default function InvoiceDetail({ navigation, route }) {
     try {
       await recordPayment(invoiceId, amt, payMethod, payRef, payDate, payNote);
       setPayModal(false); load();
-      Alert.alert('✅ Payment Recorded', `${formatINR(amt)} via ${payMethod}`);
+      Alert.alert('Payment Recorded', `${formatINR(amt)} via ${payMethod}`);
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setPaying(false); }
   };
@@ -228,12 +229,12 @@ export default function InvoiceDetail({ navigation, route }) {
   const handleWhatsApp = async () => {
     const isInter = invoice.supply_type === 'inter';
     const msg =
-`🧾 *Invoice ${invoice.invoice_number}*
+`*Invoice ${invoice.invoice_number}*
 From: ${profile?.name || 'My Business'}
 Date: ${invoice.date}${invoice.due_date ? `\nDue: ${invoice.due_date}` : ''}
 
 *Items:*
-${(invoice.items || []).map(i => `• ${i.name} × ${i.qty} = ${formatINR(i.total)}`).join('\n')}
+${(invoice.items || []).map(i => `${i.name} x${i.qty} = ${formatINR(i.total)}`).join('\n')}
 
 Taxable: ${formatINR(invoice.taxable)}
 ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst)}\nSGST: ${formatINR(invoice.sgst)}`}
@@ -260,7 +261,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
       {/* ── Header ─────────────────────────────────────── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Feather name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.headerTitle}>{invoice.invoice_number}</Text>
@@ -270,10 +271,10 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           <Text style={[styles.statusPillText, { color: statusStyle.text }]}>{statusKey.toUpperCase()}</Text>
         </View>
         <TouchableOpacity onPress={handleEdit} style={styles.editBtn}>
-          <Text style={styles.editIcon}>✏️</Text>
+          <Feather name="edit-2" size={16} color={COLORS.textSub} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
-          <Text style={styles.deleteIcon}>🗑️</Text>
+          <Feather name="trash-2" size={16} color={COLORS.danger} />
         </TouchableOpacity>
       </View>
 
@@ -281,10 +282,10 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
 
         {/* ── Action bar ─────────────────────────────────── */}
         <View style={styles.actionBar}>
-          {balance > 0.01 && <ActionBtn icon="💰" label="Payment"  color={COLORS.success}   onPress={openPayModal} />}
-          <ActionBtn icon="📄"  label="PDF"      color={COLORS.primary}   onPress={doPDF}   loading={printing} />
-          <ActionBtn icon="💬"  label="WhatsApp" color="#25D366"          onPress={handleWhatsApp} />
-          <ActionBtn icon="🖨️"  label="Print"    color={COLORS.secondary} onPress={doPrint} loading={printing} />
+          {balance > 0.01 && <ActionBtn icon="dollar-sign" label="Payment"  color={COLORS.success}   onPress={openPayModal} />}
+          <ActionBtn icon="download" label="PDF"      color={COLORS.primary}   onPress={doPDF}   loading={printing} />
+          <ActionBtn icon="message-circle" label="WhatsApp" color="#25D366"          onPress={handleWhatsApp} />
+          <ActionBtn icon="printer" label="Print"    color={COLORS.secondary} onPress={doPrint} loading={printing} />
         </View>
 
         {/* ── Balance banner ──────────────────────────────── */}
@@ -295,7 +296,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
               <Text style={styles.balanceBannerAmt}>{formatINR(balance)}</Text>
             </View>
             <View style={styles.balanceBannerBtn}>
-              <Text style={styles.balanceBannerBtnText}>Record Payment →</Text>
+              <><Text style={styles.balanceBannerBtnText}>Record Payment</Text><Feather name="arrow-right" size={13} color={COLORS.white} /></>
             </View>
           </TouchableOpacity>
         )}
@@ -368,12 +369,12 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
                     {/* Selected check */}
                     {isSelected && (
                       <View style={[styles.thumbCheck, { backgroundColor: accentColor }]}>
-                        <Text style={styles.thumbCheckText}>✓</Text>
+                        <Feather name="check" size={14} color={COLORS.white} />
                       </View>
                     )}
                     {tpl.id === 't5' && (
                       <View style={styles.thumbThermal}>
-                        <Text style={styles.thumbThermalText}>🖨️</Text>
+                        <Feather name="printer" size={20} color={COLORS.textSub} />
                       </View>
                     )}
                   </View>
@@ -398,7 +399,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
                     { backgroundColor: c.hex },
                     accentColor === c.hex && { borderColor: COLORS.text, borderWidth: 2.5, transform: [{ scale: 1.15 }] },
                   ]}>
-                    {accentColor === c.hex && <Text style={styles.colorCheck}>✓</Text>}
+                    {accentColor === c.hex && <Feather name="check" size={14} color="#fff" />}
                   </View>
                   <Text style={[styles.colorName, accentColor === c.hex && { color: c.hex, fontWeight: FONTS.bold }]}>
                     {c.name}
@@ -458,7 +459,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Record Payment</Text>
-              <TouchableOpacity onPress={() => setPayModal(false)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setPayModal(false)}><Feather name="x" size={18} color={COLORS.textMute} />ose}>✕</Text></TouchableOpacity>
             </View>
             <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
               <View style={styles.payInvInfo}>
@@ -499,7 +500,7 @@ function ActionBtn({ icon, label, color, onPress, loading }) {
   return (
     <TouchableOpacity style={styles.actionBtn} onPress={onPress} disabled={loading} activeOpacity={0.8}>
       <View style={[styles.actionIconBox, { backgroundColor: color + '20' }]}>
-        {loading ? <ActivityIndicator size="small" color={color} /> : <Text style={styles.actionIcon}>{icon}</Text>}
+        {loading ? <ActivityIndicator size="small" color={color} /> : <Feather name={icon} size={20} color={color} />}
       </View>
       <Text style={[styles.actionLabel, { color }]}>{label}</Text>
     </TouchableOpacity>

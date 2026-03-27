@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -80,7 +81,7 @@ export default function SettingsScreen({ navigation }) {
         fetchUserEmail(token).then(async email => {
           await saveToken(token, email, expiresIn);
           setDriveEmail(email);
-          Alert.alert('✅ Connected', `Google Drive linked to ${email}`);
+          Alert.alert('Connected', `Google Drive linked to ${email}`);
         }).catch(() => Alert.alert('Error', 'Could not fetch Google account info'));
       }
     }
@@ -97,7 +98,7 @@ export default function SettingsScreen({ navigation }) {
     try {
       await saveProfile(form);
       setDirty(false);
-      Alert.alert('✅ Saved', 'Business profile updated');
+      Alert.alert('Saved', 'Business profile updated');
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSaving(false); }
   };
@@ -122,7 +123,7 @@ export default function SettingsScreen({ navigation }) {
       await uploadBackup(token, json);
       const last = await getLastBackupTime();
       setLastBackup(last);
-      Alert.alert('✅ Backup saved', 'Your data has been backed up to Google Drive');
+      Alert.alert('Backup saved', 'Your data has been backed up to Google Drive');
     } catch (e) { Alert.alert('Backup failed', e.message); }
     finally { setSyncing(false); }
   };
@@ -131,7 +132,7 @@ export default function SettingsScreen({ navigation }) {
     const token = await getToken();
     if (!token) { Alert.alert('Not connected', 'Connect Google Drive first'); return; }
     Alert.alert(
-      '⚠️ Restore Backup',
+      'Restore Backup',
       'This will replace ALL current data with your Google Drive backup. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -143,7 +144,7 @@ export default function SettingsScreen({ navigation }) {
               const json = await downloadBackup(token);
               if (!json) { Alert.alert('No backup found', 'No backup file found in your Google Drive'); return; }
               await importAllData(json);
-              Alert.alert('✅ Restored', 'Your data has been restored successfully');
+              Alert.alert('Restored', 'Your data has been restored successfully');
             } catch (e) { Alert.alert('Restore failed', e.message); }
             finally { setRestoring(false); }
           }
@@ -191,7 +192,7 @@ export default function SettingsScreen({ navigation }) {
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Feather name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <TouchableOpacity
@@ -206,7 +207,7 @@ export default function SettingsScreen({ navigation }) {
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
 
         {/* ── Business Info ─────────────────────────────── */}
-        <SectionHeader icon="🏢" title="Business Details" />
+        <SectionHeader icon="briefcase" title="Business Details" />
         <View style={styles.card}>
           <Field label="Business Name *">
             <TextInput style={styles.input} value={form.name||''} onChangeText={v=>set('name',v)} placeholder="Your business name" placeholderTextColor={COLORS.textMute} />
@@ -226,22 +227,22 @@ export default function SettingsScreen({ navigation }) {
           <Field label="State">
             <TouchableOpacity style={[styles.input,styles.picker]} onPress={()=>{setStateSearch('');setStateModal(true);}}>
               <Text style={form.state?styles.pickerText:styles.pickerPlaceholder}>{form.state?`${form.state} (${form.state_code})`:'Select state...'}</Text>
-              <Text style={styles.pickerArrow}>▾</Text>
+              <Feather name="chevron-down" size={16} color={COLORS.textMute} />
             </TouchableOpacity>
           </Field>
         </View>
 
         {/* ── GST & Tax ─────────────────────────────────── */}
-        <SectionHeader icon="🏛️" title="GST & Tax" />
+        <SectionHeader icon="percent" title="GST & Tax" />
         <View style={styles.card}>
           <Field label="GSTIN">
             <TextInput style={styles.input} value={form.gstin||''} onChangeText={v=>set('gstin',v.toUpperCase())} placeholder="22AAAAA0000A1Z5" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={15} />
           </Field>
           {form.gstin?.length>0&&form.gstin.length!==15&&(
-            <View style={styles.hintWarn}><Text style={styles.hintWarnText}>⚠️ GSTIN must be 15 characters ({form.gstin.length}/15)</Text></View>
+            <View style={styles.hintWarn}><Feather name="alert-circle" size={12} color={COLORS.warning} /><Text style={styles.hintWarnText}> GSTIN must be 15 characters ({form.gstin.length}/15)</Text></View>
           )}
           {form.gstin?.length===15&&(
-            <View style={styles.hintOk}><Text style={styles.hintOkText}>✅ GSTIN format looks good</Text></View>
+            <View style={styles.hintOk}><Feather name="check-circle" size={12} color={COLORS.success} /><Text style={styles.hintOkText}> GSTIN format looks good</Text></View>
           )}
           <Row>
             <Field label="PAN" flex={1}>
@@ -255,7 +256,7 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         {/* ── Invoice Settings ───────────────────────────── */}
-        <SectionHeader icon="🧾" title="Invoice Settings" />
+        <SectionHeader icon="file-text" title="Invoice Settings" />
         <View style={styles.card}>
           <Field label="Invoice Prefix">
             <TextInput style={styles.input} value={form.invoice_prefix||'INV'} onChangeText={v=>set('invoice_prefix',v.toUpperCase())} placeholder="INV" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={6} />
@@ -267,7 +268,7 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         {/* ── Bank Details ───────────────────────────────── */}
-        <SectionHeader icon="🏦" title="Bank Details" />
+        <SectionHeader icon="credit-card" title="Bank Details" />
         <View style={styles.card}>
           <Field label="Bank Name">
             <TextInput style={styles.input} value={form.bank_name||''} onChangeText={v=>set('bank_name',v)} placeholder="e.g. State Bank of India" placeholderTextColor={COLORS.textMute} />
@@ -282,12 +283,12 @@ export default function SettingsScreen({ navigation }) {
             </Field>
           </Row>
           <View style={styles.infoBox}>
-            <Text style={styles.infoBoxText}>💡 Bank details appear on PDF invoices for customer payments</Text>
+            <Text style={styles.infoBoxText}>Bank details appear on PDF invoices for customer payments</Text>
           </View>
         </View>
 
         {/* ── UPI & QR ───────────────────────────────────── */}
-        <SectionHeader icon="📲" title="UPI & QR Code" />
+        <SectionHeader icon="smartphone" title="UPI & QR Code" />
         <View style={styles.card}>
           <Field label="UPI ID">
             <TextInput
@@ -316,7 +317,7 @@ export default function SettingsScreen({ navigation }) {
 
           {form.upi_id&&form.show_upi_qr?(
             <View style={styles.upiOk}>
-              <Text style={styles.upiOkIcon}>✅</Text>
+              <Feather name="check-circle" size={16} color={COLORS.success} />
               <View style={{flex:1}}>
                 <Text style={styles.upiOkTitle}>QR will appear on invoices</Text>
                 <Text style={styles.upiOkId}>{form.upi_id}</Text>
@@ -326,18 +327,18 @@ export default function SettingsScreen({ navigation }) {
 
           {form.show_upi_qr&&!form.upi_id?(
             <View style={styles.upiWarn}>
-              <Text style={styles.upiWarnText}>⚠️ Enter your UPI ID above to enable QR code</Text>
+              <Text style={styles.upiWarnText}>Enter your UPI ID above to enable QR code</Text>
             </View>
           ):null}
         </View>
 
         {/* ── Backup & Restore ──────────────────────────── */}
-        <SectionHeader icon="☁️" title="Backup & Restore" />
+        <SectionHeader icon="cloud" title="Backup & Restore" />
         <View style={styles.card}>
           {driveEmail ? (
             <>
               <View style={styles.driveConnected}>
-                <Text style={styles.driveIcon}>✅</Text>
+                <Feather name="check-circle" size={16} color={COLORS.success} />
                 <View style={{flex:1}}>
                   <Text style={styles.driveEmail}>{driveEmail}</Text>
                   <Text style={styles.driveLastBackup}>Last backup: {formatLastBackup(lastBackup)}</Text>
@@ -365,7 +366,7 @@ export default function SettingsScreen({ navigation }) {
                 >
                   {syncing
                     ? <ActivityIndicator size="small" color={COLORS.white}/>
-                    : <Text style={styles.backupBtnText}>☁️ Sync Now</Text>
+                    : <><Feather name="cloud" size={14} color="#fff" /><Text style={styles.backupBtnText}> Sync Now</Text></>
                   }
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -375,7 +376,7 @@ export default function SettingsScreen({ navigation }) {
                 >
                   {restoring
                     ? <ActivityIndicator size="small" color={COLORS.primary}/>
-                    : <Text style={styles.restoreBtnText}>↩️ Restore</Text>
+                    : <><Feather name="refresh-ccw" size={14} color={COLORS.secondary} /><Text style={styles.restoreBtnText}> Restore</Text></>
                   }
                 </TouchableOpacity>
               </View>
@@ -390,14 +391,14 @@ export default function SettingsScreen({ navigation }) {
                 onPress={() => promptAsync()}
                 disabled={!request}
               >
-                <Text style={styles.connectBtnText}>🔗 Connect Google Drive</Text>
+                <><Feather name="link" size={14} color="#fff" /><Text style={styles.connectBtnText}> Connect Google Drive</Text></>
               </TouchableOpacity>
             </>
           )}
         </View>
 
         {/* ── About ─────────────────────────────────────── */}
-        <SectionHeader icon="ℹ️" title="About" />
+        <SectionHeader icon="info" title="About" />
         <View style={styles.card}>
           <InfoRow label="App"      value="Locas" />
           <InfoRow label="Version"  value={version} />
@@ -408,7 +409,7 @@ export default function SettingsScreen({ navigation }) {
 
         {/* Sign Out */}
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-          <Text style={styles.signOutText}>🚪 Sign Out</Text>
+          <><Feather name="log-out" size={14} color={COLORS.danger} /><Text style={styles.signOutText}> Sign Out</Text></>
         </TouchableOpacity>
 
         {/* Bottom save button */}
@@ -428,12 +429,12 @@ export default function SettingsScreen({ navigation }) {
             <View style={styles.stateSheet}>
               <View style={styles.stateHeader}>
                 <Text style={styles.stateTitle}>Select Backup Time</Text>
-                <TouchableOpacity onPress={()=>setTimeModal(false)}><Text style={styles.stateClose}>✕</Text></TouchableOpacity>
+                <TouchableOpacity onPress={()=>setTimeModal(false)}><Feather name='x' size={18} color={COLORS.textMute} />se}>✕</Text></TouchableOpacity>
               </View>
               {BACKUP_TIMES.map(t => (
                 <TouchableOpacity key={t} style={styles.stateItem} onPress={()=>handleSaveBackupTime(t)}>
                   <Text style={[styles.stateName, backupTime===t&&{color:COLORS.primary,fontWeight:FONTS.bold}]}>{t}</Text>
-                  {backupTime===t && <Text style={{color:COLORS.primary}}>✓</Text>}
+                  {backupTime===t && <Feather name="check" size={16} color={COLORS.primary} />}
                 </TouchableOpacity>
               ))}
             </View>
@@ -447,7 +448,7 @@ export default function SettingsScreen({ navigation }) {
           <View style={styles.stateSheet}>
             <View style={styles.stateHeader}>
               <Text style={styles.stateTitle}>Select State</Text>
-              <TouchableOpacity onPress={()=>setStateModal(false)}><Text style={styles.stateClose}>✕</Text></TouchableOpacity>
+              <TouchableOpacity onPress={()=>setStateModal(false)}><Feather name='x' size={18} color={COLORS.textMute} />ose}>✕</Text></TouchableOpacity>
             </View>
             <View style={styles.stateSearchBox}>
               <TextInput style={styles.stateSearchInput} value={stateSearch} onChangeText={setStateSearch} placeholder="Search state..." placeholderTextColor={COLORS.textMute} autoFocus />
@@ -470,82 +471,240 @@ export default function SettingsScreen({ navigation }) {
   );
 }
 
-function SectionHeader({icon,title}){return(<View style={styles.sectionHeader}><Text style={styles.sectionIcon}>{icon}</Text><Text style={styles.sectionTitle}>{title}</Text></View>);}
+function SectionHeader({icon,title}){return(<View style={styles.sectionHeader}><Feather name={icon} size={14} color={COLORS.textSub} style={{marginRight:6}} /><Text style={styles.sectionTitle}>{title}</Text></View>);}
 function Field({label,children,flex,style}){return(<View style={[{flex},style]}><Text style={styles.fieldLabel}>{label}</Text>{children}</View>);}
 function Row({children}){return<View style={styles.row}>{children}</View>;}
 function InfoRow({label,value}){return(<View style={styles.infoRow}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>);}
 
+
 const styles = StyleSheet.create({
-  container:{flex:1,backgroundColor:COLORS.bg},
-  center:{flex:1,alignItems:'center',justifyContent:'center'},
-  scroll:{padding:16},
-  header:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:16,paddingVertical:14,backgroundColor:COLORS.card,borderBottomWidth:1,borderBottomColor:COLORS.border},
-  backBtn:{padding:4},backIcon:{fontSize:22,color:COLORS.primary},
-  headerTitle:{fontSize:20,fontWeight:FONTS.heavy,color:COLORS.text},
-  saveBtn:{backgroundColor:COLORS.primary,paddingHorizontal:16,paddingVertical:8,borderRadius:RADIUS.md},
-  saveBtnText:{color:COLORS.white,fontWeight:FONTS.bold,fontSize:14},
-  sectionHeader:{flexDirection:'row',alignItems:'center',gap:8,marginTop:16,marginBottom:8},
-  sectionIcon:{fontSize:18},
-  sectionTitle:{fontSize:14,fontWeight:FONTS.bold,color:COLORS.textSub,textTransform:'uppercase',letterSpacing:.5},
-  card:{backgroundColor:COLORS.card,borderRadius:RADIUS.lg,padding:14,marginBottom:4,...SHADOW.sm},
-  fieldLabel:{fontSize:12,fontWeight:FONTS.semibold,color:COLORS.textSub,marginBottom:6,marginTop:12,textTransform:'uppercase',letterSpacing:.4},
-  input:{backgroundColor:COLORS.bg,borderWidth:1,borderColor:COLORS.border,borderRadius:RADIUS.sm,paddingHorizontal:12,paddingVertical:10,fontSize:14,color:COLORS.text},
-  textarea:{minHeight:72,textAlignVertical:'top'},
-  row:{flexDirection:'row',alignItems:'flex-start'},
-  picker:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},
-  pickerText:{fontSize:14,color:COLORS.text},
-  pickerPlaceholder:{fontSize:14,color:COLORS.textMute},
-  pickerArrow:{fontSize:14,color:COLORS.textMute},
-  hintWarn:{backgroundColor:'#FEF3C7',borderRadius:RADIUS.sm,padding:10,marginTop:8},
-  hintWarnText:{fontSize:12,color:'#92400E'},
-  hintOk:{backgroundColor:'#D1FAE5',borderRadius:RADIUS.sm,padding:10,marginTop:8},
-  hintOkText:{fontSize:12,color:'#065F46'},
-  previewBox:{backgroundColor:COLORS.primaryLight,borderRadius:RADIUS.sm,padding:12,marginTop:10},
-  previewLabel:{fontSize:11,color:COLORS.primary,fontWeight:FONTS.semibold,marginBottom:4},
-  previewValue:{fontSize:15,color:COLORS.primary,fontWeight:FONTS.bold},
-  infoBox:{backgroundColor:'#EFF6FF',borderRadius:RADIUS.sm,padding:10,marginTop:12},
-  infoBoxText:{fontSize:12,color:'#1D4ED8',lineHeight:18},
-  toggleRow:{flexDirection:'row',alignItems:'center',paddingVertical:14,gap:12},
-  toggleLabel:{fontSize:14,fontWeight:FONTS.semibold,color:COLORS.text},
-  toggleSub:{fontSize:12,color:COLORS.textSub,marginTop:2},
-  upiOk:{flexDirection:'row',alignItems:'center',gap:10,backgroundColor:'#D1FAE5',borderRadius:RADIUS.md,padding:12,marginTop:8},
-  upiOkIcon:{fontSize:20},
-  upiOkTitle:{fontSize:13,fontWeight:FONTS.bold,color:'#065F46'},
-  upiOkId:{fontSize:12,color:'#065F46',marginTop:2},
-  upiWarn:{backgroundColor:'#FEF3C7',borderRadius:RADIUS.md,padding:10,marginTop:8},
-  upiWarnText:{fontSize:12,color:'#92400E',fontWeight:FONTS.medium},
-  infoRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingVertical:8,borderBottomWidth:1,borderBottomColor:COLORS.border},
-  infoLabel:{fontSize:14,color:COLORS.textSub,fontWeight:FONTS.medium},
-  infoValue:{fontSize:14,color:COLORS.text,fontWeight:FONTS.semibold,textAlign:'right',flex:1,marginLeft:16},
-  bottomSave:{backgroundColor:COLORS.primary,borderRadius:RADIUS.lg,paddingVertical:15,alignItems:'center',marginTop:8,...SHADOW.md,shadowColor:COLORS.primary,shadowOpacity:.35},
-  bottomSaveText:{color:COLORS.white,fontWeight:FONTS.heavy,fontSize:16},
-  stateOverlay:{position:'absolute',top:0,left:0,right:0,bottom:0,backgroundColor:'rgba(0,0,0,0.5)',justifyContent:'flex-end'},
-  stateSheet:{backgroundColor:COLORS.card,borderTopLeftRadius:RADIUS.xl,borderTopRightRadius:RADIUS.xl,maxHeight:'75%'},
-  stateHeader:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',padding:16,borderBottomWidth:1,borderBottomColor:COLORS.border},
-  stateTitle:{fontSize:17,fontWeight:FONTS.bold,color:COLORS.text},
-  stateClose:{fontSize:20,color:COLORS.textMute,padding:4},
-  stateSearchBox:{padding:12,borderBottomWidth:1,borderBottomColor:COLORS.border},
-  stateSearchInput:{backgroundColor:COLORS.bg,borderWidth:1,borderColor:COLORS.border,borderRadius:RADIUS.sm,paddingHorizontal:12,paddingVertical:9,fontSize:14,color:COLORS.text},
-  stateItem:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',padding:14,borderBottomWidth:1,borderBottomColor:COLORS.border},
-  // Backup styles
-  driveConnected:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:10},
-  driveIcon:{fontSize:22},
-  driveEmail:{fontSize:14,fontWeight:FONTS.bold,color:COLORS.text},
-  driveLastBackup:{fontSize:11,color:COLORS.textMute,marginTop:2},
-  disconnectBtn:{fontSize:12,color:COLORS.danger,fontWeight:FONTS.semibold},
-  backupTimeRow:{flexDirection:'row',alignItems:'center',paddingVertical:14,borderTopWidth:1,borderTopColor:COLORS.border,gap:12},
-  timeChip:{backgroundColor:COLORS.primaryLight,paddingHorizontal:14,paddingVertical:8,borderRadius:RADIUS.md},
-  timeChipText:{fontSize:14,fontWeight:FONTS.bold,color:COLORS.primary},
-  backupActions:{flexDirection:'row',gap:10,marginTop:14},
-  backupBtn:{flex:1,backgroundColor:COLORS.primary,borderRadius:RADIUS.md,paddingVertical:12,alignItems:'center'},
-  backupBtnText:{color:COLORS.white,fontWeight:FONTS.bold,fontSize:14},
-  restoreBtn:{flex:1,backgroundColor:COLORS.bg,borderRadius:RADIUS.md,paddingVertical:12,alignItems:'center',borderWidth:1,borderColor:COLORS.primary},
-  restoreBtnText:{color:COLORS.primary,fontWeight:FONTS.bold,fontSize:14},
-  driveDesc:{fontSize:13,color:COLORS.textSub,lineHeight:20,marginBottom:14},
-  connectBtn:{backgroundColor:COLORS.primary,borderRadius:RADIUS.md,paddingVertical:13,alignItems:'center'},
-  connectBtnText:{color:COLORS.white,fontWeight:FONTS.bold,fontSize:15},
-  stateName:{fontSize:15,color:COLORS.text,fontWeight:FONTS.medium},
-  signOutBtn:{backgroundColor:'#FEE2E2',borderRadius:RADIUS.lg,paddingVertical:14,alignItems:'center',marginTop:8,marginBottom:4},
-  signOutText:{color:'#991B1B',fontWeight:FONTS.bold,fontSize:15},
-  stateCode:{fontSize:13,color:COLORS.textSub,fontWeight:FONTS.bold},
+  // ── Layout ───────────────────────────────────────────────────────
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  center:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll:    { padding: 16, paddingBottom: 40 },
+
+  // ── Header ───────────────────────────────────────────────────────
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
+    backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  headerLeft:  { flex: 1 },
+  headerTitle: { fontSize: 20, fontWeight: FONTS.black, color: COLORS.text },
+  headerSub:   { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
+  backBtn:     { padding: 6, marginRight: 8 },
+  backIcon:    { fontSize: 20, color: COLORS.primary },
+  addBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.md, ...SHADOW.brand },
+  addBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  newBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.md, ...SHADOW.brand },
+  newBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+
+  // ── Metrics bar ──────────────────────────────────────────────────
+  metricsBar:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  statChip:    { flex: 1, alignItems: 'center', paddingVertical: 10 },
+  statValue:   { fontSize: 15, fontWeight: FONTS.black },
+  statLabel:   { fontSize: 10, color: COLORS.textMute, marginTop: 2 },
+  statsDivider:{ width: 1, backgroundColor: COLORS.border, marginVertical: 8 },
+
+  // ── Search bar ───────────────────────────────────────────────────
+  searchWrap: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 0 },
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
+    paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.border,
+  },
+  searchIcon:  { fontSize: 17, color: COLORS.textMute, marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 10 },
+  clearSearch: { fontSize: 13, color: COLORS.textMute, padding: 4 },
+
+  // ── Filter chips ─────────────────────────────────────────────────
+  filterRow:       { paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  filterChip:      { paddingHorizontal: 14, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  filterChipActive:{ backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
+  filterText:      { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
+  filterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
+  catChip:         { paddingHorizontal: 14, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  catChipActive:   { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  catChipText:     { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
+  catChipTextActive:{ color: '#fff', fontWeight: FONTS.bold },
+
+  // ── List ─────────────────────────────────────────────────────────
+  list: { padding: 12, paddingBottom: 90 },
+
+  // ── Cards (parties, items, expenses) ─────────────────────────────
+  partyCard: {
+    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
+    marginBottom: 8, borderWidth: 1, borderColor: COLORS.border,
+    ...SHADOW.xs, overflow: 'hidden',
+  },
+  itemCard: {
+    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
+    marginBottom: 8, borderWidth: 1, borderColor: COLORS.border,
+    ...SHADOW.xs, overflow: 'hidden',
+  },
+  expCard: {
+    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
+    marginBottom: 8, borderWidth: 1, borderColor: COLORS.border,
+    ...SHADOW.xs, overflow: 'hidden',
+  },
+  cardRow:   { flexDirection: 'row', alignItems: 'center', padding: 13 },
+  cardLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  cardRight: { alignItems: 'flex-end', gap: 5 },
+  cardInfo:  { flex: 1 },
+  cardName:  { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
+  cardSub:   { fontSize: 12, color: COLORS.textSub },
+
+  // Avatar
+  avatar:     { width: 42, height: 42, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 16, fontWeight: FONTS.heavy, color: '#fff' },
+
+  // Badges / tags
+  typeBadge:        { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm, backgroundColor: COLORS.primaryLight },
+  typeBadgeSupplier:{ backgroundColor: COLORS.infoLight },
+  typeText:         { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.primary },
+  typeTextSupplier: { color: COLORS.info },
+  balance:          { fontSize: 12, fontWeight: FONTS.heavy, color: COLORS.success },
+
+  // Low stock warning
+  lowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 13, paddingVertical: 7, backgroundColor: COLORS.warningBg, borderTopWidth: 1, borderTopColor: '#FDE68A' },
+  lowText:{ fontSize: 11, color: COLORS.warning, fontWeight: FONTS.semibold },
+
+  stockRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingBottom: 10 },
+  stockLabel: { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
+  minStock:   { fontSize: 11, color: COLORS.textMute },
+
+  // Category icon badge
+  catIconBox: { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
+  catIcon:    { fontSize: 18 },
+
+  // Action buttons on cards
+  cardActions: { flexDirection: 'row', gap: 4 },
+  editBtn:     { padding: 6, borderRadius: RADIUS.sm, backgroundColor: COLORS.bgDeep },
+  editIcon:    { fontSize: 14 },
+  delBtn:      { padding: 6, borderRadius: RADIUS.sm, backgroundColor: COLORS.dangerLight },
+  delIcon:     { fontSize: 14 },
+
+  // ── Bottom sheet modal ───────────────────────────────────────────
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl,
+    maxHeight: '92%', ...SHADOW.lg,
+  },
+  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.borderDark, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 14, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  modalTitle:  { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
+  modalClose:  { fontSize: 18, color: COLORS.textMute, padding: 4 },
+  modalBody:   { padding: 20 },
+  modalFooter: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
+  modalSave:   { backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: RADIUS.lg, alignItems: 'center', ...SHADOW.brand },
+  modalSaveText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 15 },
+
+  // ── Form fields ──────────────────────────────────────────────────
+  fieldLabel: { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 14 },
+  fieldInput: {
+    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: RADIUS.md, paddingHorizontal: 13, paddingVertical: 11,
+    fontSize: 14, color: COLORS.text,
+  },
+  pickerRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pickerChip:        { paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg },
+  pickerChipActive:  { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  pickerChipText:    { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
+  pickerChipTextActive: { color: '#fff', fontWeight: FONTS.bold },
+
+  // ── Reports specific ─────────────────────────────────────────────
+  presetRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12, backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  presetChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
+  presetChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  presetText:       { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
+  presetTextActive: { color: '#fff', fontWeight: FONTS.bold },
+  reportCard:       { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, padding: 14, marginBottom: 12, ...SHADOW.sm, borderWidth: 1, borderColor: COLORS.border },
+  reportTitle:      { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  reportRow:        { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  reportLabel:      { fontSize: 13, color: COLORS.textSub },
+  reportValue:      { fontSize: 13, fontWeight: FONTS.heavy, color: COLORS.text },
+  plCard:           { backgroundColor: COLORS.secondary, borderRadius: RADIUS.lg, padding: 16, marginBottom: 14, ...SHADOW.md },
+  plTitle:          { fontSize: 12, fontWeight: FONTS.bold, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 },
+  plRow:            { flexDirection: 'row' },
+  plItem:           { flex: 1, alignItems: 'center' },
+  plValue:          { fontSize: 14, fontWeight: FONTS.heavy, marginBottom: 3 },
+  plLabel:          { fontSize: 10, color: 'rgba(255,255,255,0.45)', textAlign: 'center' },
+  exportBtn:        { backgroundColor: COLORS.secondary, paddingVertical: 12, borderRadius: RADIUS.lg, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8 },
+  exportBtnText:    { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+
+  // ── Settings specific ────────────────────────────────────────────
+  settingsSection: { marginBottom: 8 },
+  settingsLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
+  settingsCard:    { backgroundColor: COLORS.card, borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border },
+  settingsRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  settingsRowLast: { borderBottomWidth: 0 },
+  settingsRowLabel:{ flex: 1, fontSize: 14, fontWeight: FONTS.medium, color: COLORS.text },
+  settingsRowValue:{ fontSize: 13, color: COLORS.textMute },
+  settingsInput:   { flex: 1, fontSize: 14, color: COLORS.text, textAlign: 'right' },
+  saveBar:         { backgroundColor: COLORS.card, padding: 16, borderTopWidth: 1, borderTopColor: COLORS.border },
+  saveBtn:         { backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: RADIUS.lg, alignItems: 'center', ...SHADOW.brand },
+  saveBtnText:     { color: '#fff', fontWeight: FONTS.bold, fontSize: 15 },
+  dangerBtn:       { borderWidth: 1, borderColor: COLORS.dangerLight, paddingVertical: 13, borderRadius: RADIUS.lg, alignItems: 'center', marginTop: 8 },
+  dangerBtnText:   { color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 14 },
+
+  // ── Party Detail ─────────────────────────────────────────────────
+  heroDetail: {
+    backgroundColor: COLORS.secondary, paddingTop: 12, paddingBottom: 20,
+    paddingHorizontal: 20, alignItems: 'center',
+  },
+  detailAvatar:     { width: 60, height: 60, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  detailAvatarText: { fontSize: 26, fontWeight: FONTS.black, color: '#fff' },
+  detailName:       { fontSize: 19, fontWeight: FONTS.black, color: '#fff', marginBottom: 4 },
+  detailSub:        { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
+  kpiStrip:         { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  kpiChip:          { flex: 1, alignItems: 'center', paddingVertical: 10 },
+  kpiValue:         { fontSize: 14, fontWeight: FONTS.heavy, marginBottom: 2 },
+  kpiLabel:         { fontSize: 10, color: COLORS.textMute },
+  kpiDivider:       { width: 1, backgroundColor: COLORS.border, marginVertical: 8 },
+  sectionTitle:     { fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+  invRow: {
+    backgroundColor: COLORS.card, marginHorizontal: 12, marginBottom: 8,
+    borderRadius: RADIUS.lg, padding: 13, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.xs,
+  },
+  invRowTop:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  invNum:      { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
+  invDate:     { fontSize: 11, color: COLORS.textMute },
+  invTotal:    { fontSize: 15, fontWeight: FONTS.heavy, color: COLORS.text, marginBottom: 4 },
+  statusBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: RADIUS.xs },
+  statusText:  { fontSize: 9, fontWeight: FONTS.black, letterSpacing: 0.5 },
+  balRow:      { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 6, borderTopWidth: 1, borderTopColor: COLORS.border },
+  balLabel:    { fontSize: 11, color: COLORS.danger },
+  balValue:    { fontSize: 11, fontWeight: FONTS.heavy, color: COLORS.danger },
+
+  // ── Auth / Login ─────────────────────────────────────────────────
+  loginContainer: { flex: 1, backgroundColor: '#FFF8F4', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loginLogoWrap:  { alignItems: 'center', marginBottom: 36 },
+  loginLogoBox:   { width: 80, height: 80, borderRadius: RADIUS.xl, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginBottom: 14, ...SHADOW.brand },
+  loginLogoImg:   { width: 56, height: 56 },
+  loginBrand:     { fontSize: 26, fontWeight: FONTS.black, color: COLORS.text, letterSpacing: 8 },
+  loginTagline:   { fontSize: 12, color: COLORS.textMute, letterSpacing: 1, marginTop: 4 },
+  loginCard:      { width: '100%', backgroundColor: '#fff', borderRadius: RADIUS.xl, padding: 24, ...SHADOW.md },
+  loginTitle:     { fontSize: 20, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 4 },
+  loginSubtitle:  { fontSize: 13, color: COLORS.textMute, marginBottom: 20 },
+  loginLabel:     { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 14 },
+  loginInput:     { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: COLORS.text },
+  loginBtn:       { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginTop: 22, ...SHADOW.brand },
+  loginBtnText:   { color: '#fff', fontWeight: FONTS.black, fontSize: 15, letterSpacing: 0.3 },
+  loginError:     { backgroundColor: COLORS.dangerLight, borderRadius: RADIUS.sm, padding: 12, marginBottom: 14 },
+  loginErrorText: { fontSize: 13, color: '#991B1B' },
+  loginFooter:    { fontSize: 12, color: COLORS.textMute, marginTop: 22, textAlign: 'center' },
+
+  // ── Empty state ──────────────────────────────────────────────────
+  empty:        { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
+  emptyIconWrap:{ width: 72, height: 72, borderRadius: RADIUS.full, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  emptyIcon:    { fontSize: 32 },
+  emptyTitle:   { fontSize: 17, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 7, textAlign: 'center' },
+  emptySub:     { fontSize: 13, color: COLORS.textMute, textAlign: 'center', lineHeight: 19, marginBottom: 22 },
+  emptyBtn:     { backgroundColor: COLORS.primary, paddingHorizontal: 22, paddingVertical: 11, borderRadius: RADIUS.lg, ...SHADOW.brand },
+  emptyBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
 });

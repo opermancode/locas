@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
@@ -77,7 +78,7 @@ export default function LoginScreen() {
 
         {error ? (
           <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
+            <View style={{flexDirection:"row",alignItems:"center",gap:6}}><Feather name="alert-circle" size={14} color="#991B1B" /><Text style={styles.errorText}>{error}</Text></View>
           </View>
         ) : null}
 
@@ -125,115 +126,36 @@ export default function LoginScreen() {
   );
 }
 
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFF8F4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  logoWrap: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
+  container: { flex: 1, backgroundColor: '#FFF8F4', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  logoWrap:  { alignItems: 'center', marginBottom: 36 },
   logoBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 22,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: BRAND,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
-    marginBottom: 12,
+    width: 80, height: 80, borderRadius: 22,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14, shadowColor: '#FF6B00', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25, shadowRadius: 16, elevation: 8,
   },
-  logoImg: {
-    width: 56,
-    height: 56,
-  },
-  brandName: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: DARK,
-    letterSpacing: 8,
-  },
-  brandSub: {
-    fontSize: 12,
-    color: COLORS.textMute,
-    letterSpacing: 1,
-    marginTop: 4,
-  },
+  logoImg:    { width: 56, height: 56 },
+  brandName:  { fontSize: 26, fontWeight: '900', color: '#0F172A', letterSpacing: 8 },
+  brandSub:   { fontSize: 12, color: '#94A3B8', letterSpacing: 1, marginTop: 4 },
   card: {
-    width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: RADIUS.xl,
-    padding: 24,
-    ...SHADOW.md,
+    width: '100%', backgroundColor: '#fff', borderRadius: 22, padding: 24,
+    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: FONTS.heavy,
-    color: DARK,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.textMute,
-    marginBottom: 20,
-  },
-  errorBox: {
-    backgroundColor: '#FEE2E2',
-    borderRadius: RADIUS.sm,
-    padding: 12,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#991B1B',
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: FONTS.semibold,
-    color: COLORS.textSub,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-    marginTop: 14,
-  },
+  title:    { fontSize: 20, fontWeight: '900', color: '#0F172A', marginBottom: 4 },
+  subtitle: { fontSize: 13, color: '#94A3B8', marginBottom: 20 },
+  errorBox: { backgroundColor: '#FEE2E2', borderRadius: 8, padding: 12, marginBottom: 14 },
+  errorText:{ fontSize: 13, color: '#991B1B' },
+  label: { fontSize: 11, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 14 },
   input: {
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: COLORS.text,
+    backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#0F172A',
   },
   loginBtn: {
-    backgroundColor: BRAND,
-    borderRadius: RADIUS.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 24,
-    ...SHADOW.sm,
-    shadowColor: BRAND,
-    shadowOpacity: 0.35,
+    backgroundColor: '#FF6B00', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 22,
+    shadowColor: '#FF6B00', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 5,
   },
-  loginBtnText: {
-    color: '#fff',
-    fontWeight: FONTS.heavy,
-    fontSize: 16,
-    letterSpacing: 0.5,
-  },
-  footer: {
-    fontSize: 12,
-    color: COLORS.textMute,
-    marginTop: 24,
-    textAlign: 'center',
-  },
+  loginBtnText: { color: '#fff', fontWeight: '900', fontSize: 15, letterSpacing: 0.3 },
+  footer: { fontSize: 12, color: '#94A3B8', marginTop: 22, textAlign: 'center' },
 });
