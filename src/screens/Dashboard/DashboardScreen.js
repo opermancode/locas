@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, StatusBar, Image, Linking, Animated,
+  Platform, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -71,28 +72,33 @@ export default function DashboardScreen({ navigation }) {
     { icon: 'settings',   label: 'Settings',    color: COLORS.textSub, nav: () => navigation.navigate('More', { screen: 'Settings' }) },
   ];
 
+  // Check if desktop/wide screen
+  const isDesktop = Platform.OS === 'web' && Dimensions.get('window').width >= 768;
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: isDesktop ? 0 : insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.secondary} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoWrap}>
-            <Image source={require('../../../assets/icon.png')} style={styles.logoImg} resizeMode="contain" />
+      {/* Header - only show on mobile */}
+      {!isDesktop && (
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.logoWrap}>
+              <Image source={require('../../../assets/icon.png')} style={styles.logoImg} resizeMode="contain" />
+            </View>
+            <View>
+              <Text style={styles.greeting}>{greeting}</Text>
+              <Text style={styles.bizName} numberOfLines={1}>{profile?.name || 'LOCAS'}</Text>
+            </View>
           </View>
-          <View>
-            <Text style={styles.greeting}>{greeting}</Text>
-            <Text style={styles.bizName} numberOfLines={1}>{profile?.name || 'LOCAS'}</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => navigation.navigate('More', { screen: 'Settings' })}
+          >
+            <Icon name="settings" size={18} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.headerBtn}
-          onPress={() => navigation.navigate('More', { screen: 'Settings' })}
-        >
-          <Icon name="settings" size={18} color="rgba(255,255,255,0.7)" />
-        </TouchableOpacity>
-      </View>
+      )}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -101,7 +107,7 @@ export default function DashboardScreen({ navigation }) {
       >
         <Animated.View style={{ opacity: fadeAnim }}>
 
-          <Text style={styles.periodLabel}>{monthName} {year}</Text>
+          <Text style={[styles.periodLabel, isDesktop && { paddingTop: 12 }]}>{monthName} {year}</Text>
 
           {/* Hero card */}
           <View style={styles.heroCard}>

@@ -227,27 +227,26 @@ function DesktopSidebar({ state, navigation }) {
     >
       {/* Logo area */}
       <div style={{ padding: '14px 12px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8, minHeight: 56, overflow: 'hidden' }}>
-        {/* Always show small logo icon */}
-        <div style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', flexShrink: 0, backgroundColor: '#FF6B00', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img
-            src={typeof require === 'function' ? require('../../assets/icon.png') : ''}
-            style={{ width: 80, height: 32, objectFit: 'cover', objectPosition: 'left center', marginLeft: -2 }}
-            alt="Locas"
-          />
-        </div>
-        {/* Full logo text — visible when expanded */}
-        <div style={{ flex: 1, overflow: 'hidden', opacity: expanded ? 1 : 0, transition: 'opacity 0.15s ease', whiteSpace: 'nowrap' }}>
-          <img
-            src={typeof require === 'function' ? require('../../assets/icon.png') : ''}
-            style={{ height: 22, width: 'auto', display: 'block' }}
-            alt="Locas"
-          />
+        {/* Orange box with text logo */}
+        <div style={{
+          minWidth: 32, height: 32, borderRadius: 6, flexShrink: 0,
+          backgroundColor: '#FF6B00', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: expanded ? '0 10px' : '0',
+          transition: 'padding 0.2s ease, min-width 0.2s ease',
+        }}>
+          <span style={{
+            color: '#fff', fontWeight: 800, fontSize: expanded ? 16 : 18,
+            letterSpacing: expanded ? 0.5 : 0,
+            whiteSpace: 'nowrap',
+          }}>
+            {expanded ? 'Locas.' : 'L'}
+          </span>
         </div>
         {/* Pin button */}
         {expanded && (
           <div
             onClick={() => setPinned(v => !v)}
-            style={{ cursor: 'pointer', opacity: 0.4, flexShrink: 0 }}
+            style={{ cursor: 'pointer', opacity: 0.4, flexShrink: 0, marginLeft: 'auto' }}
             title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
           >
             <SvgIcon name={pinned ? 'chevron-left' : 'chevron-right'} size={14} color="#fff" strokeWidth={2} />
