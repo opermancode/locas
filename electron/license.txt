@@ -1,4 +1,4 @@
-LOCAS — SMART BILLING FOR INDIA
+LOCAS - SMART BILLING FOR INDIA
 END USER LICENSE AGREEMENT & PRIVACY POLICY
 
 Last updated: March 2026
@@ -8,9 +8,9 @@ Contact: https://github.com/opermancode/locas/issues
 
 By installing Locas, you agree to the following terms. Please read carefully.
 
-════════════════════════════════════════════════════════════════
-PART 1 — TERMS AND CONDITIONS
-════════════════════════════════════════════════════════════════
+================================================================
+PART 1 - TERMS AND CONDITIONS
+================================================================
 
 1. LICENSE GRANT
    Omkar Jagtap grants you a personal, non-exclusive, non-transferable
@@ -67,9 +67,9 @@ PART 1 — TERMS AND CONDITIONS
     These terms shall be governed by the laws of India. Any disputes
     shall be subject to the jurisdiction of courts in India.
 
-════════════════════════════════════════════════════════════════
-PART 2 — PRIVACY POLICY
-════════════════════════════════════════════════════════════════
+================================================================
+PART 2 - PRIVACY POLICY
+================================================================
 
 1. DATA STORED LOCALLY
    Locas stores all your business data (invoices, customers, inventory,
@@ -80,7 +80,7 @@ PART 2 — PRIVACY POLICY
 2. AUTHENTICATION
    Locas uses Firebase Authentication to verify your identity.
    Firebase may collect your email address and login timestamps.
-   Firebase is a Google service — see Google's Privacy Policy at
+   Firebase is a Google service - see Google's Privacy Policy at
    https://policies.google.com/privacy for details.
 
 3. GOOGLE DRIVE BACKUP (OPTIONAL)
@@ -99,7 +99,7 @@ PART 2 — PRIVACY POLICY
 
 5. UPDATE CHECKS
    Locas periodically checks GitHub for new versions. This request
-   includes no personal data — only a plain HTTP GET to a public URL.
+   includes no personal data - only a plain HTTP GET to a public URL.
 
 6. CRASH REPORTING
    Locas does not automatically send crash reports. Errors are logged
@@ -116,7 +116,7 @@ PART 2 — PRIVACY POLICY
 9. CONTACT
    GitHub Issues: https://github.com/opermancode/locas/issues
 
-════════════════════════════════════════════════════════════════
+================================================================
 
 By clicking "I Agree" you confirm that you have read, understood and
 agree to these Terms and Conditions and Privacy Policy.
