@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -261,7 +261,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
       {/* ── Header ─────────────────────────────────────── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={20} color={COLORS.primary} />
+          <Icon name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.headerTitle}>{invoice.invoice_number}</Text>
@@ -271,10 +271,10 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           <Text style={[styles.statusPillText, { color: statusStyle.text }]}>{statusKey.toUpperCase()}</Text>
         </View>
         <TouchableOpacity onPress={handleEdit} style={styles.editBtn}>
-          <Feather name="edit-2" size={16} color={COLORS.textSub} />
+          <Icon name="edit-2" size={16} color={COLORS.textSub} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
-          <Feather name="trash-2" size={16} color={COLORS.danger} />
+          <Icon name="trash-2" size={16} color={COLORS.danger} />
         </TouchableOpacity>
       </View>
 
@@ -296,7 +296,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
               <Text style={styles.balanceBannerAmt}>{formatINR(balance)}</Text>
             </View>
             <View style={styles.balanceBannerBtn}>
-              <><Text style={styles.balanceBannerBtnText}>Record Payment</Text><Feather name="arrow-right" size={13} color={COLORS.white} /></>
+              <><Text style={styles.balanceBannerBtnText}>Record Payment</Text><Icon name="arrow-right" size={13} color={COLORS.white} /></>
             </View>
           </TouchableOpacity>
         )}
@@ -369,12 +369,12 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
                     {/* Selected check */}
                     {isSelected && (
                       <View style={[styles.thumbCheck, { backgroundColor: accentColor }]}>
-                        <Feather name="check" size={14} color={COLORS.white} />
+                        <Icon name="check" size={14} color={COLORS.white} />
                       </View>
                     )}
                     {tpl.id === 't5' && (
                       <View style={styles.thumbThermal}>
-                        <Feather name="printer" size={20} color={COLORS.textSub} />
+                        <Icon name="printer" size={20} color={COLORS.textSub} />
                       </View>
                     )}
                   </View>
@@ -399,7 +399,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
                     { backgroundColor: c.hex },
                     accentColor === c.hex && { borderColor: COLORS.text, borderWidth: 2.5, transform: [{ scale: 1.15 }] },
                   ]}>
-                    {accentColor === c.hex && <Feather name="check" size={14} color="#fff" />}
+                    {accentColor === c.hex && <Icon name="check" size={14} color="#fff" />}
                   </View>
                   <Text style={[styles.colorName, accentColor === c.hex && { color: c.hex, fontWeight: FONTS.bold }]}>
                     {c.name}
@@ -459,7 +459,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Record Payment</Text>
-              <TouchableOpacity onPress={() => setPayModal(false)} style={{padding:4}}><Feather name="x" size={18} color={COLORS.textMute} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setPayModal(false)} style={{padding:4}}><Icon name="x" size={18} color={COLORS.textMute} /></TouchableOpacity>
             </View>
             <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
               <View style={styles.payInvInfo}>
@@ -500,7 +500,7 @@ function ActionBtn({ icon, label, color, onPress, loading }) {
   return (
     <TouchableOpacity style={styles.actionBtn} onPress={onPress} disabled={loading} activeOpacity={0.8}>
       <View style={[styles.actionIconBox, { backgroundColor: color + '20' }]}>
-        {loading ? <ActivityIndicator size="small" color={color} /> : <Feather name={icon} size={20} color={color} />}
+        {loading ? <ActivityIndicator size="small" color={color} /> : <Icon name={icon} size={20} color={color} />}
       </View>
       <Text style={[styles.actionLabel, { color }]}>{label}</Text>
     </TouchableOpacity>

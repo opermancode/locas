@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
@@ -80,7 +80,7 @@ export default function PartyDetail({ navigation, route }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={20} color={COLORS.primary} />
+          <Icon name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{party?.name || 'Party'}</Text>
         <TouchableOpacity
@@ -101,7 +101,7 @@ export default function PartyDetail({ navigation, route }) {
           <View style={{ flex: 1, marginLeft: 14 }}>
             <Text style={styles.partyName}>{party?.name}</Text>
             {party?.gstin   ? <Text style={styles.partySub}>GST: {party.gstin}</Text>   : null}
-            {party?.state ? <View style={styles.subRow}><Feather name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {party.state} ({party.state_code})</Text></View> : null}
+            {party?.state ? <View style={styles.subRow}><Icon name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {party.state} ({party.state_code})</Text></View> : null}
             {party?.address ? <Text style={styles.partySub} numberOfLines={2}>{party.address}</Text> : null}
           </View>
         </View>
@@ -122,7 +122,7 @@ export default function PartyDetail({ navigation, route }) {
 
         {invoices.length === 0 ? (
           <View style={styles.empty}>
-            <Feather name="file-text" size={32} color={COLORS.primary} />
+            <Icon name="file-text" size={32} color={COLORS.primary} />
             <Text style={styles.emptyText}>No invoices yet for this party</Text>
             <TouchableOpacity
               style={styles.emptyBtn}

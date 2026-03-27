@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -33,8 +33,7 @@ import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 // Use require() for app.json — named ESM imports from JSON can fail in some
 // webpack/Electron builds that don't enable JSON module assertions.
-let version = '—';
-try { version = require('../../../app.json').expo.version; } catch (_) {}
+const { expo: { version } } = require('../../../app.json');
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -193,7 +192,7 @@ export default function SettingsScreen({ navigation }) {
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={20} color={COLORS.primary} />
+          <Icon name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <TouchableOpacity
@@ -228,7 +227,7 @@ export default function SettingsScreen({ navigation }) {
           <Field label="State">
             <TouchableOpacity style={[styles.input,styles.picker]} onPress={()=>{setStateSearch('');setStateModal(true);}}>
               <Text style={form.state?styles.pickerText:styles.pickerPlaceholder}>{form.state?`${form.state} (${form.state_code})`:'Select state...'}</Text>
-              <Feather name="chevron-down" size={16} color={COLORS.textMute} />
+              <Icon name="chevron-down" size={16} color={COLORS.textMute} />
             </TouchableOpacity>
           </Field>
         </View>
@@ -240,10 +239,10 @@ export default function SettingsScreen({ navigation }) {
             <TextInput style={styles.input} value={form.gstin||''} onChangeText={v=>set('gstin',v.toUpperCase())} placeholder="22AAAAA0000A1Z5" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={15} />
           </Field>
           {form.gstin?.length>0&&form.gstin.length!==15&&(
-            <View style={styles.hintWarn}><Feather name="alert-circle" size={12} color={COLORS.warning} /><Text style={styles.hintWarnText}> GSTIN must be 15 characters ({form.gstin.length}/15)</Text></View>
+            <View style={styles.hintWarn}><Icon name="alert-circle" size={12} color={COLORS.warning} /><Text style={styles.hintWarnText}> GSTIN must be 15 characters ({form.gstin.length}/15)</Text></View>
           )}
           {form.gstin?.length===15&&(
-            <View style={styles.hintOk}><Feather name="check-circle" size={12} color={COLORS.success} /><Text style={styles.hintOkText}> GSTIN format looks good</Text></View>
+            <View style={styles.hintOk}><Icon name="check-circle" size={12} color={COLORS.success} /><Text style={styles.hintOkText}> GSTIN format looks good</Text></View>
           )}
           <Row>
             <Field label="PAN" flex={1}>
@@ -318,7 +317,7 @@ export default function SettingsScreen({ navigation }) {
 
           {form.upi_id&&form.show_upi_qr?(
             <View style={styles.upiOk}>
-              <Feather name="check-circle" size={16} color={COLORS.success} />
+              <Icon name="check-circle" size={16} color={COLORS.success} />
               <View style={{flex:1}}>
                 <Text style={styles.upiOkTitle}>QR will appear on invoices</Text>
                 <Text style={styles.upiOkId}>{form.upi_id}</Text>
@@ -339,7 +338,7 @@ export default function SettingsScreen({ navigation }) {
           {driveEmail ? (
             <>
               <View style={styles.driveConnected}>
-                <Feather name="check-circle" size={16} color={COLORS.success} />
+                <Icon name="check-circle" size={16} color={COLORS.success} />
                 <View style={{flex:1}}>
                   <Text style={styles.driveEmail}>{driveEmail}</Text>
                   <Text style={styles.driveLastBackup}>Last backup: {formatLastBackup(lastBackup)}</Text>
@@ -367,7 +366,7 @@ export default function SettingsScreen({ navigation }) {
                 >
                   {syncing
                     ? <ActivityIndicator size="small" color={COLORS.white}/>
-                    : <><Feather name="cloud" size={14} color="#fff" /><Text style={styles.backupBtnText}> Sync Now</Text></>
+                    : <><Icon name="cloud" size={14} color="#fff" /><Text style={styles.backupBtnText}> Sync Now</Text></>
                   }
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -377,7 +376,7 @@ export default function SettingsScreen({ navigation }) {
                 >
                   {restoring
                     ? <ActivityIndicator size="small" color={COLORS.primary}/>
-                    : <><Feather name="refresh-ccw" size={14} color={COLORS.secondary} /><Text style={styles.restoreBtnText}> Restore</Text></>
+                    : <><Icon name="refresh-ccw" size={14} color={COLORS.secondary} /><Text style={styles.restoreBtnText}> Restore</Text></>
                   }
                 </TouchableOpacity>
               </View>
@@ -392,7 +391,7 @@ export default function SettingsScreen({ navigation }) {
                 onPress={() => promptAsync()}
                 disabled={!request}
               >
-                <><Feather name="link" size={14} color="#fff" /><Text style={styles.connectBtnText}> Connect Google Drive</Text></>
+                <><Icon name="link" size={14} color="#fff" /><Text style={styles.connectBtnText}> Connect Google Drive</Text></>
               </TouchableOpacity>
             </>
           )}
@@ -410,7 +409,7 @@ export default function SettingsScreen({ navigation }) {
 
         {/* Sign Out */}
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-          <><Feather name="log-out" size={14} color={COLORS.danger} /><Text style={styles.signOutText}> Sign Out</Text></>
+          <><Icon name="log-out" size={14} color={COLORS.danger} /><Text style={styles.signOutText}> Sign Out</Text></>
         </TouchableOpacity>
 
         {/* Bottom save button */}
@@ -430,12 +429,12 @@ export default function SettingsScreen({ navigation }) {
             <View style={styles.stateSheet}>
               <View style={styles.stateHeader}>
                 <Text style={styles.stateTitle}>Select Backup Time</Text>
-                <TouchableOpacity onPress={()=>setTimeModal(false)}><Feather name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
+                <TouchableOpacity onPress={()=>setTimeModal(false)} style={{padding:4}}><Icon name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
               </View>
               {BACKUP_TIMES.map(t => (
                 <TouchableOpacity key={t} style={styles.stateItem} onPress={()=>handleSaveBackupTime(t)}>
                   <Text style={[styles.stateName, backupTime===t&&{color:COLORS.primary,fontWeight:FONTS.bold}]}>{t}</Text>
-                  {backupTime===t && <Feather name="check" size={16} color={COLORS.primary} />}
+                  {backupTime===t && <Icon name="check" size={16} color={COLORS.primary} />}
                 </TouchableOpacity>
               ))}
             </View>
@@ -449,7 +448,7 @@ export default function SettingsScreen({ navigation }) {
           <View style={styles.stateSheet}>
             <View style={styles.stateHeader}>
               <Text style={styles.stateTitle}>Select State</Text>
-              <TouchableOpacity onPress={()=>setStateModal(false)}><Feather name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
+              <TouchableOpacity onPress={()=>setStateModal(false)} style={{padding:4}}><Icon name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
             </View>
             <View style={styles.stateSearchBox}>
               <TextInput style={styles.stateSearchInput} value={stateSearch} onChangeText={setStateSearch} placeholder="Search state..." placeholderTextColor={COLORS.textMute} autoFocus />
@@ -472,7 +471,7 @@ export default function SettingsScreen({ navigation }) {
   );
 }
 
-function SectionHeader({icon,title}){return(<View style={styles.sectionHeader}><Feather name={icon} size={14} color={COLORS.textSub} style={{marginRight:6}} /><Text style={styles.sectionTitle}>{title}</Text></View>);}
+function SectionHeader({icon,title}){return(<View style={styles.sectionHeader}><Icon name={icon} size={14} color={COLORS.textSub} style={{marginRight:6}} /><Text style={styles.sectionTitle}>{title}</Text></View>);}
 function Field({label,children,flex,style}){return(<View style={[{flex},style]}><Text style={styles.fieldLabel}>{label}</Text>{children}</View>);}
 function Row({children}){return<View style={styles.row}>{children}</View>;}
 function InfoRow({label,value}){return(<View style={styles.infoRow}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>);}
@@ -667,8 +666,7 @@ const styles = StyleSheet.create({
   kpiValue:         { fontSize: 14, fontWeight: FONTS.heavy, marginBottom: 2 },
   kpiLabel:         { fontSize: 10, color: COLORS.textMute },
   kpiDivider:       { width: 1, backgroundColor: COLORS.border, marginVertical: 8 },
-  sectionHeader:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 },
-  sectionTitle:     { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7 },
+  sectionTitle:     { fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
   invRow: {
     backgroundColor: COLORS.card, marginHorizontal: 12, marginBottom: 8,
     borderRadius: RADIUS.lg, padding: 13, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.xs,

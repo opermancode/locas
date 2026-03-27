@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
@@ -78,7 +78,7 @@ export default function LoginScreen() {
 
         {error ? (
           <View style={styles.errorBox}>
-            <View style={{flexDirection:"row",alignItems:"center",gap:6}}><Feather name="alert-circle" size={14} color="#991B1B" /><Text style={styles.errorText}>{error}</Text></View>
+            <View style={{flexDirection:"row",alignItems:"center",gap:6}}><Icon name="alert-circle" size={14} color="#991B1B" /><Text style={styles.errorText}>{error}</Text></View>
           </View>
         ) : null}
 

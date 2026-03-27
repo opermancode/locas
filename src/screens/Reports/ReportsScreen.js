@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -184,7 +184,7 @@ export default function ReportsScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={20} color={COLORS.primary} />
+          <Icon name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Reports</Text>
         <TouchableOpacity
@@ -194,7 +194,7 @@ export default function ReportsScreen({ navigation }) {
         >
           {exporting
             ? <ActivityIndicator size="small" color={COLORS.white} />
-            : <><Feather name="upload" size={14} color="#fff" /><Text style={styles.exportBtnText}> Export CSV</Text></>
+            : <><Icon name="upload" size={14} color="#fff" /><Text style={styles.exportBtnText}> Export CSV</Text></>
           }
         </TouchableOpacity>
       </View>
@@ -311,12 +311,12 @@ export default function ReportsScreen({ navigation }) {
 
           {/* Export hint */}
           <TouchableOpacity style={styles.exportHint} onPress={exportCSV} disabled={exporting}>
-            <Feather name="bar-chart-2" size={28} color={COLORS.primary} />
+            <Icon name="bar-chart-2" size={28} color={COLORS.primary} />
             <View style={{ flex: 1 }}>
               <Text style={styles.exportHintTitle}>Export for CA / Accountant</Text>
               <Text style={styles.exportHintSub}>Sales, expenses & GST in CSV</Text>
             </View>
-            <Feather name="arrow-right" size={18} color={COLORS.primary} />
+            <Icon name="arrow-right" size={18} color={COLORS.primary} />
           </TouchableOpacity>
 
           <View style={{ height: 60 }} />

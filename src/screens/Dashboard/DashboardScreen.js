@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import { getDashboardStats, getProfile } from '../../db';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 import { formatINRCompact, formatINR } from '../../utils/gst';
@@ -90,7 +90,7 @@ export default function DashboardScreen({ navigation }) {
           style={styles.headerBtn}
           onPress={() => navigation.navigate('More', { screen: 'Settings' })}
         >
-          <Feather name="settings" size={18} color="rgba(255,255,255,0.7)" />
+          <Icon name="settings" size={18} color="rgba(255,255,255,0.7)" />
         </TouchableOpacity>
       </View>
 
@@ -112,7 +112,7 @@ export default function DashboardScreen({ navigation }) {
                 <Text style={styles.heroSub}>{invoiceCount} invoice{invoiceCount !== 1 ? 's' : ''} · {monthName}</Text>
               </View>
               <View style={[styles.plBadge, { backgroundColor: profit >= 0 ? 'rgba(22,163,74,0.18)' : 'rgba(220,38,38,0.18)' }]}>
-                <Feather name={profit >= 0 ? 'trending-up' : 'trending-down'} size={14} color={profit >= 0 ? '#4ADE80' : '#F87171'} />
+                <Icon name={profit >= 0 ? 'trending-up' : 'trending-down'} size={14} color={profit >= 0 ? '#4ADE80' : '#F87171'} />
                 <Text style={[styles.plValue, { color: profit >= 0 ? '#4ADE80' : '#F87171' }]}>
                   {formatINRCompact(Math.abs(profit))}
                 </Text>
@@ -151,7 +151,7 @@ export default function DashboardScreen({ navigation }) {
             {QUICK_ACTIONS.map(a => (
               <TouchableOpacity key={a.label} style={styles.qaCard} onPress={a.nav} activeOpacity={0.8}>
                 <View style={[styles.qaIconBox, { backgroundColor: a.color + '15' }]}>
-                  <Feather name={a.icon} size={20} color={a.color} />
+                  <Icon name={a.icon} size={20} color={a.color} />
                 </View>
                 <Text style={styles.qaLabel}>{a.label}</Text>
               </TouchableOpacity>
@@ -208,7 +208,7 @@ export default function DashboardScreen({ navigation }) {
                 onPress={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}
                 activeOpacity={0.85}
               >
-                <Feather name="plus" size={16} color="#fff" />
+                <Icon name="plus" size={16} color="#fff" />
                 <Text style={styles.emptyBtnText}>Create Invoice</Text>
               </TouchableOpacity>
             </View>
@@ -221,7 +221,7 @@ export default function DashboardScreen({ navigation }) {
       {/* Update banner */}
       {apkUpdate && (
         <TouchableOpacity style={styles.updateBanner} onPress={() => Linking.openURL(apkUpdate.url)} activeOpacity={0.9}>
-          <Feather name="download" size={14} color="#fff" />
+          <Icon name="download" size={14} color="#fff" />
           <Text style={styles.updateText}>Update v{apkUpdate.version} available</Text>
           <Text style={styles.updateCta}>Download</Text>
         </TouchableOpacity>
@@ -243,7 +243,7 @@ function BalanceCard({ icon, label, sub, value, color, bg, onPress }) {
   return (
     <TouchableOpacity style={styles.balCard} onPress={onPress} activeOpacity={0.82}>
       <View style={[styles.balIconWrap, { backgroundColor: bg }]}>
-        <Feather name={icon} size={16} color={color} />
+        <Icon name={icon} size={16} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.balLabel}>{label}</Text>

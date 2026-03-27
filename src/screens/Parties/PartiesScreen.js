@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
@@ -129,9 +129,9 @@ export default function PartiesScreen({ navigation }) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.partyName} numberOfLines={1}>{item.name}</Text>
-          {item.phone ? <View style={styles.subRow}><Feather name="phone" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {item.phone}</Text></View> : null}
+          {item.phone ? <View style={styles.subRow}><Icon name="phone" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {item.phone}</Text></View> : null}
           {item.gstin   ? <Text style={styles.partySub}>GST: {item.gstin}</Text> : null}
-          {item.state ? <View style={styles.subRow}><Feather name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {item.state}</Text></View> : null}
+          {item.state ? <View style={styles.subRow}><Icon name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {item.state}</Text></View> : null}
         </View>
       </View>
       <View style={styles.cardRight}>
@@ -147,10 +147,10 @@ export default function PartiesScreen({ navigation }) {
         )}
         <View style={styles.cardActions}>
           <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
-            <Feather name="edit-2" size={14} color={COLORS.textSub} />
+            <Icon name="edit-2" size={14} color={COLORS.textSub} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(item)}>
-            <Feather name="trash-2" size={14} color={COLORS.danger} />
+            <Icon name="trash-2" size={14} color={COLORS.danger} />
           </TouchableOpacity>
         </View>
       </View>
@@ -181,7 +181,7 @@ export default function PartiesScreen({ navigation }) {
 
       {/* Search */}
       <View style={styles.searchBox}>
-        <Feather name="search" size={17} color={COLORS.textMute} style={{marginRight:8}} />
+        <Icon name="search" size={17} color={COLORS.textMute} style={{marginRight:8}} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search name, phone, GSTIN..."
@@ -191,7 +191,7 @@ export default function PartiesScreen({ navigation }) {
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => handleSearch('')}>
-            <Feather name="x" size={14} color={COLORS.textMute} />
+            <Icon name="x" size={14} color={COLORS.textMute} />
           </TouchableOpacity>
         )}
       </View>
@@ -218,7 +218,7 @@ export default function PartiesScreen({ navigation }) {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="users" size={32} color={COLORS.primary} />
+            <Icon name="users" size={32} color={COLORS.primary} />
             <Text style={styles.emptyTitle}>{search ? 'No parties found' : 'No parties yet'}</Text>
             <Text style={styles.emptySub}>{search ? 'Try a different search' : 'Add customers & suppliers'}</Text>
             {!search && (
@@ -310,7 +310,7 @@ export default function PartiesScreen({ navigation }) {
               <Text style={form.state ? styles.stateText : styles.statePlaceholder}>
                 {form.state ? `${form.state} (${form.state_code})` : 'Select state...'}
               </Text>
-              <Feather name="chevron-down" size={16} color={COLORS.textMute} />
+              <Icon name="chevron-down" size={16} color={COLORS.textMute} />
             </TouchableOpacity>
 
             <FieldLabel>GSTIN</FieldLabel>

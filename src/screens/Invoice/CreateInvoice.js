@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -305,7 +305,7 @@ export default function CreateInvoice({ navigation, route }) {
         {/* ── Header ───────────────────────────────────────── */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Feather name="arrow-left" size={20} color={COLORS.primary} />
+            <Icon name="arrow-left" size={20} color={COLORS.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{editInvoice ? 'Edit Invoice' : 'New Invoice'}</Text>
           <TouchableOpacity
@@ -389,9 +389,9 @@ export default function CreateInvoice({ navigation, route }) {
             {party ? (
               <View style={{ flex: 1 }}>
                 <Text style={styles.partyName}>{party.name}</Text>
-                {party.phone ? <View style={styles.subRow}><Feather name="phone" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {party.phone}</Text></View> : null}
+                {party.phone ? <View style={styles.subRow}><Icon name="phone" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {party.phone}</Text></View> : null}
                 {party.gstin   ? <Text style={styles.partySub}>GST: {party.gstin}</Text> : null}
-                {party.address ? <View style={styles.subRow}><Feather name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub} numberOfLines={1}> {party.address}</Text></View> : null}
+                {party.address ? <View style={styles.subRow}><Icon name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub} numberOfLines={1}> {party.address}</Text></View> : null}
                 <View style={supplyType === 'inter' ? styles.igstBadge : styles.intraBadge}>
                   <Text style={supplyType === 'inter' ? styles.igstBadgeText : styles.intraBadgeText}>
                     {supplyType === 'inter' ? 'IGST — Inter-state' : 'CGST+SGST — Intra-state'}
@@ -410,11 +410,11 @@ export default function CreateInvoice({ navigation, route }) {
                 onPress={(e) => { e.stopPropagation?.(); setParty(null); }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Feather name="x" size={16} color={COLORS.textMute} />
+                <Icon name="x" size={16} color={COLORS.textMute} />
               </TouchableOpacity>
             ) : (
               <View style={styles.partyChevron}>
-                <Feather name="chevron-right" size={16} color={COLORS.textMute} />
+                <Icon name="chevron-right" size={16} color={COLORS.textMute} />
               </View>
             )}
           </TouchableOpacity>
@@ -429,7 +429,7 @@ export default function CreateInvoice({ navigation, route }) {
 
           {lineItems.length === 0 ? (
             <TouchableOpacity style={styles.emptyItems} onPress={openAddItem}>
-              <Feather name="package" size={28} color={COLORS.textMute} />
+              <Icon name="package" size={28} color={COLORS.textMute} />
               <Text style={styles.emptyItemsText}>Tap to add items</Text>
               <Text style={styles.emptyItemsHint}>Pick from inventory or add manually</Text>
             </TouchableOpacity>
@@ -471,7 +471,7 @@ export default function CreateInvoice({ navigation, route }) {
                     style={{ width: 32, alignItems: 'center' }}
                     onPress={() => removeItem(idx)}
                   >
-                    <Feather name="x" size={16} color={COLORS.danger} />
+                    <Icon name="x" size={16} color={COLORS.danger} />
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
@@ -563,12 +563,12 @@ export default function CreateInvoice({ navigation, route }) {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Select Customer</Text>
             <TouchableOpacity onPress={() => setPartyModal(false)}>
-              <Feather name="x" size={18} color={COLORS.textMute} />
+              <Icon name="x" size={18} color={COLORS.textMute} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.modalSearchBox}>
-            <Feather name="search" size={16} color={COLORS.textMute} style={{marginRight:8}} />
+            <Icon name="search" size={16} color={COLORS.textMute} style={{marginRight:8}} />
             <TextInput
               style={styles.modalSearchInput}
               placeholder="Search by name or phone..."
@@ -579,7 +579,7 @@ export default function CreateInvoice({ navigation, route }) {
             />
             {partySearch.length > 0 && (
               <TouchableOpacity onPress={() => setPartySearch('')}>
-                <Feather name="x" size={14} color={COLORS.textMute} />
+                <Icon name="x" size={14} color={COLORS.textMute} />
               </TouchableOpacity>
             )}
           </View>
@@ -587,7 +587,7 @@ export default function CreateInvoice({ navigation, route }) {
           {/* Walk-in */}
           <TouchableOpacity style={styles.modalItem} onPress={() => selectParty(null)}>
             <View style={styles.partyAvatar}>
-              <Feather name="user" size={16} color={COLORS.primary} />
+              <Icon name="user" size={16} color={COLORS.primary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.modalItemName}>Walk-in Customer</Text>
@@ -621,7 +621,7 @@ export default function CreateInvoice({ navigation, route }) {
             )}
             ListEmptyComponent={
               <View style={styles.modalEmpty}>
-                <Feather name="users" size={28} color={COLORS.textMute} />
+                <Icon name="users" size={28} color={COLORS.textMute} />
                 <Text style={styles.modalEmptyText}>No parties found</Text>
                 <TouchableOpacity
                   style={styles.modalEmptyBtn}
@@ -643,7 +643,7 @@ export default function CreateInvoice({ navigation, route }) {
               {editingIdx !== null ? 'Edit Item' : 'Add Item'}
             </Text>
             <TouchableOpacity onPress={() => setItemModal(false)}>
-              <Feather name="x" size={18} color={COLORS.textMute} />
+              <Icon name="x" size={18} color={COLORS.textMute} />
             </TouchableOpacity>
           </View>
 
@@ -671,7 +671,7 @@ export default function CreateInvoice({ navigation, route }) {
           {itemTab === 'inventory' ? (
             <View style={{ flex: 1 }}>
               <View style={styles.inventorySearchBox}>
-                <Feather name="search" size={16} color={COLORS.textMute} style={{marginRight:8}} />
+                <Icon name="search" size={16} color={COLORS.textMute} style={{marginRight:8}} />
                 <TextInput
                   style={styles.inventorySearchInput}
                   placeholder="Search by name, code or HSN..."
@@ -682,14 +682,14 @@ export default function CreateInvoice({ navigation, route }) {
                 />
                 {itemSearch.length > 0 && (
                   <TouchableOpacity onPress={() => setItemSearch('')}>
-                    <Feather name="x" size={14} color={COLORS.textMute} />
+                    <Icon name="x" size={14} color={COLORS.textMute} />
                   </TouchableOpacity>
                 )}
               </View>
 
               {filteredItems.length === 0 ? (
                 <View style={styles.inventoryEmpty}>
-                  <Feather name="package" size={28} color={COLORS.textMute} />
+                  <Icon name="package" size={28} color={COLORS.textMute} />
                   <Text style={styles.inventoryEmptyText}>
                     {items.length === 0
                       ? 'No items in inventory yet'
@@ -700,7 +700,7 @@ export default function CreateInvoice({ navigation, route }) {
                       style={styles.goInventoryBtn}
                       onPress={() => { setItemModal(false); navigation.navigate('Inventory'); }}
                     >
-                      <><Text style={styles.goInventoryBtnText}>Go to Inventory</Text><Feather name="arrow-right" size={13} color={COLORS.primary} /></>
+                      <><Text style={styles.goInventoryBtnText}>Go to Inventory</Text><Icon name="arrow-right" size={13} color={COLORS.primary} /></>
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
@@ -727,7 +727,7 @@ export default function CreateInvoice({ navigation, route }) {
                         activeOpacity={0.75}
                       >
                         <View style={styles.invItemIconBox}>
-                          <Feather name="package" size={16} color={COLORS.textSub} />
+                          <Icon name="package" size={16} color={COLORS.textSub} />
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={styles.invItemTopRow}>

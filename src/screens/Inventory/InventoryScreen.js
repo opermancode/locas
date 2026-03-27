@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
@@ -151,10 +151,10 @@ export default function InventoryScreen({ navigation, route }) {
             )}
             <View style={styles.cardActions}>
               <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
-                <Feather name="edit-2" size={14} color={COLORS.textSub} />
+                <Icon name="edit-2" size={14} color={COLORS.textSub} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(item)}>
-                <Feather name="trash-2" size={14} color={COLORS.danger} />
+                <Icon name="trash-2" size={14} color={COLORS.danger} />
               </TouchableOpacity>
             </View>
           </View>
@@ -198,7 +198,7 @@ export default function InventoryScreen({ navigation, route }) {
 
       {/* Search + filter */}
       <View style={styles.searchBox}>
-        <Feather name="search" size={17} color={COLORS.textMute} style={{marginRight:8}} />
+        <Icon name="search" size={17} color={COLORS.textMute} style={{marginRight:8}} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search name, code, HSN..."
@@ -208,7 +208,7 @@ export default function InventoryScreen({ navigation, route }) {
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => handleSearch('')}>
-            <Feather name="x" size={14} color={COLORS.textMute} />
+            <Icon name="x" size={14} color={COLORS.textMute} />
           </TouchableOpacity>
         )}
       </View>
@@ -237,7 +237,7 @@ export default function InventoryScreen({ navigation, route }) {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="package" size={32} color={COLORS.primary} />
+            <Icon name="package" size={32} color={COLORS.primary} />
             <Text style={styles.emptyTitle}>{search ? 'No items found' : 'No items yet'}</Text>
             <Text style={styles.emptySub}>{search ? 'Try a different search' : 'Add products & services'}</Text>
             {!search && (
