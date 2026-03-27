@@ -1,54 +1,70 @@
 export const COLORS = {
-  primary:     '#FF6B00',   // saffron
-  primaryDark: '#E05A00',
-  primaryLight:'#FFF0E6',
-  secondary:   '#1A1A2E',   // deep navy
-  accent:      '#FFB347',   // light saffron
+  // Brand
+  primary:      '#FF6B00',
+  primaryDark:  '#D45800',
+  primaryLight: '#FFF0E6',
+  primaryMid:   '#FFE0C8',
 
-  success:  '#22C55E',
-  warning:  '#F59E0B',
-  danger:   '#EF4444',
-  info:     '#3B82F6',
+  // Surfaces
+  secondary:      '#0F172A',
+  secondaryMid:   '#1E293B',
+  secondaryLight: '#334155',
 
-  bg:       '#F7F7F7',
-  card:     '#FFFFFF',
-  border:   '#E5E7EB',
+  // Semantic
+  success:      '#16A34A',
+  successLight: '#DCFCE7',
+  warning:      '#D97706',
+  warningLight: '#FEF3C7',
+  warningBg:    '#FFFBEB',
+  danger:       '#DC2626',
+  dangerLight:  '#FEE2E2',
+  dangerBg:     '#FFF1F1',
+  info:         '#2563EB',
+  infoLight:    '#DBEAFE',
 
-  text:     '#1A1A2E',
-  textSub:  '#6B7280',
-  textMute: '#9CA3AF',
+  // Backgrounds
+  bg:      '#F1F5F9',
+  bgDeep:  '#E2E8F0',
+  card:    '#FFFFFF',
+  cardAlt: '#F8FAFC',
+
+  // Borders
+  border:     '#E2E8F0',
+  borderDark: '#CBD5E1',
+
+  // Text
+  text:     '#0F172A',
+  textSub:  '#475569',
+  textMute: '#94A3B8',
   white:    '#FFFFFF',
+
+  // Legacy aliases so old screens don't break
+  accent: '#FFB347',
 };
 
 export const FONTS = {
-  regular: '400',
-  medium:  '500',
-  semibold:'600',
-  bold:    '700',
-  heavy:   '800',
+  regular:  '400',
+  medium:   '500',
+  semibold: '600',
+  bold:     '700',
+  heavy:    '800',
+  black:    '900',
 };
 
 export const RADIUS = {
-  sm:  6,
-  md:  10,
-  lg:  14,
-  xl:  20,
-  full:999,
+  xs:   4,
+  sm:   8,
+  md:   12,
+  lg:   16,
+  xl:   22,
+  xxl:  30,
+  full: 999,
 };
 
 export const SHADOW = {
-  sm: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  md: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10,
-    shadowRadius: 6,
-    elevation: 4,
-  },
+  xs:  { shadowColor:'#0F172A', shadowOffset:{width:0,height:1}, shadowOpacity:0.04, shadowRadius:2,  elevation:1 },
+  sm:  { shadowColor:'#0F172A', shadowOffset:{width:0,height:2}, shadowOpacity:0.06, shadowRadius:6,  elevation:2 },
+  md:  { shadowColor:'#0F172A', shadowOffset:{width:0,height:4}, shadowOpacity:0.08, shadowRadius:12, elevation:4 },
+  lg:  { shadowColor:'#0F172A', shadowOffset:{width:0,height:8}, shadowOpacity:0.12, shadowRadius:20, elevation:8 },
+  brand: { shadowColor:'#FF6B00', shadowOffset:{width:0,height:4}, shadowOpacity:0.28, shadowRadius:12, elevation:6 },
 };
