@@ -77,7 +77,7 @@ pkg = {
         "@react-navigation/native": "^6.1.9",
         "@react-navigation/stack": "^6.3.20",
         "expo": "~54.0.0",
-        "expo-build-properties": "~0.13.1",
+        "expo-build-properties": "~0.14.0",
         "expo-file-system": "~19.0.21",
         "expo-print": "~15.0.8",
         "expo-sharing": "~14.0.8",
