@@ -13,6 +13,8 @@ if (Platform.OS === 'web') {
 export const getDB                = db.getDB;
 export const getProfile           = db.getProfile;
 export const saveProfile          = db.saveProfile;
+export const getDataOwner         = db.getDataOwner;
+export const setDataOwner         = db.setDataOwner;
 export const peekNextInvoiceNumber = db.peekNextInvoiceNumber;
 export const getParties           = db.getParties;
 export const saveParty            = db.saveParty;

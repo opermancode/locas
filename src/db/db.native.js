@@ -242,6 +242,30 @@ async function runMigrations(db) {
   try {
     await db.execAsync(`ALTER TABLE business_profile ADD COLUMN quote_counter INTEGER DEFAULT 0`);
   } catch (e) { /* already exists */ }
+
+  // License/ownership fields
+  try {
+    await db.execAsync(`ALTER TABLE business_profile ADD COLUMN owner_email TEXT DEFAULT NULL`);
+  } catch (e) { /* already exists */ }
+
+  try {
+    await db.execAsync(`ALTER TABLE business_profile ADD COLUMN owner_set_at TEXT DEFAULT NULL`);
+  } catch (e) { /* already exists */ }
+}
+
+// ─── Data Ownership (License Lock) ────────────────────────────────
+export async function getDataOwner() {
+  const db = await getDB();
+  const row = await db.getFirstAsync('SELECT owner_email FROM business_profile WHERE id = 1');
+  return row?.owner_email || null;
+}
+
+export async function setDataOwner(email) {
+  const db = await getDB();
+  await db.runAsync(
+    `UPDATE business_profile SET owner_email=?, owner_set_at=datetime('now') WHERE id=1`,
+    [email.toLowerCase()]
+  );
 }
 
 // ─── Business Profile ───────────────────────────────────────────

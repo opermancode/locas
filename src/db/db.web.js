@@ -64,6 +64,21 @@ export async function saveProfile(data) {
   });
 }
 
+// ─── Data Ownership (License Lock) ────────────────────────────────
+export async function getDataOwner() {
+  const profile = await stores.profile.getItem('1');
+  return profile?.owner_email || null;
+}
+
+export async function setDataOwner(email) {
+  const existing = await stores.profile.getItem('1');
+  await stores.profile.setItem('1', {
+    ...existing,
+    owner_email: email.toLowerCase(),
+    owner_set_at: new Date().toISOString(),
+  });
+}
+
 // ─── Invoice Number ───────────────────────────────────────────────
 export async function peekNextInvoiceNumber() {
   const profile = await stores.profile.getItem('1');
