@@ -13,6 +13,8 @@ const stores = {
   invoice_items: localforage.createInstance({ name: 'locas', storeName: 'invoice_items' }),
   payments:      localforage.createInstance({ name: 'locas', storeName: 'payments' }),
   expenses:      localforage.createInstance({ name: 'locas', storeName: 'expenses' }),
+  quotations:      localforage.createInstance({ name: 'locas', storeName: 'quotations' }),
+  quotation_items: localforage.createInstance({ name: 'locas', storeName: 'quotation_items' }),
   meta:          localforage.createInstance({ name: 'locas', storeName: 'meta' }),
 };
 
@@ -445,12 +447,15 @@ export async function exportAllData() {
   const invoiceItems = await getAll(stores.invoice_items);
   const payments     = await getAll(stores.payments);
   const expenses     = await getAll(stores.expenses);
+  const quotations     = await getAll(stores.quotations);
+  const quotationItems = await getAll(stores.quotation_items);
 
   return JSON.stringify({
     version: 1,
     exported_at: new Date().toISOString(),
     profile, parties, items, invoices,
     invoice_items: invoiceItems, payments, expenses,
+    quotations, quotation_items: quotationItems,
   }, null, 2);
 }
 
@@ -464,6 +469,8 @@ export async function importAllData(jsonString) {
   await stores.invoice_items.clear();
   await stores.payments.clear();
   await stores.expenses.clear();
+  await stores.quotations.clear();
+  await stores.quotation_items.clear();
 
   if (data.profile?.[0]) {
     await stores.profile.setItem('1', data.profile[0]);
@@ -480,6 +487,10 @@ export async function importAllData(jsonString) {
     await stores.payments.setItem(String(row.id), row);
   for (const row of data.expenses || [])
     await stores.expenses.setItem(String(row.id), row);
+  for (const row of data.quotations || [])
+    await stores.quotations.setItem(String(row.id), row);
+  for (const row of data.quotation_items || [])
+    await stores.quotation_items.setItem(String(row.id), row);
 
   // CRITICAL: Reset sequence counters to max(id) of each table so new
   // records after restore never collide with existing IDs.
@@ -490,6 +501,245 @@ export async function importAllData(jsonString) {
   await stores.meta.setItem('invoice_items_seq', maxId(data.invoice_items || []));
   await stores.meta.setItem('payments_seq',      maxId(data.payments      || []));
   await stores.meta.setItem('expenses_seq',      maxId(data.expenses      || []));
-  // Reset the invoice mutex too
+  await stores.meta.setItem('quotations_seq',      maxId(data.quotations      || []));
+  await stores.meta.setItem('quotation_items_seq', maxId(data.quotation_items || []));
+  // Reset mutexes
   _invoiceNumberLock = Promise.resolve();
+  _quoteNumberLock = Promise.resolve();
+}
+
+// ─── Quotation Number ─────────────────────────────────────────────────────
+
+export async function peekNextQuoteNumber() {
+  const profile = await stores.profile.getItem('1');
+  const next = (profile.quote_counter || 0) + 1;
+  return `${profile.quote_prefix || 'QUO'}-${String(next).padStart(4, '0')}`;
+}
+
+// Mutex to prevent concurrent quote number generation
+let _quoteNumberLock = Promise.resolve();
+
+async function consumeNextQuoteNumber() {
+  const result = _quoteNumberLock.then(async () => {
+    const profile = await stores.profile.getItem('1');
+    const next = (profile.quote_counter || 0) + 1;
+    await stores.profile.setItem('1', { ...profile, quote_counter: next });
+    return `${profile.quote_prefix || 'QUO'}-${String(next).padStart(4, '0')}`;
+  });
+  _quoteNumberLock = result.catch(() => {});
+  return result;
+}
+
+// ─── Quotations CRUD ──────────────────────────────────────────────────────
+
+export async function saveQuotation(quotation, lineItems) {
+  let quotationId;
+
+  if (quotation.id) {
+    // Update existing
+    const existing = await stores.quotations.getItem(String(quotation.id));
+    await stores.quotations.setItem(String(quotation.id), {
+      ...existing,
+      party_id: quotation.party_id || null,
+      party_name: quotation.party_name || '',
+      party_gstin: quotation.party_gstin || '',
+      party_state: quotation.party_state || '',
+      party_state_code: quotation.party_state_code || '',
+      party_address: quotation.party_address || '',
+      date: quotation.date,
+      valid_until: quotation.valid_until || '',
+      subtotal: quotation.subtotal || 0,
+      discount: quotation.discount || 0,
+      taxable: quotation.taxable || 0,
+      cgst: quotation.cgst || 0,
+      sgst: quotation.sgst || 0,
+      igst: quotation.igst || 0,
+      total_tax: quotation.total_tax || 0,
+      total: quotation.total || 0,
+      supply_type: quotation.supply_type || 'intra',
+      notes: quotation.notes || '',
+      terms: quotation.terms || '',
+      updated_at: new Date().toISOString(),
+    });
+    quotationId = quotation.id;
+
+    // Delete old line items
+    const oldItems = await getAll(stores.quotation_items, i => i.quotation_id === Number(quotation.id));
+    for (const item of oldItems) {
+      await stores.quotation_items.removeItem(String(item.id));
+    }
+  } else {
+    // Create new
+    const quoteNumber = await consumeNextQuoteNumber();
+    quotationId = await nextId('quotations');
+    
+    await stores.quotations.setItem(String(quotationId), {
+      id: quotationId,
+      quote_number: quoteNumber,
+      party_id: quotation.party_id || null,
+      party_name: quotation.party_name || '',
+      party_gstin: quotation.party_gstin || '',
+      party_state: quotation.party_state || '',
+      party_state_code: quotation.party_state_code || '',
+      party_address: quotation.party_address || '',
+      date: quotation.date,
+      valid_until: quotation.valid_until || '',
+      subtotal: quotation.subtotal || 0,
+      discount: quotation.discount || 0,
+      taxable: quotation.taxable || 0,
+      cgst: quotation.cgst || 0,
+      sgst: quotation.sgst || 0,
+      igst: quotation.igst || 0,
+      total_tax: quotation.total_tax || 0,
+      total: quotation.total || 0,
+      status: quotation.status || 'draft',
+      supply_type: quotation.supply_type || 'intra',
+      converted_invoice_id: null,
+      notes: quotation.notes || '',
+      terms: quotation.terms || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+    });
+  }
+
+  // Insert line items
+  for (const item of lineItems) {
+    const itemId = await nextId('quotation_items');
+    await stores.quotation_items.setItem(String(itemId), {
+      id: itemId,
+      quotation_id: quotationId,
+      item_id: item.item_id || null,
+      name: item.name,
+      hsn: item.hsn || '',
+      unit: item.unit || 'pcs',
+      qty: item.qty,
+      rate: item.rate,
+      discount: item.discount || 0,
+      taxable: item.taxable || 0,
+      gst_rate: item.gst_rate || 18,
+      cgst: item.cgst || 0,
+      sgst: item.sgst || 0,
+      igst: item.igst || 0,
+      total: item.total || 0,
+    });
+  }
+
+  return quotationId;
+}
+
+export async function getQuotations(filters = {}) {
+  let all = await getAll(stores.quotations, q => !q.deleted_at);
+
+  if (filters.status) {
+    all = all.filter(q => q.status === filters.status);
+  }
+  if (filters.from) {
+    all = all.filter(q => q.date >= filters.from);
+  }
+  if (filters.to) {
+    all = all.filter(q => q.date <= filters.to);
+  }
+  if (filters.search) {
+    const search = filters.search.toLowerCase();
+    all = all.filter(q =>
+      q.quote_number.toLowerCase().includes(search) ||
+      (q.party_name && q.party_name.toLowerCase().includes(search))
+    );
+  }
+
+  return all.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+}
+
+export async function getQuotationDetail(id) {
+  const quotation = await stores.quotations.getItem(String(id));
+  if (!quotation) return null;
+
+  const items = await getAll(stores.quotation_items, i => i.quotation_id === Number(id));
+  return { ...quotation, items };
+}
+
+export async function updateQuotationStatus(id, status) {
+  const existing = await stores.quotations.getItem(String(id));
+  if (existing) {
+    await stores.quotations.setItem(String(id), {
+      ...existing,
+      status,
+      updated_at: new Date().toISOString(),
+    });
+  }
+}
+
+export async function deleteQuotation(id) {
+  const existing = await stores.quotations.getItem(String(id));
+  if (existing) {
+    await stores.quotations.setItem(String(id), {
+      ...existing,
+      deleted_at: new Date().toISOString(),
+    });
+  }
+}
+
+// ─── Convert Quotation to Invoice ─────────────────────────────────────────
+
+export async function convertQuotationToInvoice(quotationId) {
+  // Get quotation details
+  const quotation = await getQuotationDetail(quotationId);
+  if (!quotation) throw new Error('Quotation not found');
+  if (quotation.status === 'converted') throw new Error('Quotation already converted');
+
+  // Prepare invoice data
+  const invoiceData = {
+    type: 'sale',
+    party_id: quotation.party_id,
+    party_name: quotation.party_name,
+    party_gstin: quotation.party_gstin,
+    party_state: quotation.party_state,
+    party_state_code: quotation.party_state_code,
+    party_address: quotation.party_address,
+    date: new Date().toISOString().split('T')[0],
+    due_date: '',
+    subtotal: quotation.subtotal,
+    discount: quotation.discount,
+    taxable: quotation.taxable,
+    cgst: quotation.cgst,
+    sgst: quotation.sgst,
+    igst: quotation.igst,
+    total_tax: quotation.total_tax,
+    total: quotation.total,
+    supply_type: quotation.supply_type,
+    notes: quotation.notes,
+    terms: quotation.terms,
+  };
+
+  // Prepare line items
+  const lineItems = quotation.items.map(item => ({
+    item_id: item.item_id,
+    name: item.name,
+    hsn: item.hsn,
+    unit: item.unit,
+    qty: item.qty,
+    rate: item.rate,
+    discount: item.discount,
+    taxable: item.taxable,
+    gst_rate: item.gst_rate,
+    cgst: item.cgst,
+    sgst: item.sgst,
+    igst: item.igst,
+    total: item.total,
+  }));
+
+  // Save invoice (this handles invoice number, stock, party balance)
+  const invoiceId = await saveInvoice(invoiceData, lineItems);
+
+  // Update quotation status
+  const existing = await stores.quotations.getItem(String(quotationId));
+  await stores.quotations.setItem(String(quotationId), {
+    ...existing,
+    status: 'converted',
+    converted_invoice_id: invoiceId,
+    updated_at: new Date().toISOString(),
+  });
+
+  return invoiceId;
 }

@@ -147,6 +147,56 @@ async function createTables(db) {
       deleted_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS quotations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_number TEXT UNIQUE NOT NULL,
+      party_id INTEGER,
+      party_name TEXT DEFAULT '',
+      party_gstin TEXT DEFAULT '',
+      party_state TEXT DEFAULT '',
+      party_state_code TEXT DEFAULT '',
+      party_address TEXT DEFAULT '',
+      date TEXT NOT NULL,
+      valid_until TEXT DEFAULT '',
+      subtotal REAL DEFAULT 0,
+      discount REAL DEFAULT 0,
+      taxable REAL DEFAULT 0,
+      cgst REAL DEFAULT 0,
+      sgst REAL DEFAULT 0,
+      igst REAL DEFAULT 0,
+      total_tax REAL DEFAULT 0,
+      total REAL DEFAULT 0,
+      status TEXT DEFAULT 'draft',
+      supply_type TEXT DEFAULT 'intra',
+      converted_invoice_id INTEGER,
+      notes TEXT DEFAULT '',
+      terms TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      deleted_at TEXT,
+      FOREIGN KEY (party_id) REFERENCES parties(id),
+      FOREIGN KEY (converted_invoice_id) REFERENCES invoices(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS quotation_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quotation_id INTEGER NOT NULL,
+      item_id INTEGER,
+      name TEXT NOT NULL,
+      hsn TEXT DEFAULT '',
+      unit TEXT DEFAULT 'pcs',
+      qty REAL DEFAULT 1,
+      rate REAL DEFAULT 0,
+      discount REAL DEFAULT 0,
+      taxable REAL DEFAULT 0,
+      gst_rate REAL DEFAULT 18,
+      cgst REAL DEFAULT 0,
+      sgst REAL DEFAULT 0,
+      igst REAL DEFAULT 0,
+      total REAL DEFAULT 0,
+      FOREIGN KEY (quotation_id) REFERENCES quotations(id)
+    );
+
     INSERT OR IGNORE INTO business_profile (id, name) VALUES (1, 'My Business');
 
     CREATE INDEX IF NOT EXISTS idx_invoices_deleted_date
@@ -165,6 +215,12 @@ async function createTables(db) {
       ON parties(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_items_deleted
       ON items(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_quotations_deleted_date
+      ON quotations(deleted_at, date);
+    CREATE INDEX IF NOT EXISTS idx_quotations_status
+      ON quotations(status);
+    CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation
+      ON quotation_items(quotation_id);
   `);
 }
 
@@ -177,6 +233,14 @@ async function runMigrations(db) {
 
   try {
     await db.execAsync(`ALTER TABLE business_profile ADD COLUMN show_upi_qr INTEGER DEFAULT 0`);
+  } catch (e) { /* already exists */ }
+
+  try {
+    await db.execAsync(`ALTER TABLE business_profile ADD COLUMN quote_prefix TEXT DEFAULT 'QUO'`);
+  } catch (e) { /* already exists */ }
+
+  try {
+    await db.execAsync(`ALTER TABLE business_profile ADD COLUMN quote_counter INTEGER DEFAULT 0`);
   } catch (e) { /* already exists */ }
 }
 
@@ -640,5 +704,216 @@ export async function importAllData(jsonString) {
          row.note||'',row.created_at,row.updated_at,row.deleted_at||null]
       );
     }
+    for (const row of data.quotations||[]) {
+      await db.runAsync(
+        `INSERT INTO quotations (id,quote_number,party_id,party_name,party_gstin,party_state,party_state_code,
+         party_address,date,valid_until,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,status,
+         supply_type,converted_invoice_id,notes,terms,created_at,updated_at,deleted_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id,row.quote_number,row.party_id,row.party_name||'',row.party_gstin||'',
+         row.party_state||'',row.party_state_code||'',row.party_address||'',row.date,
+         row.valid_until||'',row.subtotal||0,row.discount||0,row.taxable||0,row.cgst||0,
+         row.sgst||0,row.igst||0,row.total_tax||0,row.total||0,row.status||'draft',
+         row.supply_type||'intra',row.converted_invoice_id||null,row.notes||'',row.terms||'',
+         row.created_at,row.updated_at,row.deleted_at||null]
+      );
+    }
+    for (const row of data.quotation_items||[]) {
+      await db.runAsync(
+        `INSERT INTO quotation_items (id,quotation_id,item_id,name,hsn,unit,qty,rate,discount,taxable,gst_rate,cgst,sgst,igst,total)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id,row.quotation_id,row.item_id||null,row.name,row.hsn||'',row.unit||'pcs',
+         row.qty,row.rate,row.discount||0,row.taxable||0,row.gst_rate||18,
+         row.cgst||0,row.sgst||0,row.igst||0,row.total||0]
+      );
+    }
   });
+}
+
+// ─── Quotation Number ─────────────────────────────────────────────────────
+
+export async function peekNextQuoteNumber() {
+  const db = await getDB();
+  const profile = await db.getFirstAsync('SELECT quote_prefix, quote_counter FROM business_profile WHERE id=1');
+  const next = (profile.quote_counter || 0) + 1;
+  return `${profile.quote_prefix || 'QUO'}-${String(next).padStart(4, '0')}`;
+}
+
+async function consumeNextQuoteNumber(db) {
+  const profile = await db.getFirstAsync('SELECT quote_prefix, quote_counter FROM business_profile WHERE id=1');
+  const next = (profile.quote_counter || 0) + 1;
+  await db.runAsync('UPDATE business_profile SET quote_counter=? WHERE id=1', [next]);
+  return `${profile.quote_prefix || 'QUO'}-${String(next).padStart(4, '0')}`;
+}
+
+// ─── Quotations CRUD ──────────────────────────────────────────────────────
+
+export async function saveQuotation(quotation, lineItems) {
+  const db = await getDB();
+  let quotationId;
+  
+  await db.withTransactionAsync(async () => {
+    if (quotation.id) {
+      // Update existing quotation
+      await db.runAsync(
+        `UPDATE quotations SET party_id=?,party_name=?,party_gstin=?,party_state=?,party_state_code=?,party_address=?,
+         date=?,valid_until=?,subtotal=?,discount=?,taxable=?,cgst=?,sgst=?,igst=?,total_tax=?,total=?,
+         supply_type=?,notes=?,terms=?,updated_at=datetime('now') WHERE id=?`,
+        [quotation.party_id||null,quotation.party_name||'',quotation.party_gstin||'',
+         quotation.party_state||'',quotation.party_state_code||'',quotation.party_address||'',
+         quotation.date,quotation.valid_until||'',quotation.subtotal||0,quotation.discount||0,
+         quotation.taxable||0,quotation.cgst||0,quotation.sgst||0,quotation.igst||0,
+         quotation.total_tax||0,quotation.total||0,quotation.supply_type||'intra',
+         quotation.notes||'',quotation.terms||'',quotation.id]
+      );
+      quotationId = quotation.id;
+      
+      // Delete old line items
+      await db.runAsync('DELETE FROM quotation_items WHERE quotation_id=?', [quotationId]);
+    } else {
+      // Create new quotation
+      const quoteNumber = await consumeNextQuoteNumber(db);
+      const r = await db.runAsync(
+        `INSERT INTO quotations (quote_number,party_id,party_name,party_gstin,party_state,party_state_code,
+         party_address,date,valid_until,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [quoteNumber,quotation.party_id||null,
+         quotation.party_name||'',quotation.party_gstin||'',quotation.party_state||'',
+         quotation.party_state_code||'',quotation.party_address||'',quotation.date,
+         quotation.valid_until||'',quotation.subtotal||0,quotation.discount||0,quotation.taxable||0,
+         quotation.cgst||0,quotation.sgst||0,quotation.igst||0,quotation.total_tax||0,
+         quotation.total||0,quotation.supply_type||'intra',quotation.notes||'',quotation.terms||'']
+      );
+      quotationId = r.lastInsertRowId;
+    }
+    
+    // Insert line items
+    for (const item of lineItems) {
+      await db.runAsync(
+        `INSERT INTO quotation_items (quotation_id,item_id,name,hsn,unit,qty,rate,discount,taxable,gst_rate,cgst,sgst,igst,total)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [quotationId,item.item_id||null,item.name,item.hsn||'',item.unit||'pcs',
+         item.qty,item.rate,item.discount||0,item.taxable||0,item.gst_rate||18,
+         item.cgst||0,item.sgst||0,item.igst||0,item.total||0]
+      );
+    }
+  });
+  
+  return quotationId;
+}
+
+export async function getQuotations(filters = {}) {
+  const db = await getDB();
+  let where = 'WHERE deleted_at IS NULL';
+  const params = [];
+  
+  if (filters.status) {
+    where += ' AND status = ?';
+    params.push(filters.status);
+  }
+  if (filters.from) {
+    where += ' AND date >= ?';
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    where += ' AND date <= ?';
+    params.push(filters.to);
+  }
+  if (filters.search) {
+    where += ' AND (quote_number LIKE ? OR party_name LIKE ?)';
+    params.push(`%${filters.search}%`, `%${filters.search}%`);
+  }
+  
+  return await db.getAllAsync(
+    `SELECT * FROM quotations ${where} ORDER BY date DESC, id DESC`,
+    params
+  );
+}
+
+export async function getQuotationDetail(id) {
+  const db = await getDB();
+  const quotation = await db.getFirstAsync('SELECT * FROM quotations WHERE id=?', [id]);
+  if (!quotation) return null;
+  
+  const items = await db.getAllAsync('SELECT * FROM quotation_items WHERE quotation_id=?', [id]);
+  return { ...quotation, items };
+}
+
+export async function updateQuotationStatus(id, status) {
+  const db = await getDB();
+  await db.runAsync(
+    'UPDATE quotations SET status=?, updated_at=datetime(\'now\') WHERE id=?',
+    [status, id]
+  );
+}
+
+export async function deleteQuotation(id) {
+  const db = await getDB();
+  await db.runAsync(
+    'UPDATE quotations SET deleted_at=datetime(\'now\') WHERE id=?',
+    [id]
+  );
+}
+
+// ─── Convert Quotation to Invoice ─────────────────────────────────────────
+
+export async function convertQuotationToInvoice(quotationId) {
+  const db = await getDB();
+  
+  // Get quotation details
+  const quotation = await getQuotationDetail(quotationId);
+  if (!quotation) throw new Error('Quotation not found');
+  if (quotation.status === 'converted') throw new Error('Quotation already converted');
+  
+  // Prepare invoice data
+  const invoiceData = {
+    type: 'sale',
+    party_id: quotation.party_id,
+    party_name: quotation.party_name,
+    party_gstin: quotation.party_gstin,
+    party_state: quotation.party_state,
+    party_state_code: quotation.party_state_code,
+    party_address: quotation.party_address,
+    date: new Date().toISOString().split('T')[0],
+    due_date: '',
+    subtotal: quotation.subtotal,
+    discount: quotation.discount,
+    taxable: quotation.taxable,
+    cgst: quotation.cgst,
+    sgst: quotation.sgst,
+    igst: quotation.igst,
+    total_tax: quotation.total_tax,
+    total: quotation.total,
+    supply_type: quotation.supply_type,
+    notes: quotation.notes,
+    terms: quotation.terms,
+  };
+  
+  // Prepare line items
+  const lineItems = quotation.items.map(item => ({
+    item_id: item.item_id,
+    name: item.name,
+    hsn: item.hsn,
+    unit: item.unit,
+    qty: item.qty,
+    rate: item.rate,
+    discount: item.discount,
+    taxable: item.taxable,
+    gst_rate: item.gst_rate,
+    cgst: item.cgst,
+    sgst: item.sgst,
+    igst: item.igst,
+    total: item.total,
+  }));
+  
+  // Save invoice
+  const invoiceId = await saveInvoice(invoiceData, lineItems);
+  
+  // Update quotation status
+  await db.runAsync(
+    'UPDATE quotations SET status=?, converted_invoice_id=?, updated_at=datetime(\'now\') WHERE id=?',
+    ['converted', invoiceId, quotationId]
+  );
+  
+  return invoiceId;
 }

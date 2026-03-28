@@ -19,6 +19,9 @@ import InventoryScreen   from '../screens/Inventory/InventoryScreen';
 import ExpensesScreen    from '../screens/Expenses/ExpensesScreen';
 import ReportsScreen     from '../screens/Reports/ReportsScreen';
 import SettingsScreen    from '../screens/Settings/SettingsScreen';
+import QuotationListScreen   from '../screens/Quotation/QuotationListScreen';
+import CreateQuotation       from '../screens/Quotation/CreateQuotation';
+import QuotationDetailScreen from '../screens/Quotation/QuotationDetailScreen';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -32,6 +35,15 @@ function InvoiceStack() {
       <Stack.Screen name="InvoiceList"   component={InvoiceListScreen} />
       <Stack.Screen name="CreateInvoice" component={CreateInvoice} />
       <Stack.Screen name="InvoiceDetail" component={InvoiceDetail} />
+    </Stack.Navigator>
+  );
+}
+function QuotationStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="QuotationList"   component={QuotationListScreen} />
+      <Stack.Screen name="CreateQuotation" component={CreateQuotation} />
+      <Stack.Screen name="QuotationDetail" component={QuotationDetailScreen} />
     </Stack.Navigator>
   );
 }
@@ -107,13 +119,14 @@ const MOBILE_TABS = [
 ];
 
 const SIDEBAR_ITEMS = [
-  { name: 'Dashboard',   label: 'Home',     icon: 'home',        tab: 'Dashboard',   screen: null       },
-  { name: 'InvoicesTab', label: 'Invoices', icon: 'file-text',   tab: 'InvoicesTab', screen: null       },
-  { name: 'PartiesTab',  label: 'Parties',  icon: 'users',       tab: 'PartiesTab',  screen: null       },
-  { name: 'Inventory',   label: 'Items',    icon: 'package',     tab: 'Inventory',   screen: null       },
-  { name: 'Expenses',    label: 'Expenses', icon: 'credit-card', tab: 'More',        screen: 'Expenses' },
-  { name: 'Reports',     label: 'Reports',  icon: 'bar-chart-2', tab: 'More',        screen: 'Reports'  },
-  { name: 'Settings',    label: 'Settings', icon: 'settings',    tab: 'More',        screen: 'Settings' },
+  { name: 'Dashboard',     label: 'Home',       icon: 'home',        tab: 'Dashboard',     screen: null       },
+  { name: 'InvoicesTab',   label: 'Invoices',   icon: 'file-text',   tab: 'InvoicesTab',   screen: null       },
+  { name: 'QuotationsTab', label: 'Quotations', icon: 'clipboard',   tab: 'QuotationsTab', screen: null       },
+  { name: 'PartiesTab',    label: 'Parties',    icon: 'users',       tab: 'PartiesTab',    screen: null       },
+  { name: 'Inventory',     label: 'Items',      icon: 'package',     tab: 'Inventory',     screen: null       },
+  { name: 'Expenses',      label: 'Expenses',   icon: 'credit-card', tab: 'More',          screen: 'Expenses' },
+  { name: 'Reports',       label: 'Reports',    icon: 'bar-chart-2', tab: 'More',          screen: 'Reports'  },
+  { name: 'Settings',      label: 'Settings',   icon: 'settings',    tab: 'More',          screen: 'Settings' },
 ];
 
 // ── Inject global CSS once ────────────────────────────────────────
@@ -365,11 +378,12 @@ export default function AppNavigator() {
         overflow: 'hidden',
       } : {}}
     >
-      <Tab.Screen name="Dashboard"   component={DashboardScreen} />
-      <Tab.Screen name="InvoicesTab" component={InvoiceStack} />
-      <Tab.Screen name="PartiesTab"  component={PartiesStack} />
-      <Tab.Screen name="Inventory"   component={InventoryScreen} />
-      <Tab.Screen name="More"        component={MoreStack} />
+      <Tab.Screen name="Dashboard"     component={DashboardScreen} />
+      <Tab.Screen name="InvoicesTab"   component={InvoiceStack} />
+      <Tab.Screen name="QuotationsTab" component={QuotationStack} />
+      <Tab.Screen name="PartiesTab"    component={PartiesStack} />
+      <Tab.Screen name="Inventory"     component={InventoryScreen} />
+      <Tab.Screen name="More"          component={MoreStack} />
     </Tab.Navigator>
   );
 }

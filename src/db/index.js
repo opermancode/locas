@@ -32,3 +32,12 @@ export const getDashboardStats    = db.getDashboardStats;
 export const getReportData        = db.getReportData;
 export const exportAllData        = db.exportAllData;
 export const importAllData        = db.importAllData;
+
+// Quotations
+export const peekNextQuoteNumber       = db.peekNextQuoteNumber;
+export const saveQuotation             = db.saveQuotation;
+export const getQuotations             = db.getQuotations;
+export const getQuotationDetail        = db.getQuotationDetail;
+export const updateQuotationStatus     = db.updateQuotationStatus;
+export const deleteQuotation           = db.deleteQuotation;
+export const convertQuotationToInvoice = db.convertQuotationToInvoice;
