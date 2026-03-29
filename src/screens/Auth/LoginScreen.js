@@ -1,345 +1,406 @@
-import Icon from '../../utils/Icon';
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform, Image, StatusBar,
+  Platform, ScrollView,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from '../../utils/Icon';
 import { signIn } from '../../utils/firebase/firebaseAuth';
-import { getDataOwner, setDataOwner } from '../../db';
-import { COLORS, RADIUS, FONTS, SHADOW } from '../../theme';
+import { verifyOnLogin } from '../../utils/licenseSystem';
+import { COLORS, RADIUS, FONTS } from '../../theme';
 
 const BRAND = '#FF6B00';
-const DARK  = '#1A1A2E';
 
-export default function LoginScreen({ onLoginSuccess }) {
-  const [email, setEmail]       = useState('');
+export default function LoginScreen({ loginInfo, onSuccess }) {
+  const insets = useSafeAreaInsets();
+  const dataOwner = loginInfo?.dataOwner;
+  
+  // Pre-fill email if data owner exists
+  const [email, setEmail] = useState(dataOwner || '');
   const [password, setPassword] = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [checking, setChecking] = useState(true);
-  const [error, setError]       = useState('');
-  const [ownerEmail, setOwnerEmail] = useState(null); // The email that owns this data
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // On mount, check if this database has an owner
+  // Update email when dataOwner changes
   useEffect(() => {
-    checkOwnership();
-  }, []);
+    if (dataOwner) {
+      setEmail(dataOwner);
+    }
+  }, [dataOwner]);
 
-  const checkOwnership = async () => {
-    try {
-      const owner = await getDataOwner();
-      setOwnerEmail(owner);
-    } catch (e) {
-      console.error('Failed to check ownership:', e);
-    } finally {
-      setChecking(false);
+  const getMessage = () => {
+    switch (loginInfo?.reason) {
+      case 'no_cache':
+        return dataOwner 
+          ? `This data belongs to ${dataOwner}` 
+          : 'Sign in to continue';
+      case 'owner_mismatch':
+        return `This data belongs to ${dataOwner}`;
+      case 'app_updated':
+        return '🔄 App updated - please verify license';
+      case 'device_changed':
+        return '📱 New device - please verify license';
+      case 'expired':
+        return '⏰ License expired - please renew';
+      case 'blocked':
+        return '🚫 License revoked - contact support';
+      default:
+        return 'Sign in to continue';
     }
   };
 
   const handleLogin = async () => {
     const trimmedEmail = email.trim().toLowerCase();
-    
-    if (!trimmedEmail || !password.trim()) {
-      setError('Please enter email and password');
+    const trimmedPassword = password.trim();
+
+    // Validation
+    if (!trimmedEmail) {
+      setError('Please enter email');
       return;
     }
 
-    // If data has an owner, only that owner can login
-    if (ownerEmail && ownerEmail !== trimmedEmail) {
-      setError(`This data belongs to ${ownerEmail}. Please login with that account.`);
+    if (!trimmedPassword) {
+      setError('Please enter password');
+      return;
+    }
+
+    // Check if email matches data owner
+    if (dataOwner && trimmedEmail !== dataOwner.toLowerCase()) {
+      setError(`This data belongs to ${dataOwner}. You must login with that email.`);
       return;
     }
 
     setLoading(true);
     setError('');
-    
+
     try {
-      // Step 1: Verify with Firebase (this is the license check)
-      await signIn(trimmedEmail, password);
-      
-      // Step 2: If this is fresh data (no owner), lock it to this user
-      if (!ownerEmail) {
-        await setDataOwner(trimmedEmail);
-        console.log('Data ownership set to:', trimmedEmail);
+      // Step 1: Firebase Auth login
+      await signIn(trimmedEmail, trimmedPassword);
+
+      // Step 2: Verify license from Firebase claims
+      await verifyOnLogin();
+
+      // Step 3: Success - go to app
+      if (onSuccess) {
+        onSuccess();
       }
-      
-      // Step 3: Notify parent that login succeeded
-      if (onLoginSuccess) {
-        onLoginSuccess(trimmedEmail);
-      }
-      
+
     } catch (e) {
-      switch (e.code) {
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          setError('Invalid email or password');
+      console.error('Login error:', e);
+
+      // Handle different error types
+      const errorCode = e.code || e.message;
+      
+      switch (errorCode) {
+        case 'OWNER_MISMATCH':
+          setError(`This data belongs to a different account.`);
           break;
-        case 'auth/user-disabled':
+        case 'BLOCKED':
           setError('Your license has been revoked. Contact support.');
           break;
+        case 'LICENSE_EXPIRED':
+          setError('Your license has expired. Please renew to continue.');
+          break;
+        case 'auth/user-not-found':
+          setError('No account found with this email.');
+          break;
+        case 'auth/wrong-password':
+          setError('Incorrect password.');
+          break;
+        case 'auth/invalid-credential':
+          setError('Invalid email or password.');
+          break;
+        case 'auth/invalid-email':
+          setError('Invalid email format.');
+          break;
+        case 'auth/user-disabled':
+          setError('This account has been disabled. Contact support.');
+          break;
         case 'auth/too-many-requests':
-          setError('Too many attempts. Please try again later.');
+          setError('Too many failed attempts. Please try again later.');
           break;
         case 'auth/network-request-failed':
-          setError('No internet connection. Internet is required to verify your license.');
+          setError('No internet connection. Please check your network.');
           break;
         default:
-          setError('Login failed. Please try again.');
+          setError(e.message || 'Login failed. Please try again.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  if (checking) {
-    return (
-      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color={BRAND} />
-        <Text style={{ marginTop: 12, color: COLORS.textMute }}>Checking license...</Text>
-      </View>
-    );
-  }
-
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF8F4" />
-
-      {/* Logo */}
-      <View style={styles.logoWrap}>
-        <View style={styles.logoBox}>
-          <View style={styles.textLogoBox}>
-            <Text style={styles.textLogo}>L</Text>
+      <StatusBar style="dark" />
+      
+      <ScrollView 
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Logo */}
+        <View style={styles.logoWrap}>
+          <View style={styles.logoBox}>
+            <Text style={styles.logoText}>L</Text>
           </View>
+          <Text style={styles.brandName}>LOCAS</Text>
         </View>
-        <Text style={styles.brandName}>LOCAS</Text>
-        <Text style={styles.brandSub}>Smart Billing for India</Text>
-      </View>
 
-      {/* Card */}
-      <View style={styles.card}>
-        <Text style={styles.title}>Welcome back</Text>
-        <Text style={styles.subtitle}>
-          {ownerEmail 
-            ? `Sign in as ${ownerEmail}` 
-            : 'Sign in with your licensed account'}
-        </Text>
+        {/* Card */}
+        <View style={styles.card}>
+          <Text style={styles.title}>Welcome</Text>
+          <Text style={styles.subtitle}>{getMessage()}</Text>
 
-        {/* License Info Banner */}
-        {ownerEmail && (
-          <View style={styles.ownerBanner}>
-            <Icon name="lock" size={14} color={COLORS.info} />
-            <Text style={styles.ownerBannerText}>
-              This data is licensed to: {ownerEmail}
+          {/* Data Owner Banner */}
+          {dataOwner && (
+            <View style={styles.ownerBanner}>
+              <Icon name="lock" size={14} color={BRAND} />
+              <Text style={styles.ownerText}>
+                Data locked to: <Text style={styles.ownerEmail}>{dataOwner}</Text>
+              </Text>
+            </View>
+          )}
+
+          {/* Error Message */}
+          {error !== '' && (
+            <View style={styles.errorBox}>
+              <Icon name="alert-circle" size={14} color="#DC2626" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
+          {/* Email Input */}
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={[
+              styles.input, 
+              dataOwner && styles.inputLocked
+            ]}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="your@email.com"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!loading && !dataOwner}
+            selectTextOnFocus={!dataOwner}
+          />
+          {dataOwner && (
+            <Text style={styles.lockedHint}>
+              You must login with this email to access this data
             </Text>
-          </View>
-        )}
+          )}
 
-        {error ? (
-          <View style={styles.errorBox}>
-            <Icon name="alert-circle" size={14} color="#991B1B" />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
+          {/* Password Input */}
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Enter your password"
+            placeholderTextColor="#9CA3AF"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!loading}
+            onSubmitEditing={handleLogin}
+            returnKeyType="done"
+          />
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          placeholder={ownerEmail || "your@email.com"}
-          placeholderTextColor={COLORS.textMute}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!loading}
-        />
+          {/* Login Button */}
+          <TouchableOpacity
+            style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.loginBtnText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="••••••••"
-          placeholderTextColor={COLORS.textMute}
-          secureTextEntry
-          editable={!loading}
-          onSubmitEditing={handleLogin}
-          returnKeyType="done"
-        />
+          <Text style={styles.footer}>
+            Internet connection required for verification
+          </Text>
+        </View>
 
-        <TouchableOpacity
-          style={[styles.loginBtn, loading && { opacity: 0.7 }]}
-          onPress={handleLogin}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.loginBtnText}>Sign In</Text>
-          }
-        </TouchableOpacity>
-
-        <Text style={styles.footer}>
-          Internet connection required for license verification
-        </Text>
-      </View>
-
-      {/* Bottom Note */}
-      <View style={styles.bottomNote}>
-        <Icon name="shield" size={14} color={COLORS.textMute} />
-        <Text style={styles.bottomNoteText}>
-          Your data is encrypted and stored locally
-        </Text>
-      </View>
+        {/* Bottom Note */}
+        <View style={styles.bottomNote}>
+          <Icon name="shield" size={14} color="#9CA3AF" />
+          <Text style={styles.bottomNoteText}>
+            Your data is encrypted and stored locally
+          </Text>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { 
+    flex: 1, 
     backgroundColor: '#FFF8F4',
-    alignItems: 'center',
-    justifyContent: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center', 
+    justifyContent: 'center', 
     padding: 24,
   },
-  logoWrap: {
-    alignItems: 'center',
+  logoWrap: { 
+    alignItems: 'center', 
     marginBottom: 24,
   },
-  logoBox: {
-    width: 80,
-    height: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  textLogoBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: BRAND,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: BRAND,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+  logoBox: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 16, 
+    backgroundColor: BRAND, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 12, 
+    shadowColor: BRAND, 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.3, 
+    shadowRadius: 8, 
     elevation: 8,
   },
-  textLogo: {
-    fontSize: 36,
-    fontWeight: '800',
+  logoText: { 
+    fontSize: 36, 
+    fontWeight: '800', 
     color: '#fff',
   },
-  brandName: {
-    fontSize: 11,
-    color: COLORS.textMute,
-    letterSpacing: 2,
+  brandName: { 
+    fontSize: 11, 
+    color: '#6B7280', 
+    letterSpacing: 2, 
     textTransform: 'uppercase',
-    marginTop: 4,
   },
-  brandSub: {
-    fontSize: 12,
-    color: COLORS.textMute,
+  card: { 
+    width: '100%', 
+    maxWidth: 400, 
+    backgroundColor: '#fff', 
+    borderRadius: 20, 
+    padding: 24, 
+    borderWidth: 1, 
+    borderColor: '#E5E7EB',
   },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: '#fff',
-    borderRadius: RADIUS.xl,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: FONTS.black,
-    color: COLORS.text,
+  title: { 
+    fontSize: 24, 
+    fontWeight: '800', 
+    color: '#1F2937', 
     marginBottom: 4,
   },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.textMute,
+  subtitle: { 
+    fontSize: 14, 
+    color: '#6B7280', 
     marginBottom: 20,
   },
-  ownerBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.infoLight,
-    padding: 12,
-    borderRadius: RADIUS.md,
+  ownerBanner: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8, 
+    backgroundColor: '#FFF7ED', 
+    padding: 12, 
+    borderRadius: 10, 
     marginBottom: 16,
-  },
-  ownerBannerText: {
-    fontSize: 12,
-    color: COLORS.info,
-    flex: 1,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: FONTS.bold,
-    color: COLORS.textSub,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  input: {
-    backgroundColor: COLORS.bg,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 14,
-    color: COLORS.text,
+    borderColor: '#FDBA74',
   },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.dangerLight,
-    borderRadius: RADIUS.md,
-    padding: 12,
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 13,
-    color: COLORS.danger,
+  ownerText: { 
+    fontSize: 12, 
+    color: '#C2410C', 
     flex: 1,
   },
-  loginBtn: {
-    backgroundColor: BRAND,
-    borderRadius: RADIUS.md,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: 24,
+  ownerEmail: { 
+    fontWeight: '700',
   },
-  loginBtnText: {
-    color: '#fff',
-    fontWeight: FONTS.black,
-    fontSize: 15,
-  },
-  footer: {
-    fontSize: 11,
-    color: COLORS.textMute,
-    textAlign: 'center',
+  label: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: '#6B7280', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.6, 
+    marginBottom: 8, 
     marginTop: 16,
   },
-  bottomNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  input: { 
+    backgroundColor: '#F9FAFB', 
+    borderWidth: 1, 
+    borderColor: '#E5E7EB', 
+    borderRadius: 10, 
+    paddingHorizontal: 14, 
+    paddingVertical: 14, 
+    fontSize: 15, 
+    color: '#1F2937',
+  },
+  inputLocked: { 
+    backgroundColor: '#F3F4F6', 
+    color: '#6B7280',
+  },
+  lockedHint: { 
+    fontSize: 11, 
+    color: '#9CA3AF', 
+    marginTop: 6, 
+    fontStyle: 'italic',
+  },
+  errorBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8, 
+    backgroundColor: '#FEF2F2', 
+    borderRadius: 10, 
+    padding: 12, 
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorText: { 
+    fontSize: 13, 
+    color: '#DC2626', 
+    flex: 1,
+  },
+  loginBtn: { 
+    backgroundColor: BRAND, 
+    borderRadius: 10, 
+    paddingVertical: 16, 
+    alignItems: 'center', 
     marginTop: 24,
   },
-  bottomNoteText: {
-    fontSize: 12,
-    color: COLORS.textMute,
+  loginBtnDisabled: {
+    opacity: 0.7,
+  },
+  loginBtnText: { 
+    color: '#fff', 
+    fontWeight: '700', 
+    fontSize: 16,
+  },
+  footer: { 
+    fontSize: 11, 
+    color: '#9CA3AF', 
+    textAlign: 'center', 
+    marginTop: 16,
+  },
+  bottomNote: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    marginTop: 24,
+  },
+  bottomNoteText: { 
+    fontSize: 12, 
+    color: '#9CA3AF',
   },
 });

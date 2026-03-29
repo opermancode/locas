@@ -43,3 +43,9 @@ export const getQuotationDetail        = db.getQuotationDetail;
 export const updateQuotationStatus     = db.updateQuotationStatus;
 export const deleteQuotation           = db.deleteQuotation;
 export const convertQuotationToInvoice = db.convertQuotationToInvoice;
+
+// Dashboard & Search (NEW)
+export const globalSearch         = db.globalSearch;
+export const getRecentInvoices    = db.getRecentInvoices;
+export const getTopParties        = db.getTopParties;
+export const getLowStockProducts  = db.getLowStockProducts;
