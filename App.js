@@ -7,299 +7,349 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { getDB, exportAllData } from './src/db';
-import { onAuthStateChanged } from './src/utils/firebase/firebaseAuth';
+import { checkIfLoginRequired, getLicenseStatus } from './src/utils/licenseSystem';
 import LoginScreen from './src/screens/Auth/LoginScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 
-const BRAND   = '#FF6B00';
-const DARK    = '#1A1A2E';
-const LIGHT   = '#FFF8F4';
+const BRAND = '#FF6B00';
+const DARK = '#1A1A2E';
+const LIGHT = '#FFF8F4';
 
 export default function App() {
-  const [phase, setPhase] = useState('splash'); // 'splash' | 'ready' | 'error'
-  const [user, setUser]   = useState(undefined); // undefined=checking, null=logged out, object=logged in
+  const [phase, setPhase] = useState('splash'); // splash | login | ready | error
+  const [loginInfo, setLoginInfo] = useState(null);
+  const [licenseStatus, setLicenseStatus] = useState(null);
   const [error, setError] = useState(null);
+  const [splashDone, setSplashDone] = useState(false);
+  const [initDone, setInitDone] = useState(false);
+  const initResult = useRef(null);
 
   // Animations
-  const iconScale   = useRef(new Animated.Value(0.6)).current;
+  const iconScale = useRef(new Animated.Value(0.6)).current;
   const iconOpacity = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
-  const tagOpacity  = useRef(new Animated.Value(0)).current;
-  const ringScale   = useRef(new Animated.Value(0.5)).current;
+  const tagOpacity = useRef(new Animated.Value(0)).current;
+  const ringScale = useRef(new Animated.Value(0.5)).current;
   const ringOpacity = useRef(new Animated.Value(0)).current;
-  const fadeOut     = useRef(new Animated.Value(1)).current;
+  const fadeOut = useRef(new Animated.Value(1)).current;
 
+  // Run splash animations
   useEffect(() => {
-    // Step 1 — ring pulse in
     Animated.parallel([
-      Animated.timing(ringScale,   { toValue: 1,   duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(ringScale, { toValue: 1, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       Animated.timing(ringOpacity, { toValue: 0.15, duration: 500, useNativeDriver: true }),
     ]).start();
 
-    // Step 2 — icon bounces in
     setTimeout(() => {
       Animated.parallel([
-        Animated.spring(iconScale, {
-          toValue: 1, tension: 60, friction: 7, useNativeDriver: true,
-        }),
+        Animated.spring(iconScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: true }),
         Animated.timing(iconOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
       ]).start();
     }, 200);
 
-    // Step 3 — brand name fades in
     setTimeout(() => {
       Animated.timing(textOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     }, 600);
 
-    // Step 4 — tagline fades in
     setTimeout(() => {
       Animated.timing(tagOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     }, 900);
 
-    // Step 5 — init DB, then subscribe to auth state.
-    // Auth listener is registered AFTER DB is ready so we never render the
-    // main app before the database is initialised (avoids a split-second
-    // blank screen when Firebase has a cached session and resolves fast).
-    let unsubscribe = () => {};
-
-    getDB()
-      .then(async () => {
-        // Trigger daily backup silently if due
-        try {
-          const { shouldRunDailyBackup, getToken, uploadBackup } = await import('./src/utils/googleDrive');
-          const due = await shouldRunDailyBackup();
-          if (due) {
-            const token = await getToken();
-            if (token) {
-              const json = await exportAllData();
-              await uploadBackup(token, json);
-            }
-          }
-        } catch (_) {
-          // silent — never block launch for backup failure
-        }
-        // Subscribe to Firebase auth only after DB is confirmed ready
-        unsubscribe = onAuthStateChanged(u => setUser(u));
-
-        // Wait minimum 2s for splash, then fade out
-        setTimeout(() => {
-          Animated.timing(fadeOut, {
-            toValue: 0, duration: 500, useNativeDriver: true,
-          }).start(() => setPhase('ready'));
-        }, 2000);
-      })
-      .catch(e => {
-        setError(e.message);
-        setPhase('error');
-      });
-
-    return () => unsubscribe();
+    // Minimum splash time
+    setTimeout(() => {
+      setSplashDone(true);
+    }, 2000);
   }, []);
 
+  // Initialize app
+  useEffect(() => {
+    const init = async () => {
+      try {
+        // 1. Init DB
+        await getDB();
+
+        // 2. Silent backup
+        try {
+          const { shouldRunDailyBackup, getToken, uploadBackup } = await import('./src/utils/googleDrive');
+          if (await shouldRunDailyBackup()) {
+            const token = await getToken();
+            if (token) await uploadBackup(token, await exportAllData());
+          }
+        } catch (_) {}
+
+        // 3. Check login (NO Firebase - uses cache)
+        const loginCheck = await checkIfLoginRequired();
+
+        // Store result
+        initResult.current = { success: true, loginCheck };
+        setInitDone(true);
+
+      } catch (e) {
+        console.error('Init error:', e);
+        initResult.current = { success: false, error: e.message };
+        setInitDone(true);
+      }
+    };
+
+    init();
+  }, []);
+
+  // When both splash and init are done, transition to next phase
+  useEffect(() => {
+    if (splashDone && initDone) {
+      // Fade out splash
+      Animated.timing(fadeOut, { 
+        toValue: 0, 
+        duration: 500, 
+        useNativeDriver: true 
+      }).start(() => {
+        // Handle result after animation completes
+        handleInitResult();
+      });
+    }
+  }, [splashDone, initDone]);
+
+  // Handle init result (separate function to avoid async in animation callback)
+  const handleInitResult = async () => {
+    if (!initResult.current.success) {
+      setError(initResult.current.error);
+      setPhase('error');
+      return;
+    }
+
+    const { loginCheck } = initResult.current;
+
+    if (loginCheck.required) {
+      setLoginInfo(loginCheck);
+      setPhase('login');
+    } else {
+      try {
+        const status = await getLicenseStatus();
+        setLicenseStatus(status);
+      } catch (_) {}
+      setPhase('ready');
+    }
+  };
+
+  // Handle login success
+  const handleLoginSuccess = async () => {
+    try {
+      const status = await getLicenseStatus();
+      setLicenseStatus(status);
+    } catch (_) {}
+    setPhase('ready');
+  };
+
+  // ─── ERROR SCREEN ───────────────────────────────────────────────────────
   if (phase === 'error') {
     return (
-      <View style={s.errorScreen}>
-        <Text style={s.errorIcon}>⚠️</Text>
-        <Text style={s.errorTitle}>Failed to start</Text>
-        <Text style={s.errorMsg}>{error}</Text>
-      </View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <View style={styles.errorScreen}>
+            <StatusBar style="dark" />
+            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.errorTitle}>Failed to start</Text>
+            <Text style={styles.errorMsg}>{error}</Text>
+          </View>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     );
   }
 
-  if (phase === 'ready') {
-    // Still checking auth state
-    if (user === undefined) {
-      return (
-        <View style={{ flex: 1, backgroundColor: '#FFF8F4' }}>
+  // ─── LOGIN SCREEN ───────────────────────────────────────────────────────
+  if (phase === 'login') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
           <StatusBar style="dark" />
-        </View>
-      );
-    }
-    // Not logged in — show login screen
-    if (!user) {
-      return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <SafeAreaProvider>
-            <LoginScreen />
-          </SafeAreaProvider>
-        </GestureHandlerRootView>
-      );
-    }
-    // Logged in — show main app
+          <LoginScreen loginInfo={loginInfo} onSuccess={handleLoginSuccess} />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  // ─── MAIN APP ───────────────────────────────────────────────────────────
+  if (phase === 'ready') {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <StatusBar style="dark" />
           <NavigationContainer>
-            <AppNavigator />
+            <AppNavigator licenseStatus={licenseStatus} />
           </NavigationContainer>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     );
   }
 
-  // Splash
+  // ─── SPLASH SCREEN ──────────────────────────────────────────────────────
   return (
-    <Animated.View style={[s.splash, { opacity: fadeOut }]}>
-      <StatusBar style="dark" />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Animated.View style={[styles.splash, { opacity: fadeOut }]}>
+        <StatusBar style="dark" />
 
-      {/* Decorative rings */}
-      <Animated.View style={[s.ring, s.ring1, {
-        transform: [{ scale: ringScale }],
-        opacity: ringOpacity,
-      }]} />
-      <Animated.View style={[s.ring, s.ring2, {
-        transform: [{ scale: ringScale }],
-        opacity: ringOpacity,
-      }]} />
+        {/* Rings */}
+        <Animated.View style={[styles.ring, styles.ring1, { 
+          transform: [{ scale: ringScale }], 
+          opacity: ringOpacity 
+        }]} />
+        <Animated.View style={[styles.ring, styles.ring2, { 
+          transform: [{ scale: ringScale }], 
+          opacity: ringOpacity 
+        }]} />
 
-      {/* Icon box */}
-      <Animated.View style={[s.iconWrap, {
-        transform: [{ scale: iconScale }],
-        opacity: iconOpacity,
-      }]}>
-        <View style={s.iconBox}>
-          <Image
-            source={require('./assets/icon.png')}
-            style={s.iconImg}
-            resizeMode="contain"
-          />
-        </View>
-        {/* Subtle shadow ring */}
-        <View style={s.iconShadow} />
+        {/* Icon */}
+        <Animated.View style={[styles.iconWrap, { 
+          transform: [{ scale: iconScale }], 
+          opacity: iconOpacity 
+        }]}>
+          <View style={styles.iconBox}>
+            <Image 
+              source={require('./assets/icon.png')} 
+              style={styles.iconImg} 
+              resizeMode="contain" 
+            />
+          </View>
+          <View style={styles.iconShadow} />
+        </Animated.View>
+
+        {/* Brand */}
+        <Animated.View style={[styles.brandWrap, { opacity: textOpacity }]}>
+          <Text style={styles.brandName}>LOCAS</Text>
+          <View style={styles.brandUnderline} />
+        </Animated.View>
+
+        {/* Tagline */}
+        <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
+          Smart Billing for India
+        </Animated.Text>
+
+        {/* Dots */}
+        <Animated.View style={[styles.bottom, { opacity: tagOpacity }]}>
+          <View style={styles.dot} />
+          <View style={[styles.dot, styles.dotMid]} />
+          <View style={styles.dot} />
+        </Animated.View>
       </Animated.View>
-
-      {/* Brand name */}
-      <Animated.View style={[s.brandWrap, { opacity: textOpacity }]}>
-        <Text style={s.brandName}>LOCAS</Text>
-        <View style={s.brandUnderline} />
-      </Animated.View>
-
-      {/* Tagline */}
-      <Animated.Text style={[s.tagline, { opacity: tagOpacity }]}>
-        Smart Billing for India
-      </Animated.Text>
-
-      {/* Bottom indicator */}
-      <Animated.View style={[s.bottom, { opacity: tagOpacity }]}>
-        <View style={s.dot} />
-        <View style={[s.dot, s.dotMid]} />
-        <View style={s.dot} />
-      </Animated.View>
-    </Animated.View>
+    </GestureHandlerRootView>
   );
 }
 
-const s = StyleSheet.create({
-  splash: {
-    flex: 1,
-    backgroundColor: LIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
+const styles = StyleSheet.create({
+  splash: { 
+    flex: 1, 
+    backgroundColor: LIGHT, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
   },
-
-  // Decorative rings
-  ring: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: BRAND,
+  ring: { 
+    position: 'absolute', 
+    borderRadius: 999, 
+    backgroundColor: BRAND 
   },
-  ring1: {
-    width: 320, height: 320,
+  ring1: { 
+    width: 320, 
+    height: 320 
   },
-  ring2: {
-    width: 220, height: 220,
-    opacity: 0.08,
+  ring2: { 
+    width: 220, 
+    height: 220, 
+    opacity: 0.08 
   },
-
-  // Icon
-  iconWrap: {
-    alignItems: 'center',
-    marginBottom: 32,
+  iconWrap: { 
+    alignItems: 'center', 
+    marginBottom: 32 
   },
-  iconBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 28,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: BRAND,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 12,
+  iconBox: { 
+    width: 100, 
+    height: 100, 
+    borderRadius: 28, 
+    backgroundColor: '#fff', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    shadowColor: BRAND, 
+    shadowOffset: { width: 0, height: 8 }, 
+    shadowOpacity: 0.25, 
+    shadowRadius: 20, 
+    elevation: 12 
   },
-  iconImg: {
-    width: 72,
-    height: 72,
+  iconImg: { 
+    width: 72, 
+    height: 72 
   },
-  iconShadow: {
-    position: 'absolute',
-    bottom: -8,
-    width: 60,
-    height: 12,
-    borderRadius: 30,
-    backgroundColor: BRAND,
-    opacity: 0.15,
+  iconShadow: { 
+    position: 'absolute', 
+    bottom: -8, 
+    width: 60, 
+    height: 12, 
+    borderRadius: 30, 
+    backgroundColor: BRAND, 
+    opacity: 0.15 
   },
-
-  // Brand
-  brandWrap: {
-    alignItems: 'center',
-    marginBottom: 10,
+  brandWrap: { 
+    alignItems: 'center', 
+    marginBottom: 10 
   },
-  brandName: {
-    fontSize: 38,
-    fontWeight: '900',
-    color: DARK,
-    letterSpacing: 10,
+  brandName: { 
+    fontSize: 38, 
+    fontWeight: '900', 
+    color: DARK, 
+    letterSpacing: 10 
   },
-  brandUnderline: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: BRAND,
-    marginTop: 6,
+  brandUnderline: { 
+    width: 40, 
+    height: 4, 
+    borderRadius: 2, 
+    backgroundColor: BRAND, 
+    marginTop: 6 
   },
-
-  // Tagline
-  tagline: {
-    fontSize: 14,
-    color: '#888',
-    letterSpacing: 1.5,
-    fontWeight: '500',
-    marginBottom: 60,
+  tagline: { 
+    fontSize: 14, 
+    color: '#888', 
+    letterSpacing: 1.5, 
+    fontWeight: '500', 
+    marginBottom: 60 
   },
-
-  // Dot loader
-  bottom: {
-    position: 'absolute',
-    bottom: 60,
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
+  bottom: { 
+    position: 'absolute', 
+    bottom: 60, 
+    flexDirection: 'row', 
+    gap: 8, 
+    alignItems: 'center' 
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: BRAND,
-    opacity: 0.3,
+  dot: { 
+    width: 6, 
+    height: 6, 
+    borderRadius: 3, 
+    backgroundColor: BRAND, 
+    opacity: 0.3 
   },
-  dotMid: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    opacity: 0.8,
+  dotMid: { 
+    width: 10, 
+    height: 10, 
+    borderRadius: 5, 
+    opacity: 0.8 
   },
-
-  // Error
-  errorScreen: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    padding: 32, backgroundColor: LIGHT,
+  errorScreen: { 
+    flex: 1, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    padding: 32, 
+    backgroundColor: LIGHT 
   },
-  errorIcon:  { fontSize: 48, marginBottom: 12 },
-  errorTitle: { fontSize: 20, fontWeight: '700', color: DARK, marginBottom: 8 },
-  errorMsg:   { fontSize: 14, color: '#888', textAlign: 'center' },
+  errorIcon: { 
+    fontSize: 48, 
+    marginBottom: 12 
+  },
+  errorTitle: { 
+    fontSize: 20, 
+    fontWeight: '700', 
+    color: DARK, 
+    marginBottom: 8 
+  },
+  errorMsg: { 
+    fontSize: 14, 
+    color: '#888', 
+    textAlign: 'center' 
+  },
 });
