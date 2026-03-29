@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Animated, Easing, Image,
+  View, Text, StyleSheet, Animated, Easing, Image, TouchableOpacity,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -140,6 +140,24 @@ export default function App() {
     setPhase('ready');
   };
 
+  // ─── RETRY HANDLER ───────────────────────────────────────────────────────
+  const handleRetry = () => {
+    setError(null);
+    setPhase('splash');
+    setSplashDone(false);
+    setInitDone(false);
+    initResult.current = null;
+    
+    // Reset animations
+    fadeOut.setValue(1);
+    iconScale.setValue(0.6);
+    iconOpacity.setValue(0);
+    textOpacity.setValue(0);
+    tagOpacity.setValue(0);
+    ringScale.setValue(0.5);
+    ringOpacity.setValue(0);
+  };
+
   // ─── ERROR SCREEN ───────────────────────────────────────────────────────
   if (phase === 'error') {
     return (
@@ -150,6 +168,9 @@ export default function App() {
             <Text style={styles.errorIcon}>⚠️</Text>
             <Text style={styles.errorTitle}>Failed to start</Text>
             <Text style={styles.errorMsg}>{error}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={handleRetry} activeOpacity={0.8}>
+              <Text style={styles.retryBtnText}>Try Again</Text>
+            </TouchableOpacity>
           </View>
         </SafeAreaProvider>
       </GestureHandlerRootView>
@@ -350,6 +371,18 @@ const styles = StyleSheet.create({
   errorMsg: { 
     fontSize: 14, 
     color: '#888', 
-    textAlign: 'center' 
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryBtn: {
+    backgroundColor: BRAND,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  retryBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

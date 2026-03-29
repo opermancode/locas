@@ -154,16 +154,16 @@ export default function DashboardScreen({ navigation }) {
     closeSearchModal();
     switch (type) {
       case 'invoice':
-        navigation.navigate('Invoices', { screen: 'InvoiceDetail', params: { id: item.id } });
+        navigation.navigate('InvoicesTab', { screen: 'InvoiceDetail', params: { invoiceId: item.id } });
         break;
       case 'quotation':
-        navigation.navigate('Quotations', { screen: 'QuotationDetail', params: { id: item.id } });
+        navigation.navigate('QuotationsTab', { screen: 'QuotationDetail', params: { id: item.id } });
         break;
       case 'party':
-        navigation.navigate('Parties', { screen: 'PartyDetail', params: { id: item.id } });
+        navigation.navigate('PartiesTab', { screen: 'PartyDetail', params: { partyId: item.id } });
         break;
       case 'product':
-        navigation.navigate('More', { screen: 'ProductDetail', params: { id: item.id } });
+        navigation.navigate('Inventory');
         break;
     }
   };
@@ -367,7 +367,7 @@ export default function DashboardScreen({ navigation }) {
 
           {/* Stats Grid */}
           <View style={styles.statsGrid}>
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#EFF6FF' }]} onPress={() => navigation.navigate('Invoices')}>
+            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#EFF6FF' }]} onPress={() => navigation.navigate('InvoicesTab')}>
               <View style={[styles.statIcon, { backgroundColor: '#3B82F6' }]}><Icon name="file-text" size={18} color="#fff" /></View>
               <Text style={styles.statValue}>{stats?.todayInvoices || 0}</Text>
               <Text style={styles.statLabel}>Today's Invoices</Text>
@@ -377,12 +377,12 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.statValue}>{formatINRCompact(stats?.todaySales || 0)}</Text>
               <Text style={styles.statLabel}>Today's Sales</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#FFFBEB' }]} onPress={() => navigation.navigate('Parties')}>
+            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#FFFBEB' }]} onPress={() => navigation.navigate('PartiesTab')}>
               <View style={[styles.statIcon, { backgroundColor: '#F59E0B' }]}><Icon name="clock" size={18} color="#fff" /></View>
               <Text style={styles.statValue}>{formatINRCompact(stats?.totalPending || 0)}</Text>
               <Text style={styles.statLabel}>Total Pending</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#F5F3FF' }]} onPress={() => navigation.navigate('Parties')}>
+            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#F5F3FF' }]} onPress={() => navigation.navigate('PartiesTab')}>
               <View style={[styles.statIcon, { backgroundColor: '#8B5CF6' }]}><Icon name="users" size={18} color="#fff" /></View>
               <Text style={styles.statValue}>{stats?.totalParties || 0}</Text>
               <Text style={styles.statLabel}>Total Parties</Text>
@@ -393,11 +393,11 @@ export default function DashboardScreen({ navigation }) {
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickActionsScroll}>
             {[
-              { label: 'New Invoice', icon: 'plus', color: '#FF6B00', onPress: () => navigation.navigate('Invoices', { screen: 'CreateInvoice' }) },
-              { label: 'Quotation', icon: 'clipboard', color: '#8B5CF6', onPress: () => navigation.navigate('Quotations', { screen: 'CreateQuotation' }) },
-              { label: 'Add Party', icon: 'user-plus', color: '#10B981', onPress: () => navigation.navigate('Parties', { screen: 'AddParty' }) },
-              { label: 'Products', icon: 'package', color: '#3B82F6', onPress: () => navigation.navigate('More', { screen: 'Products' }) },
-              { label: 'Payment', icon: 'credit-card', color: '#06B6D4', onPress: () => navigation.navigate('More', { screen: 'RecordPayment' }) },
+              { label: 'New Invoice', icon: 'plus', color: '#FF6B00', onPress: () => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' }) },
+              { label: 'Quotation', icon: 'clipboard', color: '#8B5CF6', onPress: () => navigation.navigate('QuotationsTab', { screen: 'CreateQuotation' }) },
+              { label: 'Add Party', icon: 'user-plus', color: '#10B981', onPress: () => navigation.navigate('PartiesTab') },
+              { label: 'Products', icon: 'package', color: '#3B82F6', onPress: () => navigation.navigate('Inventory') },
+              { label: 'Expenses', icon: 'credit-card', color: '#06B6D4', onPress: () => navigation.navigate('More', { screen: 'Expenses' }) },
               { label: 'Reports', icon: 'bar-chart-2', color: '#F59E0B', onPress: () => navigation.navigate('More', { screen: 'Reports' }) },
             ].map((action, i) => (
               <TouchableOpacity key={i} style={styles.quickAction} onPress={action.onPress}>
@@ -412,7 +412,7 @@ export default function DashboardScreen({ navigation }) {
           {/* Recent Invoices */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Invoices</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Invoices')}>
+            <TouchableOpacity onPress={() => navigation.navigate('InvoicesTab')}>
               <Text style={styles.seeAllBtn}>See All</Text>
             </TouchableOpacity>
           </View>
@@ -422,7 +422,7 @@ export default function DashboardScreen({ navigation }) {
                 <TouchableOpacity
                   key={inv.id}
                   style={[styles.invoiceRow, idx < recentInvoices.length - 1 && styles.rowBorder]}
-                  onPress={() => navigation.navigate('Invoices', { screen: 'InvoiceDetail', params: { id: inv.id } })}
+                  onPress={() => navigation.navigate('InvoicesTab', { screen: 'InvoiceDetail', params: { invoiceId: inv.id } })}
                 >
                   <View style={styles.invoiceLeft}>
                     <Text style={styles.invoiceNumber}>{inv.invoice_number}</Text>
@@ -442,7 +442,7 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.emptyCard}>
               <Icon name="file-text" size={32} color="#D1D5DB" />
               <Text style={styles.emptyText}>No invoices yet</Text>
-              <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('Invoices', { screen: 'CreateInvoice' })}>
+              <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}>
                 <Text style={styles.emptyBtnText}>Create First Invoice</Text>
               </TouchableOpacity>
             </View>
@@ -453,7 +453,7 @@ export default function DashboardScreen({ navigation }) {
             <>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Top Outstanding</Text>
-                <TouchableOpacity onPress={() => navigation.navigate('Parties')}>
+                <TouchableOpacity onPress={() => navigation.navigate('PartiesTab')}>
                   <Text style={styles.seeAllBtn}>See All</Text>
                 </TouchableOpacity>
               </View>
@@ -462,7 +462,7 @@ export default function DashboardScreen({ navigation }) {
                   <TouchableOpacity
                     key={party.id}
                     style={[styles.partyRow, idx < topParties.length - 1 && styles.rowBorder]}
-                    onPress={() => navigation.navigate('Parties', { screen: 'PartyDetail', params: { id: party.id } })}
+                    onPress={() => navigation.navigate('PartiesTab', { screen: 'PartyDetail', params: { partyId: party.id } })}
                   >
                     <View style={styles.partyAvatar}>
                       <Text style={styles.partyInitial}>{(party.name || 'P')[0].toUpperCase()}</Text>

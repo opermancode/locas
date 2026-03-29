@@ -83,8 +83,9 @@ function useIsWide() {
 const SVG = {
   home:           'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z||M9 22V12h6v10',
   'file-text':    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z||M14 2v6h6||M16 13H8||M16 17H8||M10 9H8',
+  clipboard:      'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2||M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z||M12 11h4||M12 16h4||M8 11h.01||M8 16h.01',
   users:          'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2||M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z||M23 21v-2a4 4 0 0 0-3-3.87||M16 3.13a4 4 0 0 1 0 7.75',
-  package:        'M21 10V6a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 1 6v12a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 23 18v-4||M3.27 6.96L12 12.01l8.73-5.05||M12 22.08V12',
+  package:        'M16.5 9.4l-9-5.19||M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z||M3.27 6.96L12 12.01l8.73-5.05||M12 22.08V12',
   'credit-card':  'M21 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z||M1 10h22',
   'bar-chart-2':  'M18 20V10||M12 20V4||M6 20v-6',
   settings:       'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z||M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
@@ -111,11 +112,11 @@ function NavIcon({ name, size, color, strokeWidth }) {
 }
 
 const MOBILE_TABS = [
-  { name: 'Dashboard',   label: 'Home',     icon: 'home',      idx: 0 },
-  { name: 'InvoicesTab', label: 'Invoices', icon: 'file-text', idx: 1 },
-  { name: 'PartiesTab',  label: 'Parties',  icon: 'users',     idx: 2 },
-  { name: 'Inventory',   label: 'Items',    icon: 'package',   idx: 3 },
-  { name: 'More',        label: 'More',     icon: 'grid',      idx: 4 },
+  { name: 'Dashboard',     label: 'Home',     icon: 'home',      idx: 0 },
+  { name: 'InvoicesTab',   label: 'Invoices', icon: 'file-text', idx: 1 },
+  { name: 'QuotationsTab', label: 'Quotes',   icon: 'clipboard', idx: 2 },
+  { name: 'PartiesTab',    label: 'Parties',  icon: 'users',     idx: 3 },
+  { name: 'More',          label: 'More',     icon: 'grid',      idx: 4 },
 ];
 
 const SIDEBAR_ITEMS = [

@@ -20,6 +20,7 @@ export default function LoginScreen({ loginInfo, onSuccess }) {
   // Pre-fill email if data owner exists
   const [email, setEmail] = useState(dataOwner || '');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -203,19 +204,44 @@ export default function LoginScreen({ loginInfo, onSuccess }) {
 
           {/* Password Input */}
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your password"
-            placeholderTextColor="#9CA3AF"
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-            onSubmitEditing={handleLogin}
-            returnKeyType="done"
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter your password"
+              placeholderTextColor="#9CA3AF"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!loading}
+              onSubmitEditing={handleLogin}
+              returnKeyType="done"
+            />
+            <TouchableOpacity 
+              style={styles.eyeBtn} 
+              onPress={() => setShowPassword(!showPassword)}
+              activeOpacity={0.7}
+            >
+              <Icon name={showPassword ? "eye-off" : "eye"} size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Forgot Password */}
+          <TouchableOpacity 
+            style={styles.forgotBtn}
+            onPress={() => {
+              const url = 'https://locas-business.firebaseapp.com/__/auth/action?mode=resetPassword';
+              import('react-native').then(({ Linking }) => {
+                Linking.openURL(url).catch(() => {
+                  setError('Could not open password reset page. Please contact support.');
+                });
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.forgotText}>Forgot Password?</Text>
+          </TouchableOpacity>
 
           {/* Login Button */}
           <TouchableOpacity
@@ -345,6 +371,33 @@ const styles = StyleSheet.create({
     paddingVertical: 14, 
     fontSize: 15, 
     color: '#1F2937',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: '#1F2937',
+  },
+  eyeBtn: {
+    padding: 14,
+  },
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 12,
+  },
+  forgotText: {
+    fontSize: 13,
+    color: BRAND,
+    fontWeight: '500',
   },
   inputLocked: { 
     backgroundColor: '#F3F4F6', 
