@@ -20,3 +20,8 @@ export function getCurrentUser() {
 export function onAuthStateChanged(callback) {
   return auth().onAuthStateChanged(callback);
 }
+
+// ─── Password Reset ───────────────────────────────────────────────
+export async function sendPasswordResetEmail(email) {
+  await auth().sendPasswordResetEmail(email);
+}
