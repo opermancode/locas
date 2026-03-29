@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform, ScrollView,
+  Platform, ScrollView, Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../utils/Icon';
-import { signIn } from '../../utils/firebase/firebaseAuth';
+import { signIn, sendPasswordResetEmail } from '../../utils/firebase/firebaseAuth';
 import { verifyOnLogin } from '../../utils/licenseSystem';
 import { COLORS, RADIUS, FONTS } from '../../theme';
 
@@ -230,13 +230,27 @@ export default function LoginScreen({ loginInfo, onSuccess }) {
           {/* Forgot Password */}
           <TouchableOpacity 
             style={styles.forgotBtn}
-            onPress={() => {
-              const url = 'https://locas-business.firebaseapp.com/__/auth/action?mode=resetPassword';
-              import('react-native').then(({ Linking }) => {
-                Linking.openURL(url).catch(() => {
-                  setError('Could not open password reset page. Please contact support.');
-                });
-              });
+            onPress={async () => {
+              if (!email?.trim()) {
+                Alert.alert('Enter Email', 'Please enter your email address first, then tap Forgot Password.');
+                return;
+              }
+              try {
+                await sendPasswordResetEmail(email.trim());
+                Alert.alert(
+                  'Password Reset Email Sent',
+                  `We've sent a password reset link to ${email.trim()}. Check your inbox and spam folder.`
+                );
+              } catch (err) {
+                const code = err.code || '';
+                if (code === 'auth/user-not-found') {
+                  Alert.alert('Account Not Found', 'No account exists with this email address.');
+                } else if (code === 'auth/invalid-email') {
+                  Alert.alert('Invalid Email', 'Please enter a valid email address.');
+                } else {
+                  Alert.alert('Error', err.message || 'Could not send password reset email. Please try again.');
+                }
+              }
             }}
             activeOpacity={0.7}
           >

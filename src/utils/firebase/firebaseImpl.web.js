@@ -7,6 +7,7 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged as firebaseOnAuthStateChanged,
+  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
 } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -37,4 +38,8 @@ export function getCurrentUser() {
 
 export function onAuthStateChanged(callback) {
   return firebaseOnAuthStateChanged(auth, callback);
+}
+
+export async function sendPasswordResetEmail(email) {
+  await firebaseSendPasswordResetEmail(auth, email);
 }
