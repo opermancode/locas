@@ -1,3 +1,19 @@
+/**
+ * LOCAS App Entry Point
+ * 
+ * Phase Flow:
+ *   splash → (check license) → login OR ready
+ *   
+ * Login is ONLY shown when:
+ *   - First time (no cache)
+ *   - App updated
+ *   - Device changed  
+ *   - Cache cleared
+ *   - License expired/blocked
+ * 
+ * Normal daily use = NO login screen!
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Animated, Easing, Image, TouchableOpacity,
@@ -8,7 +24,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { getDB, exportAllData } from './src/db';
 import { checkIfLoginRequired, getLicenseStatus } from './src/utils/licenseSystem';
+import { getCurrentUser, signOut } from './src/utils/firebase/firebaseAuth';
 import LoginScreen from './src/screens/Auth/LoginScreen';
+import DeviceLimitScreen from './src/screens/Auth/DeviceLimitScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 
 const BRAND = '#FF6B00';
@@ -16,9 +34,11 @@ const DARK = '#1A1A2E';
 const LIGHT = '#FFF8F4';
 
 export default function App() {
-  const [phase, setPhase] = useState('splash'); // splash | login | ready | error
+  // Phases: splash | login | device_limit | ready | error
+  const [phase, setPhase] = useState('splash');
   const [loginInfo, setLoginInfo] = useState(null);
   const [licenseStatus, setLicenseStatus] = useState(null);
+  const [deviceLimitInfo, setDeviceLimitInfo] = useState(null);
   const [error, setError] = useState(null);
   const [splashDone, setSplashDone] = useState(false);
   const [initDone, setInitDone] = useState(false);
@@ -68,7 +88,7 @@ export default function App() {
         // 1. Init DB
         await getDB();
 
-        // 2. Silent backup
+        // 2. Silent backup (if enabled)
         try {
           const { shouldRunDailyBackup, getToken, uploadBackup } = await import('./src/utils/googleDrive');
           if (await shouldRunDailyBackup()) {
@@ -109,7 +129,7 @@ export default function App() {
     }
   }, [splashDone, initDone]);
 
-  // Handle init result (separate function to avoid async in animation callback)
+  // Handle init result
   const handleInitResult = async () => {
     if (!initResult.current.success) {
       setError(initResult.current.error);
@@ -132,7 +152,7 @@ export default function App() {
   };
 
   // Handle login success
-  const handleLoginSuccess = async () => {
+  const handleLoginSuccess = async (license) => {
     try {
       const status = await getLicenseStatus();
       setLicenseStatus(status);
@@ -140,7 +160,31 @@ export default function App() {
     setPhase('ready');
   };
 
-  // ─── RETRY HANDLER ───────────────────────────────────────────────────────
+  // Handle device limit reached
+  const handleDeviceLimitReached = (info) => {
+    const user = getCurrentUser();
+    setDeviceLimitInfo({
+      ...info,
+      userId: user?.uid,
+    });
+    setPhase('device_limit');
+  };
+
+  // Handle device removed (retry login)
+  const handleDeviceRemoved = async () => {
+    // Re-try the login flow
+    setPhase('login');
+  };
+
+  // Handle cancel from device limit screen (sign out)
+  const handleDeviceLimitCancel = async () => {
+    try {
+      await signOut();
+    } catch (_) {}
+    setPhase('login');
+  };
+
+  // Retry handler
   const handleRetry = () => {
     setError(null);
     setPhase('splash');
@@ -177,13 +221,35 @@ export default function App() {
     );
   }
 
+  // ─── DEVICE LIMIT SCREEN ────────────────────────────────────────────────
+  if (phase === 'device_limit' && deviceLimitInfo) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <StatusBar style="dark" />
+          <DeviceLimitScreen
+            license={deviceLimitInfo.license}
+            devices={deviceLimitInfo.devices}
+            userId={deviceLimitInfo.userId}
+            onDeviceRemoved={handleDeviceRemoved}
+            onCancel={handleDeviceLimitCancel}
+          />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
   // ─── LOGIN SCREEN ───────────────────────────────────────────────────────
   if (phase === 'login') {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <StatusBar style="dark" />
-          <LoginScreen loginInfo={loginInfo} onSuccess={handleLoginSuccess} />
+          <LoginScreen 
+            loginInfo={loginInfo} 
+            onSuccess={handleLoginSuccess}
+            onDeviceLimitReached={handleDeviceLimitReached}
+          />
         </SafeAreaProvider>
       </GestureHandlerRootView>
     );
