@@ -1,5 +1,6 @@
 import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
+import { Platform } from 'react-native';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, ScrollView, Alert, RefreshControl, StatusBar,
@@ -112,6 +113,12 @@ export default function InventoryScreen({ navigation, route }) {
   };
 
   const handleDelete = (item) => {
+    // FIX: Alert.alert with buttons is a no-op on React Native Web.
+    if (Platform.OS === 'web') {
+      if (!window.confirm(`Delete item "${item.name}"? This cannot be undone.`)) return;
+      deleteItem(item.id).then(load);
+      return;
+    }
     Alert.alert('Delete Item', `Delete "${item.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -592,11 +599,7 @@ const styles = StyleSheet.create({
   },
   modalTitle:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
   modalBody:   { padding: 20 },
-  modalSave: {
-    backgroundColor: COLORS.primary, paddingVertical: 15,
-    borderRadius: RADIUS.lg, alignItems: 'center',
-    marginHorizontal: 20, marginBottom: 20, marginTop: 8,
-  },
+  modalSave: { color: COLORS.primary, fontWeight: FONTS.bold, fontSize: 15 },
   modalSaveText: { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
 
   // Form fields
@@ -780,7 +783,7 @@ const styles = StyleSheet.create({
   lowFilterActive:   { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
   lowFilterText:     { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
   lowFilterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
-  modalContainer:    { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '92%' },
+  modalContainer:    { flex: 1, backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '92%', marginTop: Platform.OS === 'web' ? 60 : 0 },
   modalScroll:       { padding: 20, paddingBottom: 40 },
   modalCancel:       { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
 
