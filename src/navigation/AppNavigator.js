@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Platform, Dimensions, ScrollView, Image,
+  Platform, Dimensions,
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -130,36 +130,6 @@ const SIDEBAR_ITEMS = [
   { name: 'Settings',      label: 'Settings',   icon: 'settings',    tab: 'More',          screen: 'Settings' },
 ];
 
-// ── Inject global CSS once ────────────────────────────────────────
-function injectCSS() {
-  if (Platform.OS !== 'web') return;
-  let el = document.getElementById('locas-layout');
-  if (!el) {
-    el = document.createElement('style');
-    el.id = 'locas-layout';
-    document.head.appendChild(el);
-  }
-  el.textContent = `
-    html, body, #root { height: 100% !important; margin: 0 !important; overflow: hidden !important; }
-    #locas-sidebar { transition: width 0.2s ease; }
-    #locas-scene {
-      left: ${W_COLLAPSED}px !important;
-      transition: left 0.2s ease !important;
-    }
-  `;
-}
-
-function setSidebarWidth(w) {
-  if (Platform.OS !== 'web') return;
-  const sidebar = document.getElementById('locas-sidebar');
-  if (sidebar) sidebar.style.width = w + 'px';
-  const scene = document.getElementById('locas-scene');
-  if (scene) {
-    scene.style.setProperty('left', w + 'px', 'important');
-    scene.style.transition = 'left 0.2s ease';
-  }
-}
-
 // ── Mobile bottom tab bar ─────────────────────────────────────────
 function MobileTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
@@ -196,9 +166,11 @@ function MobileTabBar({ state, navigation }) {
   );
 }
 
-// ── Desktop sidebar — hover to expand, CSS drives everything ───────
-function DesktopSidebar({ state, navigation }) {
-  const [pinned, setPinned]   = useState(false); // user clicked to pin open
+// ── Desktop sidebar — hover to expand, driven by React state ──────
+// FIX: sidebarW is passed up via onWidthChange so sceneContainerStyle
+//      stays in sync without any DOM mutation or setTimeout hacks.
+function DesktopSidebar({ state, navigation, onWidthChange }) {
+  const [pinned, setPinned]   = useState(false);
   const [hovered, setHovered] = useState(false);
 
   const expanded = pinned || hovered;
@@ -211,18 +183,15 @@ function DesktopSidebar({ state, navigation }) {
     else navigation.navigate(item.tab);
   };
 
-  // Update CSS whenever width changes
-  
-
+  // FIX: notify parent of width change via callback — no DOM manipulation
   React.useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    setSidebarWidth(w);
+    onWidthChange(w);
   }, [w]);
 
   const sidebarWebStyle = {
     position: 'fixed',
     top: 0, left: 0, bottom: 0,
-    width: W_COLLAPSED, // start collapsed, CSS transition handles rest
+    width: w,
     backgroundColor: '#111827',
     zIndex: 1000,
     borderRight: '1px solid rgba(255,255,255,0.06)',
@@ -234,14 +203,12 @@ function DesktopSidebar({ state, navigation }) {
 
   return (
     <div
-      id="locas-sidebar"
       style={sidebarWebStyle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Logo area */}
       <div style={{ padding: '14px 12px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8, minHeight: 56, overflow: 'hidden' }}>
-        {/* Orange box with text logo */}
         <div style={{
           minWidth: 32, height: 32, borderRadius: 6, flexShrink: 0,
           backgroundColor: '#FF6B00', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -256,7 +223,6 @@ function DesktopSidebar({ state, navigation }) {
             {expanded ? 'Locas.' : 'L'}
           </span>
         </div>
-        {/* Pin button */}
         {expanded && (
           <div
             onClick={() => setPinned(v => !v)}
@@ -308,15 +274,12 @@ function DesktopSidebar({ state, navigation }) {
               onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
               onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = 'transparent'; }}
             >
-              {/* Active left bar */}
               {active && (
                 <div style={{ position: 'absolute', left: 0, top: 6, bottom: 6, width: 3, borderRadius: 2, backgroundColor: '#FF6B00' }} />
               )}
-              {/* Icon */}
               <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <SvgIcon name={item.icon} size={16} color={active ? '#fff' : 'rgba(255,255,255,0.4)'} strokeWidth={active ? 2 : 1.5} />
               </div>
-              {/* Label */}
               <span style={{
                 fontSize: 13, fontWeight: active ? 600 : 400,
                 color: active ? '#fff' : 'rgba(255,255,255,0.45)',
@@ -334,49 +297,41 @@ function DesktopSidebar({ state, navigation }) {
   );
 }
 
-// ── Smart tab bar ─────────────────────────────────────────────────
-function SmartTabBar(props) {
+// ── Smart tab bar wrapper ─────────────────────────────────────────
+// FIX: accepts onWidthChange and threads it to DesktopSidebar
+function SmartTabBar({ onWidthChange, ...props }) {
   const isWide = useIsWide();
-  return isWide ? <DesktopSidebar {...props} /> : <MobileTabBar {...props} />;
+  if (isWide) return <DesktopSidebar {...props} onWidthChange={onWidthChange} />;
+  return <MobileTabBar {...props} />;
 }
 
 // ── Root ──────────────────────────────────────────────────────────
 export default function AppNavigator() {
   const isWide = Platform.OS === 'web' && Dimensions.get('window').width >= 768;
 
-  React.useEffect(() => {
-    if (!isWide || Platform.OS !== 'web') return;
-    injectCSS();
-    // After a brief delay, find and tag the scene container
-    setTimeout(() => {
-      // The scene container is a fixed div that isn't the sidebar
-      const allFixed = Array.from(document.querySelectorAll('*')).filter(el => {
-        const s = window.getComputedStyle(el);
-        return s.position === 'fixed' && el.id !== 'locas-sidebar';
-      });
-      // Find the one that covers most of the screen (scene container)
-      const scene = allFixed.find(el => {
-        const r = el.getBoundingClientRect();
-        return r.width > 400 && r.height > 400;
-      });
-      if (scene) {
-        scene.id = 'locas-scene';
-        // Force correct left immediately (overrides sceneContainerStyle inline)
-        scene.style.setProperty('left', W_COLLAPSED + 'px', 'important');
-        scene.style.transition = 'left 0.2s ease';
-      }
-    }, 300);
+  // FIX: sidebar width tracked in React state — drives sceneContainerStyle
+  // directly. No DOM hacks, no setTimeout, no id-tagging, no CSS injection.
+  const [sidebarW, setSidebarW] = useState(W_COLLAPSED);
+
+  const handleWidthChange = useCallback((w) => {
+    setSidebarW(w);
   }, []);
 
   return (
     <Tab.Navigator
-      tabBar={props => <SmartTabBar {...props} />}
+      tabBar={props => (
+        <SmartTabBar
+          {...props}
+          onWidthChange={isWide ? handleWidthChange : undefined}
+        />
+      )}
       screenOptions={{ headerShown: false }}
       sceneContainerStyle={isWide ? {
         position: 'fixed',
         top: 0, right: 0, bottom: 0,
-        left: W_COLLAPSED,
+        left: sidebarW,          // FIX: reactive, smooth, no race condition
         overflow: 'hidden',
+        transition: 'left 0.2s ease',
       } : {}}
     >
       <Tab.Screen name="Dashboard"     component={DashboardScreen} />

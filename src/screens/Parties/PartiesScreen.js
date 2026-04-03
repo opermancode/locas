@@ -1,5 +1,6 @@
 import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
+import { Platform } from 'react-native';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, ScrollView, Alert, RefreshControl, StatusBar,
@@ -91,18 +92,21 @@ export default function PartiesScreen({ navigation }) {
   };
 
   const handleDelete = (p) => {
-  if (Platform.OS === 'web') {
-    if (!window.confirm(`Delete ${p.name}?`)) return;
-    deleteParty(p.id).then(load);
-    return;
-  }
-  Alert.alert('Delete Party', `Delete ${p.name}?`, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: async () => {
-        await deleteParty(p.id); load();
-    }},
-  ]);
-};
+    // FIX: Alert.alert with buttons is a no-op on React Native Web.
+    // Use window.confirm() on web so the destructive action actually fires.
+    if (Platform.OS === 'web') {
+      if (!window.confirm(`Delete party "${p.name}"? This cannot be undone.`)) return;
+      deleteParty(p.id).then(load);
+      return;
+    }
+    Alert.alert('Delete Party', `Delete ${p.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        await deleteParty(p.id);
+        load();
+      }},
+    ]);
+  };
 
   const selectState = (s) => {
     setForm(f => ({ ...f, state: s.name, state_code: s.code }));
@@ -585,11 +589,7 @@ const styles = StyleSheet.create({
   },
   modalTitle:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
   modalBody:   { padding: 20 },
-  modalSave: {
-    backgroundColor: COLORS.primary, paddingVertical: 15,
-    borderRadius: RADIUS.lg, alignItems: 'center',
-    marginHorizontal: 20, marginBottom: 20, marginTop: 8,
-  },
+  modalSave: { color: COLORS.primary, fontWeight: FONTS.bold, fontSize: 15 },
   modalSaveText: { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
 
   // Form fields
@@ -771,7 +771,7 @@ const styles = StyleSheet.create({
   statePicker:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12 },
   stateText:        { fontSize: 14, color: COLORS.text },
   statePlaceholder: { fontSize: 14, color: COLORS.textMute },
-  modalContainer:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '90%' },
+  modalContainer:   { flex: 1, backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '90%', marginTop: Platform.OS === 'web' ? 60 : 0 },
   modalScroll:      { padding: 20, paddingBottom: 40 },
   modalCancel:      { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
 

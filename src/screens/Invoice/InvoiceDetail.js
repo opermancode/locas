@@ -186,6 +186,12 @@ export default function InvoiceDetail({ navigation, route }) {
   };
 
   const handleDelete = () => {
+    // FIX: Alert.alert with buttons is a no-op on React Native Web.
+    if (Platform.OS === 'web') {
+      if (!window.confirm(`Delete invoice ${invoice.invoice_number}? This cannot be undone.`)) return;
+      deleteInvoice(invoiceId).then(() => navigation.goBack());
+      return;
+    }
     Alert.alert('Delete Invoice', `Delete ${invoice.invoice_number}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
