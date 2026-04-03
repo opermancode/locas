@@ -276,17 +276,19 @@ export default function LoginScreen({ loginInfo, onSuccess, onDeviceLimitReached
       
       // 3. Handle data file based on mode
       if (mode === MODE.FRESH) {
-        // Delete any existing data and create new locked file
+        // On web: wipe any stale stores and lock to this email
         if (existingFile?.exists) {
           await deleteDataFile();
         }
         await lockDataFile(trimmedEmail);
       } else if (mode === MODE.UPLOAD && uploadedFile?.fileUri) {
-        // Import the uploaded file
+        // Import the JSON backup — web importDataFile fetches the blob URL
         await importDataFile(uploadedFile.fileUri);
+        // After import, lock to the same email
+        await lockDataFile(trimmedEmail);
       }
-      // MODE.EXISTING, APP_UPDATED, DEVICE_CHANGED - just use existing file as-is
-      
+      // MODE.EXISTING, APP_UPDATED, DEVICE_CHANGED — use data as-is
+
       // 4. Success!
       await clearStoredImportFile();
       onSuccess(license);
