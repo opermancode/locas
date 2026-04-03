@@ -91,14 +91,18 @@ export default function PartiesScreen({ navigation }) {
   };
 
   const handleDelete = (p) => {
-    Alert.alert('Delete Party', `Delete ${p.name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        await deleteParty(p.id);
-        load();
-      }},
-    ]);
-  };
+  if (Platform.OS === 'web') {
+    if (!window.confirm(`Delete ${p.name}?`)) return;
+    deleteParty(p.id).then(load);
+    return;
+  }
+  Alert.alert('Delete Party', `Delete ${p.name}?`, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Delete', style: 'destructive', onPress: async () => {
+        await deleteParty(p.id); load();
+    }},
+  ]);
+};
 
   const selectState = (s) => {
     setForm(f => ({ ...f, state: s.name, state_code: s.code }));
