@@ -1,5 +1,10 @@
 import localforage from 'localforage';
 
+// FIX: declare both locks at the top so importAllData can reset them without
+//      hitting a temporal dead zone (ReferenceError)
+let _invoiceNumberLock = Promise.resolve();
+let _quoteNumberLock   = Promise.resolve();
+
 const stores = {
   profile: localforage.createInstance({ name: 'locas', storeName: 'business_profile' }),
   parties: localforage.createInstance({ name: 'locas', storeName: 'parties' }),
@@ -75,8 +80,6 @@ export async function peekNextInvoiceNumber() {
   const next = (profile.invoice_counter || 0) + 1;
   return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
 }
-
-let _invoiceNumberLock = Promise.resolve();
 
 async function consumeNextInvoiceNumber() {
   const result = _invoiceNumberLock.then(async () => {
@@ -469,8 +472,6 @@ export async function peekNextQuoteNumber() {
   const next = (profile.quote_counter || 0) + 1;
   return `${profile.quote_prefix || 'QUO'}-${String(next).padStart(4, '0')}`;
 }
-
-let _quoteNumberLock = Promise.resolve();
 
 async function consumeNextQuoteNumber() {
   const result = _quoteNumberLock.then(async () => {

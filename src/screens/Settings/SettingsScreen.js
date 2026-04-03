@@ -10,6 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getProfile, saveProfile, exportAllData, importAllData } from '../../db';
 import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase/firebaseAuth';
 import { Platform } from 'react-native';
+import { exportDataFile, getDataStorageInfo } from '../../utils/dataFileManager';
 
 // Google Drive is mobile-only — lazy load to prevent web crash
 const isNative = Platform.OS !== 'web';
@@ -50,6 +51,7 @@ export default function SettingsScreen({ navigation }) {
   const [syncing, setSyncing]           = useState(false);
   const [restoring, setRestoring]       = useState(false);
   const [timeModal, setTimeModal]       = useState(false);
+  const [exportingData, setExportingData] = useState(false);
   const { request, response, promptAsync } = useGoogleAuth();
 
   const load = async () => {
@@ -167,6 +169,27 @@ export default function SettingsScreen({ navigation }) {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: () => firebaseSignOut() },
     ]);
+  };
+
+  const handleExportData = async () => {
+    setExportingData(true);
+    try {
+      const result = await exportDataFile();
+      Alert.alert('Export Complete', `Data saved as "${result.filename}". Check your Downloads folder.`);
+    } catch (e) {
+      Alert.alert('Export Failed', e.message || 'Could not export data.');
+    } finally {
+      setExportingData(false);
+    }
+  };
+
+  const handleShowDataLocation = () => {
+    const info = getDataStorageInfo();
+    Alert.alert(
+      'Where is my data?',
+      `Storage type: ${info.type}\n\n${info.location}\n\n${info.note}\n\nExport file name: ${info.exportName}`,
+      [{ text: 'OK' }]
+    );
   };
 
   const handleSaveBackupTime = async (time) => {
@@ -398,6 +421,30 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         {/* ── About ─────────────────────────────────────── */}
+        {/* Data & Storage */}
+        <SectionHeader icon="database" title="Data & Storage" />
+        <View style={styles.card}>
+          <View style={styles.infoBox}>
+            <Text style={styles.infoBoxText}>
+              Your data is stored in your browser's IndexedDB (key: "locas"). It persists across sessions but is tied to this browser. Export regularly for a portable backup.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.exportDataBtn, exportingData && { opacity: 0.5 }]}
+            onPress={handleExportData}
+            disabled={exportingData}
+          >
+            {exportingData
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <><Icon name="download" size={14} color="#fff" /><Text style={styles.exportDataBtnText}> Export Backup (.json)</Text></>
+            }
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.dataLocationBtn} onPress={handleShowDataLocation}>
+            <Icon name="info" size={14} color={COLORS.info} />
+            <Text style={styles.dataLocationText}>  Where is my data stored?</Text>
+          </TouchableOpacity>
+        </View>
+
         <SectionHeader icon="info" title="About" />
         <View style={styles.card}>
           <InfoRow label="App"      value="Locas" />
@@ -862,5 +909,11 @@ const styles = StyleSheet.create({
   bottomSaveText:  { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
   upiOkTitle:      { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.success },
   upiOkId:         { fontSize: 12, color: COLORS.success, marginTop: 1 },
+
+  // Data & Storage section
+  exportDataBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 13, borderRadius: RADIUS.md, marginTop: 12 },
+  exportDataBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  dataLocationBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, marginTop: 8, gap: 4 },
+  dataLocationText:  { fontSize: 13, color: COLORS.info, fontWeight: FONTS.medium },
 
 });

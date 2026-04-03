@@ -6,7 +6,6 @@ import {
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
 import { COLORS, RADIUS, FONTS, SHADOW } from '../theme';
 
 import DashboardScreen   from '../screens/Dashboard/DashboardScreen';
@@ -65,6 +64,7 @@ function MoreStack() {
   );
 }
 
+// FIX: reactive hook — updates on every window resize
 function useIsWide() {
   const [wide, setWide] = useState(() =>
     Platform.OS === 'web' && Dimensions.get('window').width >= 768
@@ -81,16 +81,19 @@ function useIsWide() {
 
 // ── Inline SVG icons ──────────────────────────────────────────────
 const SVG = {
-  home:           'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z||M9 22V12h6v10',
-  'file-text':    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z||M14 2v6h6||M16 13H8||M16 17H8||M10 9H8',
-  clipboard:      'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2||M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z||M12 11h4||M12 16h4||M8 11h.01||M8 16h.01',
-  users:          'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2||M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z||M23 21v-2a4 4 0 0 0-3-3.87||M16 3.13a4 4 0 0 1 0 7.75',
-  package:        'M16.5 9.4l-9-5.19||M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z||M3.27 6.96L12 12.01l8.73-5.05||M12 22.08V12',
-  'credit-card':  'M21 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z||M1 10h22',
-  'bar-chart-2':  'M18 20V10||M12 20V4||M6 20v-6',
-  settings:       'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z||M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
-  plus:           'M12 5v14||M5 12h14',
-  grid:           'M3 3h7v7H3z||M14 3h7v7h-7z||M14 14h7v7h-7z||M3 14h7v7H3z',
+  home:            'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z||M9 22V12h6v10',
+  'file-text':     'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z||M14 2v6h6||M16 13H8||M16 17H8||M10 9H8',
+  clipboard:       'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2||M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z||M12 11h4||M12 16h4||M8 11h.01||M8 16h.01',
+  users:           'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2||M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z||M23 21v-2a4 4 0 0 0-3-3.87||M16 3.13a4 4 0 0 1 0 7.75',
+  package:         'M16.5 9.4l-9-5.19||M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z||M3.27 6.96L12 12.01l8.73-5.05||M12 22.08V12',
+  'credit-card':   'M21 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z||M1 10h22',
+  'bar-chart-2':   'M18 20V10||M12 20V4||M6 20v-6',
+  settings:        'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z||M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  plus:            'M12 5v14||M5 12h14',
+  grid:            'M3 3h7v7H3z||M14 3h7v7h-7z||M14 14h7v7h-7z||M3 14h7v7H3z',
+  // FIX: these two were missing — pin button was invisible
+  'chevron-left':  'M15 18l-6-6 6-6',
+  'chevron-right': 'M9 18l6-6-6-6',
 };
 
 function SvgIcon({ name, size = 16, color = '#fff', strokeWidth = 1.5 }) {
@@ -106,8 +109,12 @@ function SvgIcon({ name, size = 16, color = '#fff', strokeWidth = 1.5 }) {
   }, ...paths.map((d, i) => React.createElement('path', { key: i, d })));
 }
 
+// FIX: always use SvgIcon on web — Feather breaks on Electron/web over file://
 function NavIcon({ name, size, color, strokeWidth }) {
-  if (Platform.OS === 'web') return <SvgIcon name={name} size={size} color={color} strokeWidth={strokeWidth} />;
+  if (Platform.OS === 'web') {
+    return <SvgIcon name={name} size={size} color={color} strokeWidth={strokeWidth} />;
+  }
+  const { Feather } = require('@expo/vector-icons');
   return <Feather name={name} size={size} color={color} />;
 }
 
@@ -131,6 +138,7 @@ const SIDEBAR_ITEMS = [
 ];
 
 // ── Mobile bottom tab bar ─────────────────────────────────────────
+// FIX: replaced all direct <Feather> with <NavIcon>
 function MobileTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
   return (
@@ -140,7 +148,7 @@ function MobileTabBar({ state, navigation }) {
         onPress={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}
         activeOpacity={0.85}
       >
-        <Feather name="plus" size={24} color="#fff" />
+        <NavIcon name="plus" size={24} color="#fff" strokeWidth={2.5} />
       </TouchableOpacity>
       <View style={styles.mobileRow}>
         {MOBILE_TABS.map(tab => {
@@ -153,7 +161,7 @@ function MobileTabBar({ state, navigation }) {
               activeOpacity={0.7}
             >
               <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                <Feather name={tab.icon} size={18} color={focused ? COLORS.primary : COLORS.textMute} />
+                <NavIcon name={tab.icon} size={18} color={focused ? COLORS.primary : COLORS.textMute} />
               </View>
               <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
                 {tab.label}
@@ -166,9 +174,7 @@ function MobileTabBar({ state, navigation }) {
   );
 }
 
-// ── Desktop sidebar — hover to expand, driven by React state ──────
-// FIX: sidebarW is passed up via onWidthChange so sceneContainerStyle
-//      stays in sync without any DOM mutation or setTimeout hacks.
+// ── Desktop sidebar ────────────────────────────────────────────────
 function DesktopSidebar({ state, navigation, onWidthChange }) {
   const [pinned, setPinned]   = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -183,7 +189,6 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
     else navigation.navigate(item.tab);
   };
 
-  // FIX: notify parent of width change via callback — no DOM manipulation
   React.useEffect(() => {
     onWidthChange(w);
   }, [w]);
@@ -207,7 +212,6 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Logo area */}
       <div style={{ padding: '14px 12px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8, minHeight: 56, overflow: 'hidden' }}>
         <div style={{
           minWidth: 32, height: 32, borderRadius: 6, flexShrink: 0,
@@ -215,11 +219,7 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
           padding: expanded ? '0 10px' : '0',
           transition: 'padding 0.2s ease, min-width 0.2s ease',
         }}>
-          <span style={{
-            color: '#fff', fontWeight: 800, fontSize: expanded ? 16 : 18,
-            letterSpacing: expanded ? 0.5 : 0,
-            whiteSpace: 'nowrap',
-          }}>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: expanded ? 16 : 18, letterSpacing: expanded ? 0.5 : 0, whiteSpace: 'nowrap' }}>
             {expanded ? 'Locas.' : 'L'}
           </span>
         </div>
@@ -234,7 +234,6 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
         )}
       </div>
 
-      {/* New Invoice button */}
       <div style={{ padding: '12px 10px 6px' }}>
         <div
           onClick={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}
@@ -255,7 +254,6 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
 
       <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)', margin: '4px 12px' }} />
 
-      {/* Nav items */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingTop: 4, paddingBottom: 4 }}>
         {SIDEBAR_ITEMS.map(item => {
           const active = isActive(item);
@@ -297,8 +295,6 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
   );
 }
 
-// ── Smart tab bar wrapper ─────────────────────────────────────────
-// FIX: accepts onWidthChange and threads it to DesktopSidebar
 function SmartTabBar({ onWidthChange, ...props }) {
   const isWide = useIsWide();
   if (isWide) return <DesktopSidebar {...props} onWidthChange={onWidthChange} />;
@@ -306,11 +302,9 @@ function SmartTabBar({ onWidthChange, ...props }) {
 }
 
 // ── Root ──────────────────────────────────────────────────────────
-export default function AppNavigator() {
-  const isWide = Platform.OS === 'web' && Dimensions.get('window').width >= 768;
-
-  // FIX: sidebar width tracked in React state — drives sceneContainerStyle
-  // directly. No DOM hacks, no setTimeout, no id-tagging, no CSS injection.
+export default function AppNavigator({ licenseStatus }) {
+  // FIX: use reactive hook — was static Dimensions.get() before, never updated on resize
+  const isWide = useIsWide();
   const [sidebarW, setSidebarW] = useState(W_COLLAPSED);
 
   const handleWidthChange = useCallback((w) => {
@@ -329,7 +323,7 @@ export default function AppNavigator() {
       sceneContainerStyle={isWide ? {
         position: 'fixed',
         top: 0, right: 0, bottom: 0,
-        left: sidebarW,          // FIX: reactive, smooth, no race condition
+        left: sidebarW,
         overflow: 'hidden',
         transition: 'left 0.2s ease',
       } : {}}
