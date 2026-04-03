@@ -6,11 +6,11 @@ import {
   Dimensions, Platform,
 } from 'react-native';
 
-// WebView polyfill for web
+// ── WebView polyfill ─────────────────────────────────────────────
 const WebView = Platform.OS === 'web'
   ? ({ source, style }) => {
       const iframeRef = React.useRef(null);
-      const [h, setH] = React.useState(style?.height || 800);
+      const [h, setH] = React.useState(style?.height || 900);
       React.useEffect(() => {
         const el = iframeRef.current;
         if (!el) return;
@@ -31,6 +31,7 @@ const WebView = Platform.OS === 'web'
     }
   : require('react-native-webview').WebView;
 
+// ── Print / Sharing polyfills ────────────────────────────────────
 const Print = Platform.OS === 'web'
   ? {
       printAsync: async ({ html }) => {
@@ -60,7 +61,7 @@ const Sharing = Platform.OS === 'web'
           document.body.appendChild(a); a.click();
           document.body.removeChild(a);
           window.URL.revokeObjectURL(blobUrl);
-        } catch (e) { alert('Failed to save. Use Print and Save as PDF.'); }
+        } catch (e) { alert('Failed to save. Use Print → Save as PDF.'); }
       },
     }
   : require('expo-sharing');
@@ -72,18 +73,55 @@ import { formatINR, PAYMENT_METHODS, today } from '../../utils/gst';
 import { TEMPLATES, buildHTML } from '../../utils/templates/index';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 
+// ── Is wide? ─────────────────────────────────────────────────────
 function useIsWide() {
   const [wide, setWide] = useState(
     Platform.OS === 'web' && Dimensions.get('window').width >= 900
   );
   React.useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const sub = Dimensions.addEventListener('change', ({ window }) => setWide(window.width >= 900));
+    const sub = Dimensions.addEventListener('change', ({ window }) =>
+      setWide(window.width >= 900)
+    );
     return () => sub?.remove();
   }, []);
   return wide;
 }
 
+// ── Draggable split divider ───────────────────────────────────────
+// Returns leftFrac (0.25–0.75) and a ref to attach to the container div.
+// The divider bar calls onDividerMouseDown to begin a drag.
+function useDraggableSplit(initial = 0.5) {
+  const [leftFrac, setLeftFrac] = useState(initial);
+  const containerRef = useRef(null);
+
+  const onDividerMouseDown = useCallback((e) => {
+    if (Platform.OS !== 'web') return;
+    e.preventDefault();
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = ev.clientX - rect.left;
+      const frac = Math.min(0.75, Math.max(0.25, x / rect.width));
+      setLeftFrac(frac);
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+
+  return { leftFrac, containerRef, onDividerMouseDown };
+}
+
+// ── Constants ────────────────────────────────────────────────────
 const COLOR_PALETTE = [
   { hex: '#1E40AF', name: 'Navy'   },
   { hex: '#2563EB', name: 'Blue'   },
@@ -106,15 +144,17 @@ const STATUS_STYLE = {
   overdue: { bg: '#FECACA', text: '#7F1D1D' },
 };
 
+// ═══════════════════════════════════════════════════════════════
 export default function InvoiceDetail({ navigation, route }) {
-  const insets  = useSafeAreaInsets();
-  const isWide  = useIsWide();
+  const insets = useSafeAreaInsets();
+  const isWide = useIsWide();
+  const { leftFrac, containerRef, onDividerMouseDown } = useDraggableSplit(0.5);
   const { invoiceId } = route.params;
 
-  const [invoice, setInvoice]       = useState(null);
-  const [profile, setProfile]       = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [printing, setPrinting]     = useState(false);
+  const [invoice, setInvoice]         = useState(null);
+  const [profile, setProfile]         = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [printing, setPrinting]       = useState(false);
   const [selectedTpl, setSelectedTpl] = useState('t1');
   const [accentColor, setAccentColor] = useState('#1E40AF');
 
@@ -129,7 +169,10 @@ export default function InvoiceDetail({ navigation, route }) {
 
   const load = async () => {
     try {
-      const [inv, prof] = await Promise.all([getInvoiceDetail(invoiceId), getProfile()]);
+      const [inv, prof] = await Promise.all([
+        getInvoiceDetail(invoiceId),
+        getProfile(),
+      ]);
       setInvoice(inv);
       setProfile(prof);
     } catch (e) { console.error(e); }
@@ -145,13 +188,14 @@ export default function InvoiceDetail({ navigation, route }) {
     return invoice.status || 'unpaid';
   };
 
-  const balance = invoice ? (invoice.total || 0) - (invoice.paid || 0) : 0;
-
+  const balance    = invoice ? (invoice.total || 0) - (invoice.paid || 0) : 0;
   const invoiceHTML = invoice && profile ? buildHTML(selectedTpl, invoice, profile, accentColor) : null;
 
   const openPayModal = () => {
-    setPayAmount(balance.toFixed(2)); setPayMethod('Cash');
-    setPayRef(''); setPayDate(today()); setPayNote(''); setPayModal(true);
+    setPayAmount(balance.toFixed(2));
+    setPayMethod('Cash'); setPayRef('');
+    setPayDate(today()); setPayNote('');
+    setPayModal(true);
   };
 
   const handlePayment = async () => {
@@ -189,7 +233,11 @@ export default function InvoiceDetail({ navigation, route }) {
         await Print.printAsync({ html });
       } else {
         const { uri } = await require('expo-print').printToFileAsync({ html, base64: false });
-        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Invoice_${invoice.invoice_number}`, UTI: 'com.adobe.pdf' });
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `Invoice_${invoice.invoice_number}`,
+          UTI: 'com.adobe.pdf',
+        });
       }
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setPrinting(false); }
@@ -197,196 +245,195 @@ export default function InvoiceDetail({ navigation, route }) {
 
   const handleWhatsApp = async () => {
     const isInter = invoice.supply_type === 'inter';
-    const msg = `*Invoice ${invoice.invoice_number}*\nFrom: ${profile?.name || 'My Business'}\nDate: ${invoice.date}${invoice.due_date ? `\nDue: ${invoice.due_date}` : ''}\n\n*Items:*\n${(invoice.items || []).map(i => `${i.name} x${i.qty} = ${formatINR(i.total)}`).join('\n')}\n\nTaxable: ${formatINR(invoice.taxable)}\n${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst)}\nSGST: ${formatINR(invoice.sgst)}`}\n*Total: ${formatINR(invoice.total)}*${invoice.paid > 0 ? `\nPaid: ${formatINR(invoice.paid)}\nBalance: ${formatINR(balance)}` : ''}`;
+    const msg =
+`*Invoice ${invoice.invoice_number}*
+From: ${profile?.name || 'My Business'}
+Date: ${invoice.date}${invoice.due_date ? `\nDue: ${invoice.due_date}` : ''}
+
+*Items:*
+${(invoice.items || []).map(i => `${i.name} x${i.qty} = ${formatINR(i.total)}`).join('\n')}
+
+Taxable: ${formatINR(invoice.taxable)}
+${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst)}\nSGST: ${formatINR(invoice.sgst)}`}
+*Total: ${formatINR(invoice.total)}*${invoice.paid > 0 ? `\nPaid: ${formatINR(invoice.paid)}\nBalance: ${formatINR(balance)}` : ''}`;
     try { await Share.share({ message: msg }); }
     catch (e) { Alert.alert('Error', e.message); }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
-  if (!invoice) return <View style={styles.center}><Text style={{ color: COLORS.textMute }}>Invoice not found</Text></View>;
+  if (loading) return <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  if (!invoice) return <View style={s.center}><Text style={{ color: COLORS.textMute }}>Invoice not found</Text></View>;
 
   const statusKey   = getStatus();
   const statusStyle = STATUS_STYLE[statusKey] || STATUS_STYLE.unpaid;
   const activeTpl   = TEMPLATES.find(t => t.id === selectedTpl) || TEMPLATES[0];
   const isInter     = invoice.supply_type === 'inter';
 
-  // ── LEFT PANEL: invoice data ──────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  // LEFT PANEL — invoice data
+  // ─────────────────────────────────────────────────────────────
   const LeftPanel = (
     <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
 
-      {/* ── Money strip ── */}
-      <View style={styles.moneyStrip}>
-        <View style={styles.moneyCell}>
-          <Text style={styles.moneyLabel}>Total</Text>
-          <Text style={styles.moneyVal}>{formatINR(invoice.total)}</Text>
+      {/* Money strip */}
+      <View style={s.moneyStrip}>
+        <View style={s.moneyCell}>
+          <Text style={s.moneyLbl}>Total</Text>
+          <Text style={s.moneyVal}>{formatINR(invoice.total)}</Text>
         </View>
-        <View style={styles.moneySep} />
-        <View style={styles.moneyCell}>
-          <Text style={styles.moneyLabel}>Paid</Text>
-          <Text style={[styles.moneyVal, { color: COLORS.success }]}>{formatINR(invoice.paid || 0)}</Text>
+        <View style={s.moneySep} />
+        <View style={s.moneyCell}>
+          <Text style={s.moneyLbl}>Paid</Text>
+          <Text style={[s.moneyVal, { color: COLORS.success }]}>{formatINR(invoice.paid || 0)}</Text>
         </View>
-        <View style={styles.moneySep} />
-        <View style={styles.moneyCell}>
-          <Text style={styles.moneyLabel}>Balance</Text>
-          <Text style={[styles.moneyVal, balance > 0 ? { color: COLORS.danger } : { color: COLORS.success }]}>
+        <View style={s.moneySep} />
+        <View style={s.moneyCell}>
+          <Text style={s.moneyLbl}>Balance</Text>
+          <Text style={[s.moneyVal, balance > 0 ? { color: COLORS.danger } : { color: COLORS.success }]}>
             {formatINR(balance)}
           </Text>
         </View>
       </View>
 
-      {/* ── Record payment CTA ── */}
+      {/* Pay banner */}
       {balance > 0.01 && (
-        <TouchableOpacity style={styles.payBanner} onPress={openPayModal} activeOpacity={0.85}>
+        <TouchableOpacity style={s.payBanner} onPress={openPayModal} activeOpacity={0.85}>
           <View>
-            <Text style={styles.payBannerLabel}>Balance Due</Text>
-            <Text style={styles.payBannerAmt}>{formatINR(balance)}</Text>
+            <Text style={s.payBannerLbl}>Balance Due</Text>
+            <Text style={s.payBannerAmt}>{formatINR(balance)}</Text>
           </View>
-          <View style={styles.payBannerBtn}>
-            <Text style={styles.payBannerBtnText}>Record Payment</Text>
+          <View style={s.payBannerBtn}>
+            <Text style={s.payBannerBtnTxt}>Record Payment</Text>
             <Icon name="arrow-right" size={14} color="#fff" />
           </View>
         </TouchableOpacity>
       )}
 
-      {/* ── Bill to / dates ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardSectionTitle}>Bill To</Text>
-        <Text style={styles.partyName}>{invoice.party_name || 'Walk-in Customer'}</Text>
-        {invoice.party_gstin ? <Text style={styles.partySub}>GSTIN: {invoice.party_gstin}</Text> : null}
-        {invoice.party_address ? <Text style={styles.partySub}>{invoice.party_address}</Text> : null}
-        <View style={styles.dateRow}>
-          <View style={styles.dateCell}>
-            <Text style={styles.dateLbl}>Invoice Date</Text>
-            <Text style={styles.dateVal}>{invoice.date}</Text>
+      {/* Bill To */}
+      <View style={s.card}>
+        <Text style={s.cardTitle}>Bill To</Text>
+        <Text style={s.partyName}>{invoice.party_name || 'Walk-in Customer'}</Text>
+        {invoice.party_gstin ? <Text style={s.partySub}>GSTIN: {invoice.party_gstin}</Text> : null}
+        {invoice.party_address ? <Text style={s.partySub}>{invoice.party_address}</Text> : null}
+        <View style={s.dateRow}>
+          <View style={s.dateCell}>
+            <Text style={s.dateLbl}>Invoice Date</Text>
+            <Text style={s.dateVal}>{invoice.date}</Text>
           </View>
           {invoice.due_date ? (
-            <View style={styles.dateCell}>
-              <Text style={styles.dateLbl}>Due Date</Text>
-              <Text style={[styles.dateVal, statusKey === 'overdue' && { color: COLORS.danger }]}>
+            <View style={s.dateCell}>
+              <Text style={s.dateLbl}>Due Date</Text>
+              <Text style={[s.dateVal, statusKey === 'overdue' && { color: COLORS.danger }]}>
                 {invoice.due_date}
               </Text>
             </View>
           ) : null}
-          <View style={styles.dateCell}>
-            <Text style={styles.dateLbl}>Supply</Text>
-            <Text style={styles.dateVal}>{isInter ? 'Inter-state' : 'Intra-state'}</Text>
+          <View style={s.dateCell}>
+            <Text style={s.dateLbl}>Supply</Text>
+            <Text style={s.dateVal}>{isInter ? 'Inter-state' : 'Intra-state'}</Text>
           </View>
         </View>
       </View>
 
-      {/* ── Line items ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardSectionTitle}>Items ({invoice.items?.length || 0})</Text>
+      {/* Items */}
+      <View style={s.card}>
+        <Text style={s.cardTitle}>Items ({invoice.items?.length || 0})</Text>
         {(invoice.items || []).map((item, i) => (
-          <View key={i} style={[styles.itemRow, i < (invoice.items.length - 1) && styles.itemRowBorder]}>
-            <View style={[styles.itemDot, { backgroundColor: accentColor }]} />
+          <View key={i} style={[s.itemRow, i < (invoice.items.length - 1) && s.itemRowBorder]}>
+            <View style={[s.itemDot, { backgroundColor: accentColor }]} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemMeta}>
+              <Text style={s.itemName}>{item.name}</Text>
+              <Text style={s.itemMeta}>
                 {item.qty} {item.unit} × {formatINR(item.rate)}
                 {item.hsn ? ` · HSN ${item.hsn}` : ''}
                 {` · GST ${item.gst_rate}%`}
               </Text>
-              {item.discount > 0 && <Text style={styles.itemDiscount}>Discount: {formatINR(item.discount)}</Text>}
+              {item.discount > 0 && (
+                <Text style={s.itemDiscount}>Discount: {formatINR(item.discount)}</Text>
+              )}
             </View>
-            <Text style={styles.itemTotal}>{formatINR(item.total)}</Text>
+            <Text style={s.itemTotal}>{formatINR(item.total)}</Text>
           </View>
         ))}
       </View>
 
-      {/* ── Tax summary ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardSectionTitle}>Tax Summary</Text>
-        <View style={styles.taxRow}>
-          <Text style={styles.taxLbl}>Subtotal</Text>
-          <Text style={styles.taxVal}>{formatINR(invoice.subtotal || invoice.taxable)}</Text>
-        </View>
+      {/* Tax summary */}
+      <View style={s.card}>
+        <Text style={s.cardTitle}>Tax Summary</Text>
+        <TaxRow label="Subtotal" value={formatINR(invoice.subtotal || invoice.taxable)} />
         {invoice.discount > 0 && (
-          <View style={styles.taxRow}>
-            <Text style={styles.taxLbl}>Discount</Text>
-            <Text style={[styles.taxVal, { color: COLORS.success }]}>−{formatINR(invoice.discount)}</Text>
-          </View>
+          <TaxRow label="Discount" value={`−${formatINR(invoice.discount)}`} valueStyle={{ color: COLORS.success }} />
         )}
-        <View style={styles.taxRow}>
-          <Text style={styles.taxLbl}>Taxable Amount</Text>
-          <Text style={styles.taxVal}>{formatINR(invoice.taxable)}</Text>
-        </View>
-        {isInter ? (
-          <View style={styles.taxRow}>
-            <Text style={styles.taxLbl}>IGST</Text>
-            <Text style={styles.taxVal}>{formatINR(invoice.igst)}</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.taxRow}>
-              <Text style={styles.taxLbl}>CGST</Text>
-              <Text style={styles.taxVal}>{formatINR(invoice.cgst)}</Text>
-            </View>
-            <View style={styles.taxRow}>
-              <Text style={styles.taxLbl}>SGST</Text>
-              <Text style={styles.taxVal}>{formatINR(invoice.sgst)}</Text>
-            </View>
-          </>
-        )}
-        <View style={styles.taxTotalRow}>
-          <Text style={styles.taxTotalLbl}>Invoice Total</Text>
-          <Text style={styles.taxTotalVal}>{formatINR(invoice.total)}</Text>
+        <TaxRow label="Taxable Amount" value={formatINR(invoice.taxable)} />
+        {isInter
+          ? <TaxRow label="IGST" value={formatINR(invoice.igst)} />
+          : <>
+              <TaxRow label="CGST" value={formatINR(invoice.cgst)} />
+              <TaxRow label="SGST" value={formatINR(invoice.sgst)} />
+            </>
+        }
+        <View style={s.taxTotalRow}>
+          <Text style={s.taxTotalLbl}>Invoice Total</Text>
+          <Text style={s.taxTotalVal}>{formatINR(invoice.total)}</Text>
         </View>
       </View>
 
-      {/* ── Payment history ── */}
+      {/* Payment history */}
       {(invoice.payments || []).length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardSectionTitle}>Payment History ({invoice.payments.length})</Text>
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Payment History ({invoice.payments.length})</Text>
           {invoice.payments.map((p, i) => (
-            <View key={i} style={[styles.payRow, i < invoice.payments.length - 1 && styles.payRowBorder]}>
-              <View style={styles.payIcon}>
+            <View key={i} style={[s.payRow, i < invoice.payments.length - 1 && s.payRowBorder]}>
+              <View style={s.payIcon}>
                 <Icon name="check-circle" size={15} color={COLORS.success} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.payMethod}>{p.method}{p.reference ? ` · ${p.reference}` : ''}</Text>
-                <Text style={styles.payDate}>{p.date}{p.note ? ` · ${p.note}` : ''}</Text>
+                <Text style={s.payMethod}>{p.method}{p.reference ? ` · ${p.reference}` : ''}</Text>
+                <Text style={s.payDate}>{p.date}{p.note ? ` · ${p.note}` : ''}</Text>
               </View>
-              <Text style={styles.payAmt}>{formatINR(p.amount)}</Text>
+              <Text style={s.payAmt}>{formatINR(p.amount)}</Text>
             </View>
           ))}
         </View>
       )}
 
-      {/* ── Notes / Terms ── */}
+      {/* Notes / Terms */}
       {(invoice.notes || invoice.terms) ? (
-        <View style={styles.card}>
+        <View style={s.card}>
           {invoice.notes ? (
             <>
-              <Text style={styles.cardSectionTitle}>Notes</Text>
-              <Text style={styles.notesText}>{invoice.notes}</Text>
+              <Text style={s.cardTitle}>Notes</Text>
+              <Text style={s.notesText}>{invoice.notes}</Text>
             </>
           ) : null}
           {invoice.terms ? (
             <>
-              <Text style={[styles.cardSectionTitle, { marginTop: invoice.notes ? 12 : 0 }]}>Terms</Text>
-              <Text style={styles.notesText}>{invoice.terms}</Text>
+              <Text style={[s.cardTitle, { marginTop: invoice.notes ? 12 : 0 }]}>Terms</Text>
+              <Text style={s.notesText}>{invoice.terms}</Text>
             </>
           ) : null}
         </View>
       ) : null}
 
-      {/* ── Action buttons (mobile only — on wide they're in the right panel) ── */}
+      {/* Mobile-only action buttons */}
       {!isWide && (
-        <View style={styles.mobileActions}>
-          <TouchableOpacity style={[styles.mobileActBtn, { backgroundColor: accentColor }]} onPress={doPDF} disabled={printing}>
+        <View style={s.mobileActions}>
+          <TouchableOpacity
+            style={[s.mobileActPrimary, { backgroundColor: accentColor }]}
+            onPress={doPDF}
+            disabled={printing}
+          >
             {printing
               ? <ActivityIndicator size="small" color="#fff" />
-              : <><Icon name="download" size={15} color="#fff" /><Text style={styles.mobileActTxt}>Export PDF</Text></>
+              : <><Icon name="download" size={15} color="#fff" /><Text style={s.mobileActPrimaryTxt}> Export PDF</Text></>
             }
           </TouchableOpacity>
-          <TouchableOpacity style={styles.mobileActBtnSecondary} onPress={handleWhatsApp}>
+          <TouchableOpacity style={s.mobileActSec} onPress={handleWhatsApp}>
             <Icon name="message-circle" size={15} color={COLORS.textSub} />
-            <Text style={styles.mobileActTxtSecondary}>WhatsApp</Text>
+            <Text style={s.mobileActSecTxt}>WhatsApp</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.mobileActBtnSecondary} onPress={doPDF}>
+          <TouchableOpacity style={s.mobileActSec} onPress={doPDF}>
             <Icon name="printer" size={15} color={COLORS.textSub} />
-            <Text style={styles.mobileActTxtSecondary}>Print</Text>
+            <Text style={s.mobileActSecTxt}>Print</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -395,71 +442,75 @@ export default function InvoiceDetail({ navigation, route }) {
     </ScrollView>
   );
 
-  // ── RIGHT PANEL: template + preview (wide only) ───────────────
+  // ─────────────────────────────────────────────────────────────
+  // RIGHT PANEL — template picker + live preview
+  // ─────────────────────────────────────────────────────────────
   const RightPanel = (
-    <View style={styles.rightPanel}>
-      {/* Action buttons */}
-      <View style={styles.rightActions}>
+    <View style={s.rightOuter}>
+      {/* Action row */}
+      <View style={s.rightActions}>
         <TouchableOpacity
-          style={[styles.rightActBtn, { backgroundColor: accentColor, flex: 2 }]}
+          style={[s.rightActPrimary, { backgroundColor: accentColor }]}
           onPress={doPDF}
           disabled={printing}
         >
           {printing
             ? <ActivityIndicator size="small" color="#fff" />
-            : <><Icon name="download" size={14} color="#fff" /><Text style={styles.rightActTxt}>Export PDF</Text></>
+            : <><Icon name="download" size={14} color="#fff" /><Text style={s.rightActPrimaryTxt}> Export PDF</Text></>
           }
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.rightActBtn, styles.rightActBtnSec]} onPress={handleWhatsApp}>
+        <TouchableOpacity style={s.rightActSec} onPress={handleWhatsApp}>
           <Icon name="message-circle" size={14} color={COLORS.textSub} />
-          <Text style={styles.rightActTxtSec}>WhatsApp</Text>
+          <Text style={s.rightActSecTxt}>WhatsApp</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.rightActBtn, styles.rightActBtnSec]} onPress={doPDF}>
+        <TouchableOpacity style={s.rightActSec} onPress={doPDF}>
           <Icon name="printer" size={14} color={COLORS.textSub} />
-          <Text style={styles.rightActTxtSec}>Print</Text>
+          <Text style={s.rightActSecTxt}>Print</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Template picker — compact */}
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-        <Text style={styles.rightSectionTitle}>Template</Text>
+
+        {/* Template row */}
+        <Text style={s.rightSecTitle}>Template</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tplScroll}
+          contentContainerStyle={s.tplScroll}
         >
           {TEMPLATES.map(tpl => {
-            const isSelected = selectedTpl === tpl.id;
-            const c = isSelected ? accentColor : tpl.accent;
+            const isSel = selectedTpl === tpl.id;
+            const c = isSel ? accentColor : tpl.accent;
             return (
               <TouchableOpacity
                 key={tpl.id}
-                style={[styles.tplThumb, isSelected && { borderColor: accentColor, borderWidth: 2 }]}
+                style={[s.tplThumb, isSel && { borderColor: accentColor, borderWidth: 2 }]}
                 onPress={() => { setSelectedTpl(tpl.id); setAccentColor(tpl.accent); }}
                 activeOpacity={0.85}
               >
-                {/* Mini preview */}
-                <View style={[styles.thumbPreview, { borderColor: c + '40' }]}>
-                  <View style={[styles.thumbHeader, { backgroundColor: c }]}>
-                    <View style={[styles.tl, { width: 24, backgroundColor: 'rgba(255,255,255,.9)', height: 3 }]} />
-                    <View style={[styles.tl, { width: 18, backgroundColor: 'rgba(255,255,255,.7)', height: 3 }]} />
+                <View style={s.thumbPreview}>
+                  <View style={[s.thumbHeader, { backgroundColor: c }]}>
+                    <View style={[s.tl, { width: 28, backgroundColor: 'rgba(255,255,255,.9)', height: 3 }]} />
+                    <View style={[s.tl, { width: 20, backgroundColor: 'rgba(255,255,255,.7)', height: 3 }]} />
                   </View>
                   {[0,1,2].map(i => (
-                    <View key={i} style={[styles.thumbTR, { backgroundColor: i%2===0 ? c+'0C':'#fff' }]}>
-                      {[14,8,12].map((w,j) => <View key={j} style={[styles.tl, { width: w, height: 2, backgroundColor: j===2?c+'70':'#CBD5E1' }]} />)}
+                    <View key={i} style={[s.thumbRow, { backgroundColor: i%2===0 ? c+'10':'#fff' }]}>
+                      {[16,10,14].map((w,j) => (
+                        <View key={j} style={[s.tl, { width: w, height: 2, backgroundColor: j===2?c+'80':'#CBD5E1' }]} />
+                      ))}
                     </View>
                   ))}
-                  <View style={[styles.thumbGrand, { backgroundColor: c }]}>
-                    <View style={[styles.tl, { width: 14, backgroundColor: 'rgba(255,255,255,.7)', height: 2 }]} />
-                    <View style={[styles.tl, { width: 12, backgroundColor: 'rgba(255,255,255,.9)', height: 2 }]} />
+                  <View style={[s.thumbTotal, { backgroundColor: c }]}>
+                    <View style={[s.tl, { width: 16, backgroundColor: 'rgba(255,255,255,.7)', height: 2 }]} />
+                    <View style={[s.tl, { width: 20, backgroundColor: 'rgba(255,255,255,.9)', height: 3 }]} />
                   </View>
-                  {isSelected && (
-                    <View style={[styles.thumbCheck, { backgroundColor: accentColor }]}>
-                      <Icon name="check" size={10} color="#fff" />
+                  {isSel && (
+                    <View style={[s.thumbCheck, { backgroundColor: accentColor }]}>
+                      <Icon name="check" size={11} color="#fff" />
                     </View>
                   )}
                 </View>
-                <Text style={[styles.thumbName, isSelected && { color: accentColor }]} numberOfLines={1}>
+                <Text style={[s.thumbName, isSel && { color: accentColor }]} numberOfLines={1}>
                   {tpl.name}
                 </Text>
               </TouchableOpacity>
@@ -467,150 +518,203 @@ export default function InvoiceDetail({ navigation, route }) {
           })}
         </ScrollView>
 
-        {/* Color picker — compact dots */}
-        <Text style={styles.rightSectionTitle}>Color</Text>
-        <View style={styles.colorGrid}>
+        {/* Color grid */}
+        <Text style={s.rightSecTitle}>Color</Text>
+        <View style={s.colorGrid}>
           {COLOR_PALETTE.map(c => (
-            <TouchableOpacity key={c.hex} onPress={() => setAccentColor(c.hex)} style={styles.colorItem}>
+            <TouchableOpacity key={c.hex} onPress={() => setAccentColor(c.hex)} style={s.colorItem}>
               <View style={[
-                styles.colorDot,
+                s.colorDot,
                 { backgroundColor: c.hex },
-                accentColor === c.hex && styles.colorDotActive,
+                accentColor === c.hex && s.colorDotSel,
               ]}>
-                {accentColor === c.hex && <Icon name="check" size={11} color="#fff" />}
+                {accentColor === c.hex && <Icon name="check" size={12} color="#fff" />}
               </View>
-              <Text style={[styles.colorName, accentColor === c.hex && { color: c.hex }]}>{c.name}</Text>
+              <Text style={[s.colorName, accentColor === c.hex && { color: c.hex }]}>{c.name}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Live preview */}
-        <Text style={styles.rightSectionTitle}>Preview</Text>
+        {/* Live preview — fills available space */}
+        <Text style={s.rightSecTitle}>Preview</Text>
         {invoiceHTML && (
-          <View style={styles.previewWrap}>
+          <View style={s.previewWrap}>
             <WebView
               source={{ html: invoiceHTML }}
-              style={{ width: '100%', height: 600 }}
+              style={{ width: '100%', height: 900 }}
               scrollEnabled
             />
           </View>
         )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 
+  // ─────────────────────────────────────────────────────────────
+  // ROOT RENDER
+  // ─────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[s.container, { paddingTop: insets.top }]}>
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+      {/* Header */}
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Icon name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={styles.headerTitle}>{invoice.invoice_number}</Text>
-          <Text style={styles.headerSub}>{invoice.date} · {invoice.party_name || 'Walk-in'}</Text>
+          <Text style={s.headerTitle}>{invoice.invoice_number}</Text>
+          <Text style={s.headerSub}>{invoice.date} · {invoice.party_name || 'Walk-in'}</Text>
         </View>
-        <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
-          <Text style={[styles.statusPillText, { color: statusStyle.text }]}>
+        <View style={[s.statusPill, { backgroundColor: statusStyle.bg }]}>
+          <Text style={[s.statusPillTxt, { color: statusStyle.text }]}>
             {statusKey.toUpperCase()}
           </Text>
         </View>
         <TouchableOpacity
           onPress={() => navigation.navigate('CreateInvoice', { invoice })}
-          style={styles.iconBtn}
+          style={s.iconBtn}
         >
           <Icon name="edit-2" size={16} color={COLORS.textSub} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleDelete} style={[styles.iconBtn, styles.iconBtnDanger]}>
+        <TouchableOpacity onPress={handleDelete} style={[s.iconBtn, s.iconBtnDanger]}>
           <Icon name="trash-2" size={16} color={COLORS.danger} />
         </TouchableOpacity>
       </View>
 
-      {/* ── Body: side-by-side on wide, stacked on narrow ── */}
+      {/* Body */}
       {isWide ? (
-        <View style={styles.wideBody}>
-          <View style={styles.leftPanel}>
-            {LeftPanel}
-          </View>
-          {RightPanel}
-        </View>
+        // ── Wide: left data panel + draggable divider + right preview panel
+        Platform.OS === 'web'
+          ? React.createElement('div', {
+              ref: containerRef,
+              style: {
+                display: 'flex',
+                flexDirection: 'row',
+                flex: 1,
+                overflow: 'hidden',
+                height: '100%',
+              },
+            },
+            // Left panel
+            React.createElement('div', {
+              style: {
+                flex: `0 0 ${(leftFrac * 100).toFixed(2)}%`,
+                overflow: 'auto',
+                borderRight: 'none',
+              },
+            }, LeftPanel),
+
+            // Draggable divider
+            React.createElement('div', {
+              onMouseDown: onDividerMouseDown,
+              style: {
+                width: 6,
+                cursor: 'col-resize',
+                background: 'transparent',
+                position: 'relative',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+              },
+            },
+              // Visual line inside the handle
+              React.createElement('div', {
+                style: {
+                  width: 2,
+                  height: '100%',
+                  background: COLORS.border,
+                  borderRadius: 1,
+                  pointerEvents: 'none',
+                },
+              }),
+              // Grab handle dots
+              React.createElement('div', {
+                style: {
+                  position: 'absolute',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                  pointerEvents: 'none',
+                },
+              },
+                ...[0,1,2].map(i =>
+                  React.createElement('div', {
+                    key: i,
+                    style: {
+                      width: 4,
+                      height: 4,
+                      borderRadius: 2,
+                      background: COLORS.borderDark,
+                    },
+                  })
+                )
+              )
+            ),
+
+            // Right panel
+            React.createElement('div', {
+              style: {
+                flex: `0 0 ${((1 - leftFrac) * 100).toFixed(2)}%`,
+                overflow: 'auto',
+                background: COLORS.card,
+                borderLeft: `1px solid ${COLORS.border}`,
+              },
+            }, RightPanel)
+          )
+          // Native wide (iPad etc) — no drag, fixed 50/50
+          : (
+            <View style={s.wideBody}>
+              <View style={s.leftHalf}>{LeftPanel}</View>
+              <View style={s.dividerNative} />
+              <View style={s.rightHalf}>{RightPanel}</View>
+            </View>
+          )
       ) : (
+        // ── Narrow: stacked
         LeftPanel
       )}
 
-      {/* ── Payment Modal ── */}
+      {/* Payment Modal */}
       <Modal visible={payModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Record Payment</Text>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Record Payment</Text>
               <TouchableOpacity onPress={() => setPayModal(false)} style={{ padding: 4 }}>
                 <Icon name="x" size={18} color={COLORS.textMute} />
               </TouchableOpacity>
             </View>
             <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-              <View style={styles.payInvInfo}>
-                <Text style={styles.payInvNum}>{invoice.invoice_number}</Text>
-                <Text style={styles.payInvParty}>{invoice.party_name || 'Walk-in'}</Text>
-                <Text style={styles.payInvBalance}>Balance due: {formatINR(balance)}</Text>
+              <View style={s.payInvInfo}>
+                <Text style={s.payInvNum}>{invoice.invoice_number}</Text>
+                <Text style={s.payInvParty}>{invoice.party_name || 'Walk-in'}</Text>
+                <Text style={s.payInvBal}>Balance due: {formatINR(balance)}</Text>
               </View>
               <FL>Amount (₹)*</FL>
-              <TextInput
-                style={styles.input}
-                value={payAmount}
-                onChangeText={setPayAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={COLORS.textMute}
-              />
+              <TextInput style={s.input} value={payAmount} onChangeText={setPayAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={COLORS.textMute} />
               <FL>Date</FL>
-              <TextInput
-                style={styles.input}
-                value={payDate}
-                onChangeText={setPayDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.textMute}
-              />
+              <TextInput style={s.input} value={payDate} onChangeText={setPayDate} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMute} />
               <FL>Payment Method</FL>
-              <View style={styles.methodRow}>
+              <View style={s.methodRow}>
                 {PAYMENT_METHODS.map(m => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.methodChip, payMethod === m && styles.methodChipActive]}
-                    onPress={() => setPayMethod(m)}
-                  >
-                    <Text style={[styles.methodText, payMethod === m && styles.methodTextActive]}>{m}</Text>
+                  <TouchableOpacity key={m} style={[s.methodChip, payMethod===m && s.methodChipActive]} onPress={() => setPayMethod(m)}>
+                    <Text style={[s.methodTxt, payMethod===m && s.methodTxtActive]}>{m}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
               <FL>Reference (optional)</FL>
-              <TextInput
-                style={styles.input}
-                value={payRef}
-                onChangeText={setPayRef}
-                placeholder="UTR / Cheque No."
-                placeholderTextColor={COLORS.textMute}
-              />
+              <TextInput style={s.input} value={payRef} onChangeText={setPayRef} placeholder="UTR / Cheque No." placeholderTextColor={COLORS.textMute} />
               <FL>Note (optional)</FL>
-              <TextInput
-                style={styles.input}
-                value={payNote}
-                onChangeText={setPayNote}
-                placeholder="Any note..."
-                placeholderTextColor={COLORS.textMute}
-              />
-              <TouchableOpacity
-                style={[styles.confirmBtn, paying && { opacity: 0.5 }]}
-                onPress={handlePayment}
-                disabled={paying}
-              >
-                {paying
-                  ? <ActivityIndicator color={COLORS.white} />
-                  : <Text style={styles.confirmBtnText}>Confirm Payment</Text>
-                }
+              <TextInput style={s.input} value={payNote} onChangeText={setPayNote} placeholder="Any note..." placeholderTextColor={COLORS.textMute} />
+              <TouchableOpacity style={[s.confirmBtn, paying && { opacity: 0.5 }]} onPress={handlePayment} disabled={paying}>
+                {paying ? <ActivityIndicator color={COLORS.white} /> : <Text style={s.confirmBtnTxt}>Confirm Payment</Text>}
               </TouchableOpacity>
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -621,6 +725,7 @@ export default function InvoiceDetail({ navigation, route }) {
   );
 }
 
+// ── Small helpers ────────────────────────────────────────────────
 function FL({ children }) {
   return (
     <Text style={{
@@ -633,9 +738,19 @@ function FL({ children }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container:  { flex: 1, backgroundColor: COLORS.bg },
-  center:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
+function TaxRow({ label, value, valueStyle }) {
+  return (
+    <View style={s.taxRow}>
+      <Text style={s.taxLbl}>{label}</Text>
+      <Text style={[s.taxVal, valueStyle]}>{value}</Text>
+    </View>
+  );
+}
+
+// ── Styles ───────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  center:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   // Header
   header: {
@@ -644,25 +759,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  backBtn:        { padding: 4, marginRight: 2 },
-  headerTitle:    { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
-  headerSub:      { fontSize: 12, color: COLORS.textMute, marginTop: 1 },
-  statusPill:     { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full, marginRight: 8 },
-  statusPillText: { fontSize: 10, fontWeight: FONTS.black, letterSpacing: 0.5 },
-  iconBtn:        { padding: 8, borderRadius: RADIUS.sm, backgroundColor: COLORS.bg, marginLeft: 6 },
-  iconBtnDanger:  { backgroundColor: COLORS.dangerLight },
+  backBtn:       { padding: 4, marginRight: 2 },
+  headerTitle:   { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
+  headerSub:     { fontSize: 12, color: COLORS.textMute, marginTop: 1 },
+  statusPill:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full, marginRight: 8 },
+  statusPillTxt: { fontSize: 10, fontWeight: FONTS.black, letterSpacing: 0.5 },
+  iconBtn:       { padding: 8, borderRadius: RADIUS.sm, backgroundColor: COLORS.bg, marginLeft: 6 },
+  iconBtnDanger: { backgroundColor: COLORS.dangerLight },
 
-  // Wide layout
-  wideBody:   { flex: 1, flexDirection: 'row' },
-  leftPanel:  { flex: 1, borderRightWidth: 1, borderRightColor: COLORS.border },
-  rightPanel: {
-    width: 340,
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    borderLeftWidth: 1,
-    borderLeftColor: COLORS.border,
-  },
+  // Wide layout (native fallback)
+  wideBody:    { flex: 1, flexDirection: 'row' },
+  leftHalf:    { flex: 1 },
+  dividerNative:{ width: 1, backgroundColor: COLORS.border },
+  rightHalf:   { flex: 1, backgroundColor: COLORS.card },
 
   // Money strip
   moneyStrip: {
@@ -670,41 +779,37 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  moneyCell:  { flex: 1, alignItems: 'center', paddingVertical: 14 },
-  moneySep:   { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
-  moneyLabel: { fontSize: 10, fontWeight: FONTS.medium, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
-  moneyVal:   { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
+  moneyCell: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  moneySep:  { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
+  moneyLbl:  { fontSize: 10, fontWeight: FONTS.medium, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
+  moneyVal:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
 
   // Pay banner
   payBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#FEF3C7',
-    marginHorizontal: 14, marginTop: 12,
+    backgroundColor: '#FEF3C7', margin: 12, marginBottom: 0,
     borderRadius: RADIUS.lg, padding: 14,
     borderWidth: 1, borderColor: '#FDE68A',
   },
-  payBannerLabel:   { fontSize: 11, color: '#92400E', fontWeight: FONTS.medium },
-  payBannerAmt:     { fontSize: 22, fontWeight: FONTS.black, color: '#92400E' },
-  payBannerBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 10, borderRadius: RADIUS.md },
-  payBannerBtnText: { fontSize: 13, fontWeight: FONTS.bold, color: '#fff' },
+  payBannerLbl:    { fontSize: 11, color: '#92400E', fontWeight: FONTS.medium },
+  payBannerAmt:    { fontSize: 22, fontWeight: FONTS.black, color: '#92400E' },
+  payBannerBtn:    { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 10, borderRadius: RADIUS.md },
+  payBannerBtnTxt: { fontSize: 13, fontWeight: FONTS.bold, color: '#fff' },
 
   // Cards
   card: {
-    backgroundColor: COLORS.card,
-    marginHorizontal: 14, marginTop: 10,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1, borderColor: COLORS.border,
-    padding: 14,
+    backgroundColor: COLORS.card, margin: 12, marginBottom: 0,
+    borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: 14,
   },
-  cardSectionTitle: {
+  cardTitle: {
     fontSize: 10, fontWeight: FONTS.bold, color: COLORS.textMute,
     textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10,
   },
 
-  // Bill-to
+  // Bill To
   partyName: { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
   partySub:  { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  dateRow:   { flexDirection: 'row', gap: 14, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.border },
+  dateRow:   { flexDirection: 'row', gap: 16, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.border },
   dateCell:  { flex: 1 },
   dateLbl:   { fontSize: 10, fontWeight: FONTS.medium, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 },
   dateVal:   { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
@@ -712,116 +817,83 @@ const styles = StyleSheet.create({
   // Items
   itemRow:       { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 9, gap: 10 },
   itemRowBorder: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  itemDot:       { width: 6, height: 6, borderRadius: 3, marginTop: 6, flexShrink: 0 },
-  itemName:      { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
+  itemDot:       { width: 6, height: 6, borderRadius: 3, marginTop: 7, flexShrink: 0 },
+  itemName:      { fontSize: 14, fontWeight: FONTS.semibold, color: COLORS.text },
   itemMeta:      { fontSize: 11, color: COLORS.textSub, marginTop: 2 },
   itemDiscount:  { fontSize: 11, color: COLORS.success, marginTop: 1 },
-  itemTotal:     { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.text, flexShrink: 0 },
+  itemTotal:     { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, flexShrink: 0 },
 
   // Tax
-  taxRow:      { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  taxLbl:      { fontSize: 13, color: COLORS.textSub },
-  taxVal:      { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
-  taxTotalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, marginTop: 4, borderTopWidth: 2, borderTopColor: COLORS.border },
-  taxTotalLbl: { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text },
-  taxTotalVal: { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
+  taxRow:     { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  taxLbl:     { fontSize: 13, color: COLORS.textSub },
+  taxVal:     { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
+  taxTotalRow:{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, marginTop: 4, borderTopWidth: 2, borderTopColor: COLORS.border },
+  taxTotalLbl:{ fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text },
+  taxTotalVal:{ fontSize: 19, fontWeight: FONTS.black, color: COLORS.text },
 
   // Payment history
-  payRow:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  payRowBorder:  { borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  payIcon:       { width: 30, height: 30, borderRadius: RADIUS.sm, backgroundColor: COLORS.successBg, alignItems: 'center', justifyContent: 'center' },
-  payMethod:     { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
-  payDate:       { fontSize: 11, color: COLORS.textSub, marginTop: 1 },
-  payAmt:        { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.success },
+  payRow:       { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  payRowBorder: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  payIcon:      { width: 30, height: 30, borderRadius: RADIUS.sm, backgroundColor: COLORS.successBg, alignItems: 'center', justifyContent: 'center' },
+  payMethod:    { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
+  payDate:      { fontSize: 11, color: COLORS.textSub, marginTop: 1 },
+  payAmt:       { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.success },
 
-  // Notes
   notesText: { fontSize: 13, color: COLORS.textSub, lineHeight: 20 },
 
   // Mobile actions
-  mobileActions: {
-    flexDirection: 'row', gap: 10,
-    marginHorizontal: 14, marginTop: 14,
-  },
-  mobileActBtn:          { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: RADIUS.md },
-  mobileActTxt:          { fontSize: 13, fontWeight: FONTS.bold, color: '#fff' },
-  mobileActBtnSecondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 12, borderRadius: RADIUS.md, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  mobileActTxtSecondary: { fontSize: 12, fontWeight: FONTS.semibold, color: COLORS.textSub },
+  mobileActions:    { flexDirection: 'row', gap: 10, margin: 12, marginBottom: 0 },
+  mobileActPrimary: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: RADIUS.md },
+  mobileActPrimaryTxt: { fontSize: 13, fontWeight: FONTS.bold, color: '#fff' },
+  mobileActSec:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 12, borderRadius: RADIUS.md, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  mobileActSecTxt:  { fontSize: 12, fontWeight: FONTS.semibold, color: COLORS.textSub },
 
   // Right panel
-  rightSectionTitle: {
-    fontSize: 10, fontWeight: FONTS.bold, color: COLORS.textMute,
-    textTransform: 'uppercase', letterSpacing: 0.6,
-    marginBottom: 10, marginTop: 16,
-  },
-  rightActions: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-  rightActBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 5, paddingVertical: 10, borderRadius: RADIUS.md,
-  },
-  rightActTxt:    { fontSize: 12, fontWeight: FONTS.bold, color: '#fff' },
-  rightActBtnSec: { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  rightActTxtSec: { fontSize: 11, fontWeight: FONTS.semibold, color: COLORS.textSub },
+  rightOuter:         { flex: 1, padding: 14 },
+  rightActions:       { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  rightActPrimary:    { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: RADIUS.md },
+  rightActPrimaryTxt: { fontSize: 13, fontWeight: FONTS.bold, color: '#fff' },
+  rightActSec:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
+  rightActSecTxt:     { fontSize: 12, fontWeight: FONTS.semibold, color: COLORS.textSub },
+  rightSecTitle:      { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, marginTop: 16 },
 
-  // Template picker
-  tplScroll: { gap: 8, paddingBottom: 4 },
-  tplThumb: {
-    width: 72,
-    backgroundColor: COLORS.bg,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1.5, borderColor: COLORS.border,
-    overflow: 'hidden',
-    padding: 4,
-  },
-  thumbPreview:  { backgroundColor: '#fff', borderRadius: 2, overflow: 'hidden', marginBottom: 4 },
-  thumbHeader:   { flexDirection: 'row', justifyContent: 'space-between', padding: 4 },
-  thumbTR:       { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 3, paddingVertical: 2 },
-  thumbGrand:    { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 3, paddingVertical: 2 },
-  thumbCheck:    { position: 'absolute', top: 2, left: 2, width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
-  thumbName:     { fontSize: 10, fontWeight: FONTS.semibold, color: COLORS.textSub, textAlign: 'center' },
-  tl:            { borderRadius: 1, backgroundColor: '#CBD5E1' },
+  // Templates
+  tplScroll:    { gap: 8, paddingBottom: 4 },
+  tplThumb:     { width: 80, backgroundColor: COLORS.bg, borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: COLORS.border, overflow: 'hidden', padding: 5 },
+  thumbPreview: { backgroundColor: '#fff', borderRadius: 2, overflow: 'hidden', marginBottom: 5, position: 'relative' },
+  thumbHeader:  { flexDirection: 'row', justifyContent: 'space-between', padding: 5 },
+  thumbRow:     { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 2 },
+  thumbTotal:   { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 3 },
+  thumbCheck:   { position: 'absolute', top: 3, left: 3, width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  thumbName:    { fontSize: 10, fontWeight: FONTS.semibold, color: COLORS.textSub, textAlign: 'center' },
+  tl:           { borderRadius: 1, backgroundColor: '#CBD5E1' },
 
-  // Color grid
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
-  colorItem:    { alignItems: 'center', gap: 3, width: 42 },
-  colorDot:     { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
-  colorDotActive:{ borderColor: COLORS.text, transform: [{ scale: 1.1 }] },
+  // Colors
+  colorGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 4 },
+  colorItem:    { alignItems: 'center', gap: 3, width: 44 },
+  colorDot:     { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  colorDotSel:  { borderColor: COLORS.text, transform: [{ scale: 1.12 }] },
   colorName:    { fontSize: 9, color: COLORS.textMute, textAlign: 'center' },
 
   // Preview
-  previewWrap: {
-    borderRadius: RADIUS.md, overflow: 'hidden',
-    borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: '#fff',
-  },
+  previewWrap: { borderRadius: RADIUS.md, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff' },
 
   // Payment modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: COLORS.card,
-    borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl,
-    maxHeight: '92%',
-  },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.borderDark, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  modalTitle: { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
-  input: {
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, color: COLORS.text,
-  },
-  methodRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  methodChip:    { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  methodChipActive:  { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-  methodText:        { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  methodTextActive:  { color: COLORS.primary, fontWeight: FONTS.bold },
-  confirmBtn:        { backgroundColor: COLORS.success, borderRadius: RADIUS.lg, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
-  confirmBtnText:    { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-  payInvInfo:        { backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.md, padding: 14, marginBottom: 8 },
-  payInvNum:         { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.primary, marginBottom: 3 },
-  payInvParty:       { fontSize: 13, color: COLORS.text },
-  payInvBalance:     { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.danger, marginTop: 4 },
+  modalSheet:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '92%' },
+  modalHandle:  { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.borderDark, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
+  modalHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  modalTitle:   { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
+  input:        { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: COLORS.text },
+  methodRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  methodChip:   { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
+  methodChipActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+  methodTxt:    { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
+  methodTxtActive:  { color: COLORS.primary, fontWeight: FONTS.bold },
+  confirmBtn:   { backgroundColor: COLORS.success, borderRadius: RADIUS.lg, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
+  confirmBtnTxt:{ color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
+  payInvInfo:   { backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.md, padding: 14, marginBottom: 8 },
+  payInvNum:    { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.primary, marginBottom: 3 },
+  payInvParty:  { fontSize: 13, color: COLORS.text },
+  payInvBal:    { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.danger, marginTop: 4 },
 });
