@@ -128,16 +128,16 @@ function Sparkline({ points = [], width = 120, height = 36, color = '#4ADE80' })
   });
 }
 
-// ── Sales Line Chart — compact, white bg, fixed square size ──────
+// ── Sales Line Chart — responsive width, white bg ─────────────
 function SalesLineChart({ data = [] }) {
-  const W = 260, H = 140, PAD = { l: 36, r: 12, t: 16, b: 28 };
+  const W = 400, H = 130, PAD = { l: 36, r: 12, t: 18, b: 28 };
   const cW = W - PAD.l - PAD.r;
   const cH = H - PAD.t - PAD.b;
 
   if (!data.length || data.every(d => d.value === 0)) {
     if (Platform.OS !== 'web') return null;
     return React.createElement('div', {
-      style: { width: W, height: H, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      style: { width: '100%', height: H, display: 'flex', alignItems: 'center', justifyContent: 'center' },
     }, React.createElement('span', { style: { fontSize: 11, color: '#94A3B8' } }, 'No data yet'));
   }
 
@@ -173,7 +173,7 @@ function SalesLineChart({ data = [] }) {
     label: v === 0 ? '0' : v === 1 ? (max >= 1000 ? (max/1000).toFixed(0)+'K' : max.toFixed(0)) : (max/2 >= 1000 ? (max/2000).toFixed(0)+'K' : (max/2).toFixed(0)),
   }));
 
-  const svgHtml = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+  const svgHtml = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="${BRAND}" stop-opacity="0.18"/>
@@ -199,7 +199,7 @@ function SalesLineChart({ data = [] }) {
   </svg>`;
 
   return React.createElement('div', {
-    style: { width: W, height: H },
+    style: { width: '100%', height: H },
     dangerouslySetInnerHTML: { __html: svgHtml },
   });
 }
@@ -411,79 +411,79 @@ export default function DashboardScreen({ navigation }) {
         </View>
       </View>
 
-      {/* ── Charts row: line chart + donut side by side ── */}
+      {/* ── Trend + breakdown row ── */}
       <View style={s.chartsRow}>
 
-        {/* Sales trend — white card, fixed square */}
+        {/* Sales trend card — takes left 60% */}
         <View style={s.trendCard}>
           <View style={s.trendCardHeader}>
             <View>
               <Text style={s.trendCardTitle}>Sales Trend</Text>
               <Text style={s.trendCardSub}>Last 6 months</Text>
             </View>
-            {monthlyTrend.length > 0 && (
-              <View style={[s.trendBadge, {
-                backgroundColor: monthlyTrend[monthlyTrend.length-1]?.value >= (monthlyTrend[monthlyTrend.length-2]?.value||0) ? '#F0FDF4' : '#FEF2F2'
-              }]}>
-                <Text style={[s.trendBadgeTxt, {
-                  color: monthlyTrend[monthlyTrend.length-1]?.value >= (monthlyTrend[monthlyTrend.length-2]?.value||0) ? '#16A34A' : '#DC2626'
-                }]}>
-                  {monthlyTrend[monthlyTrend.length-1]?.value >= (monthlyTrend[monthlyTrend.length-2]?.value||0) ? '↑' : '↓'}{' '}
-                  {formatINRCompact(monthlyTrend[monthlyTrend.length-1]?.value || 0)}
-                </Text>
-              </View>
-            )}
+            {monthlyTrend.length > 0 && (() => {
+              const last = monthlyTrend[monthlyTrend.length-1]?.value || 0;
+              const prev = monthlyTrend[monthlyTrend.length-2]?.value || 0;
+              const up   = last >= prev;
+              return (
+                <View style={[s.trendBadge, { backgroundColor: up ? '#F0FDF4' : '#FEF2F2' }]}>
+                  <Text style={[s.trendBadgeTxt, { color: up ? '#16A34A' : '#DC2626' }]}>
+                    {up ? '↑' : '↓'} {formatINRCompact(last)}
+                  </Text>
+                </View>
+              );
+            })()}
           </View>
           <SalesLineChart data={monthlyTrend} />
         </View>
 
-        {/* Right column: donut + 3 mini stats */}
-        <View style={s.chartRightCol}>
-
-          {/* Donut */}
-          <View style={s.donutCard}>
-            <Text style={s.donutTitle}>Breakdown</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
-              <DonutChart collected={collected} outstanding={receivables} expenses={monthExpenses} size={72} />
-              <View style={{ flex: 1, gap: 4 }}>
-                {[
-                  { color: '#22C55E', label: 'Collected',  value: formatINRCompact(collected) },
-                  { color: '#F59E0B', label: 'Receivable', value: formatINRCompact(receivables) },
-                  { color: '#EF4444', label: 'Expenses',   value: formatINRCompact(monthExpenses) },
-                ].map((item, i) => (
-                  <View key={i} style={s.donutLegendRow}>
-                    <View style={[s.donutDot, { backgroundColor: item.color }]} />
-                    <Text style={s.donutLegendLabel} numberOfLines={1}>{item.label}</Text>
-                    <Text style={s.donutLegendVal}>{item.value}</Text>
-                  </View>
-                ))}
-              </View>
+        {/* Right col — breakdown donut — takes right 40% */}
+        <View style={s.breakdownCard}>
+          <Text style={s.donutTitle}>Breakdown</Text>
+          <View style={s.donutRow}>
+            <DonutChart collected={collected} outstanding={receivables} expenses={monthExpenses} size={70} />
+            <View style={s.donutLegend}>
+              {[
+                { color:'#22C55E', label:'Collected',  value: formatINRCompact(collected) },
+                { color:'#F59E0B', label:'Receivable', value: formatINRCompact(receivables) },
+                { color:'#EF4444', label:'Expenses',   value: formatINRCompact(monthExpenses) },
+              ].map((item, i) => (
+                <View key={i} style={s.donutLegendRow}>
+                  <View style={[s.donutDot, { backgroundColor: item.color }]} />
+                  <Text style={s.donutLegendLabel} numberOfLines={1}>{item.label}</Text>
+                  <Text style={s.donutLegendVal}>{item.value}</Text>
+                </View>
+              ))}
             </View>
           </View>
+        </View>
+      </View>
 
-          {/* 3 mini stat cards */}
-          <View style={s.miniStatsRow}>
-            <View style={[s.statMiniCard, { borderTopColor: netProfit >= 0 ? '#16A34A' : '#DC2626' }]}>
-              <Icon name={netProfit >= 0 ? 'trending-up' : 'trending-down'} size={14} color={netProfit >= 0 ? '#16A34A' : '#DC2626'} />
-              <Text style={s.statMiniLbl}>Net Profit</Text>
-              <Text style={[s.statMiniVal, { color: netProfit >= 0 ? '#16A34A' : '#DC2626' }]}>
-                {formatINRCompact(Math.abs(netProfit))}
-              </Text>
-            </View>
-            <View style={[s.statMiniCard, { borderTopColor: '#3B82F6' }]}>
-              <Icon name="check-circle" size={14} color="#3B82F6" />
-              <Text style={s.statMiniLbl}>Collected</Text>
-              <Text style={[s.statMiniVal, { color: '#3B82F6' }]}>
-                {monthlySales > 0 ? Math.round((collected / monthlySales) * 100) : 0}%
-              </Text>
-            </View>
-            <View style={[s.statMiniCard, { borderTopColor: BRAND }]}>
-              <Icon name="shopping-bag" size={14} color={BRAND} />
-              <Text style={s.statMiniLbl}>Open POs</Text>
-              <Text style={[s.statMiniVal, { color: BRAND }]}>{openPOs.length}</Text>
-            </View>
-          </View>
-
+      {/* ── 3 mini stat cards full width row ── */}
+      <View style={s.miniStatsRow}>
+        <View style={[s.statMiniCard, { borderTopColor: netProfit >= 0 ? '#16A34A' : '#DC2626' }]}>
+          <Icon name={netProfit >= 0 ? 'trending-up' : 'trending-down'} size={14} color={netProfit >= 0 ? '#16A34A' : '#DC2626'} />
+          <Text style={s.statMiniLbl}>Net Profit</Text>
+          <Text style={[s.statMiniVal, { color: netProfit >= 0 ? '#16A34A' : '#DC2626' }]}>
+            {formatINRCompact(Math.abs(netProfit))}
+          </Text>
+        </View>
+        <View style={[s.statMiniCard, { borderTopColor: '#3B82F6' }]}>
+          <Icon name="check-circle" size={14} color="#3B82F6" />
+          <Text style={s.statMiniLbl}>Collection Rate</Text>
+          <Text style={[s.statMiniVal, { color: '#3B82F6' }]}>
+            {monthlySales > 0 ? Math.round((collected / monthlySales) * 100) : 0}%
+          </Text>
+        </View>
+        <View style={[s.statMiniCard, { borderTopColor: '#10B981' }]}>
+          <Icon name="shopping-bag" size={14} color="#10B981" />
+          <Text style={s.statMiniLbl}>Open POs</Text>
+          <Text style={[s.statMiniVal, { color: '#10B981' }]}>{openPOs.length}</Text>
+        </View>
+        <View style={[s.statMiniCard, { borderTopColor: BRAND }]}>
+          <Icon name="file-text" size={14} color={BRAND} />
+          <Text style={s.statMiniLbl}>Invoices</Text>
+          <Text style={[s.statMiniVal, { color: BRAND }]}>{monthlyCount}</Text>
         </View>
       </View>
 
@@ -880,33 +880,32 @@ const s = StyleSheet.create({
   heroStatLbl: { fontSize:8, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.4 },
   heroDiv:     { width:1, height:28, backgroundColor:'rgba(255,255,255,0.08)' },
 
-  // Charts row — trend + right column side by side
-  chartsRow:       { flexDirection:'row', gap:10, marginBottom:12, alignItems:'flex-start' },
+  // Charts row — trend (left) + breakdown (right)
+  chartsRow:       { flexDirection:'row', gap:10, marginBottom:10, alignItems:'stretch' },
 
-  // Trend card — white bg, fixed size
-  trendCard:       { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:14, borderWidth:1, borderColor:COLORS.border, flex:0, alignSelf:'flex-start' },
-  trendCardHeader: { flexDirection:'row', alignItems:'flex-start', justifyContent:'space-between', marginBottom:6 },
+  // Trend card — flex:1.6 so it takes ~60% of row
+  trendCard:       { flex:1.6, backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:14, borderWidth:1, borderColor:COLORS.border, overflow:'hidden' },
+  trendCardHeader: { flexDirection:'row', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 },
   trendCardTitle:  { fontSize:13, fontWeight:FONTS.bold, color:COLORS.text },
   trendCardSub:    { fontSize:10, color:COLORS.textMute, marginTop:2 },
   trendBadge:      { paddingHorizontal:8, paddingVertical:3, borderRadius:RADIUS.full },
   trendBadgeTxt:   { fontSize:11, fontWeight:FONTS.bold },
 
-  // Right column
-  chartRightCol:   { flex:1, gap:10 },
+  // Breakdown card — flex:1 so it takes ~40% of row
+  breakdownCard:   { flex:1, backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, borderWidth:1, borderColor:COLORS.border },
+  donutTitle:      { fontSize:12, fontWeight:FONTS.bold, color:COLORS.text, marginBottom:8 },
+  donutRow:        { flexDirection:'row', alignItems:'center', gap:8 },
+  donutLegend:     { flex:1, gap:6 },
+  donutLegendRow:  { flexDirection:'row', alignItems:'center', gap:5 },
+  donutDot:        { width:7, height:7, borderRadius:4, flexShrink:0 },
+  donutLegendLabel:{ flex:1, fontSize:10, color:COLORS.textSub },
+  donutLegendVal:  { fontSize:10, fontWeight:FONTS.bold, color:COLORS.text },
 
-  // Donut card
-  donutCard:        { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, borderWidth:1, borderColor:COLORS.border },
-  donutTitle:       { fontSize:12, fontWeight:FONTS.bold, color:COLORS.text },
-  donutLegendRow:   { flexDirection:'row', alignItems:'center', gap:5 },
-  donutDot:         { width:7, height:7, borderRadius:4, flexShrink:0 },
-  donutLegendLabel: { flex:1, fontSize:9, color:COLORS.textSub },
-  donutLegendVal:   { fontSize:9, fontWeight:FONTS.bold, color:COLORS.text },
-
-  // Mini stats row — 3 compact cards in a row
-  miniStatsRow:  { flexDirection:'row', gap:7 },
-  statMiniCard:  { flex:1, backgroundColor:COLORS.card, borderRadius:RADIUS.lg, padding:10, borderWidth:1, borderColor:COLORS.border, borderTopWidth:2, gap:4 },
-  statMiniLbl:   { fontSize:9, color:COLORS.textMute },
-  statMiniVal:   { fontSize:13, fontWeight:FONTS.black },
+  // Mini stats — 4 cards full-width row below charts
+  miniStatsRow:  { flexDirection:'row', gap:8, marginBottom:12 },
+  statMiniCard:  { flex:1, backgroundColor:COLORS.card, borderRadius:RADIUS.lg, padding:10, borderWidth:1, borderColor:COLORS.border, borderTopWidth:2.5, gap:5 },
+  statMiniLbl:   { fontSize:9, color:COLORS.textMute, textTransform:'uppercase', letterSpacing:0.3 },
+  statMiniVal:   { fontSize:14, fontWeight:FONTS.black },
 
   // KPI grid
   kpiGrid: { flexDirection:'row', flexWrap:'wrap', gap:10, marginBottom:12 },
