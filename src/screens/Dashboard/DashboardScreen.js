@@ -12,8 +12,6 @@ import * as DB from '../../db';
 import { formatINRCompact, formatINR } from '../../utils/gst';
 import { getLicenseStatus } from '../../utils/licenseSystem';
 import { COLORS, RADIUS, FONTS } from '../../theme';
-import { Chart, registerables } from 'chart.js';
-Chart.register(...registerables);
 
 const RENEW_URL = 'https://your-website.com/renew';
 const BRAND = '#FF6B00';
@@ -34,89 +32,23 @@ function Sparkline({ points = [], width = 80, height = 32, color = '#4ADE80' }) 
   return React.createElement('div', { style: { width, height }, dangerouslySetInnerHTML: { __html: svg } });
 }
 
-// ── Smooth area chart (web) + native bar fallback ─────────────────
-function BarChart({ data = [], height = 80 }) {
-  const canvasRef = useRef(null);
-  const chartRef  = useRef(null);
+// ── Smooth area line chart — white bg, Chart.js on web ───────────
+function SmoothAreaChart({ data = [] }) {
+  const canvasId = 'dashTrendChart';
 
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !canvasRef.current || !data.length) return;
-
-    if (chartRef.current) {
-      chartRef.current.destroy();
-      chartRef.current = null;
-    }
-
-    const vals   = data.map(d => d.value);
-    const labels = data.map(d => d.label);
-
-    const PURPLE      = '#7F77DD';
-    const PURPLE_FILL = 'rgba(127,119,221,0.18)';
-    const GRID        = 'rgba(255,255,255,0.06)';
-    const TICK        = 'rgba(255,255,255,0.3)';
-
-    chartRef.current = new Chart(canvasRef.current, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          data: vals,
-          borderColor: PURPLE,
-          borderWidth: 2,
-          fill: true,
-          backgroundColor: PURPLE_FILL,
-          tension: 0.45,
-          pointRadius: 0,
-          pointHoverRadius: 5,
-          pointHoverBackgroundColor: PURPLE,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 500 },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#0F172A',
-            borderColor: PURPLE,
-            borderWidth: 1,
-            titleColor: '#fff',
-            bodyColor: TICK,
-            callbacks: {
-              label: ctx => ' ₹' + ctx.parsed.y.toLocaleString('en-IN'),
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { color: GRID },
-            ticks: { color: TICK, font: { size: 10 } },
-          },
-          y: { display: false, grid: { display: false } },
-        },
-      },
-    });
-
-    return () => {
-      chartRef.current?.destroy();
-      chartRef.current = null;
-    };
-  }, [data]);
-
-  // Native fallback
+  // Native fallback: simple line dots
   if (Platform.OS !== 'web') {
     if (!data.length) return null;
     const max = Math.max(...data.map(d => d.value), 1);
     return (
-      <View style={{ flexDirection:'row', alignItems:'flex-end', flex:1, gap:4, paddingTop:4 }}>
+      <View style={{ flexDirection:'row', alignItems:'flex-end', flex:1, gap:3, paddingTop:4 }}>
         {data.map((d, i) => {
           const isLast = i === data.length - 1;
-          const h = Math.max(3, Math.round((d.value / max) * (height - 16)));
+          const h = Math.max(3, Math.round((d.value / max) * 60));
           return (
             <View key={i} style={{ flex:1, alignItems:'center' }}>
-              <View style={{ width:'70%', height:h, backgroundColor: isLast ? BRAND : BRAND+'44', borderRadius:3 }} />
-              <Text style={{ fontSize:7, color:'rgba(255,255,255,0.4)', marginTop:3 }}>{d.label}</Text>
+              <View style={{ width:'60%', height:h, backgroundColor: isLast ? BRAND : BRAND+'44', borderRadius:3 }} />
+              <Text style={{ fontSize:7, color:COLORS.textMute, marginTop:3 }}>{d.label}</Text>
             </View>
           );
         })}
@@ -124,11 +56,68 @@ function BarChart({ data = [], height = 80 }) {
     );
   }
 
-  return (
-    <View style={{ flex:1, width:'100%', height }}>
-      {React.createElement('canvas', { ref: canvasRef })}
-    </View>
-  );
+  // Web: inject Chart.js canvas
+  const chartHtml = `
+    <div style="position:relative;width:100%;height:100%;">
+      <canvas id="${canvasId}"></canvas>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"><\/script>
+    <script>
+      (function() {
+        var labels = ${JSON.stringify(data.map(d => d.label))};
+        var values = ${JSON.stringify(data.map(d => d.value))};
+        var BRAND  = '${BRAND}';
+        var canvas = document.getElementById('${canvasId}');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        var grad = ctx.createLinearGradient(0, 0, 0, 110);
+        grad.addColorStop(0, 'rgba(255,107,0,0.25)');
+        grad.addColorStop(1, 'rgba(255,107,0,0.00)');
+        new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: values,
+              borderColor: BRAND,
+              borderWidth: 2,
+              fill: true,
+              backgroundColor: grad,
+              tension: 0.4,
+              pointRadius: values.map(function(_, i){ return i === values.length-1 ? 5 : 0; }),
+              pointBackgroundColor: BRAND,
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: {
+              x: {
+                grid: { display: false },
+                border: { display: false },
+                ticks: { font: { size: 10 }, color: '#94A3B8',
+                  maxRotation: 0, autoSkip: false }
+              },
+              y: {
+                display: false,
+                grid: { display: false }
+              }
+            }
+          }
+        });
+      })();
+    <\/script>
+  `;
+
+  return React.createElement('iframe', {
+    srcDoc: chartHtml,
+    style: { width:'100%', flex:1, border:'none', display:'block', minHeight:110 },
+    scrolling: 'no',
+  });
 }
 
 // ── Donut ─────────────────────────────────────────────────────────
@@ -318,7 +307,7 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ══ MAIN GRID ════════════════════════════════════════ */}
+        {/* ══ MAIN GRID — flex fills remaining height ══════════ */}
         <View style={s.grid}>
 
           {/* ── LEFT COLUMN ── */}
@@ -352,14 +341,14 @@ export default function DashboardScreen({ navigation }) {
               </View>
             </View>
 
-            {/* Area chart card */}
+            {/* Bar chart card */}
             <View style={s.chartCard}>
               <View style={s.chartCardHeader}>
                 <Text style={s.chartCardTitle}>Sales Trend</Text>
                 <Text style={s.chartCardSub}>6 months</Text>
               </View>
               <View style={{ flex:1 }}>
-                <BarChart data={monthlyTrend} height={80} />
+                <SmoothAreaChart data={monthlyTrend} />
               </View>
             </View>
 
@@ -605,11 +594,11 @@ const s = StyleSheet.create({
   heroStatLbl: { fontSize:7, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.3 },
   heroDiv:     { width:1, backgroundColor:'rgba(255,255,255,0.08)' },
 
-  // Area chart card (dark)
-  chartCard:       { backgroundColor:'#1E293B', borderRadius:RADIUS.xl, padding:12, flex:1 },
+  // Bar chart card (dark)
+  chartCard:       { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, flex:1, borderWidth:1, borderColor:COLORS.border },
   chartCardHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:4 },
-  chartCardTitle:  { fontSize:12, fontWeight:FONTS.bold, color:'#fff' },
-  chartCardSub:    { fontSize:9, color:'rgba(255,255,255,0.3)' },
+  chartCardTitle:  { fontSize:12, fontWeight:FONTS.bold, color:COLORS.text },
+  chartCardSub:    { fontSize:9, color:COLORS.textMute },
 
   // Quick actions card
   qaCard:      { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, borderWidth:1, borderColor:COLORS.border },
