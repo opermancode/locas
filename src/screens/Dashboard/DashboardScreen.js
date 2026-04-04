@@ -128,39 +128,38 @@ function Sparkline({ points = [], width = 120, height = 36, color = '#4ADE80' })
   });
 }
 
-// ── Sales Line Chart (SVG on web, bars on native) ─────────────────
+// ── Sales Line Chart — compact, white bg, fixed square size ──────
 function SalesLineChart({ data = [] }) {
-  if (!data.length) {
-    return (
-      <View style={{ height: 100, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Create invoices to see trend</Text>
-      </View>
-    );
+  const W = 260, H = 140, PAD = { l: 36, r: 12, t: 16, b: 28 };
+  const cW = W - PAD.l - PAD.r;
+  const cH = H - PAD.t - PAD.b;
+
+  if (!data.length || data.every(d => d.value === 0)) {
+    if (Platform.OS !== 'web') return null;
+    return React.createElement('div', {
+      style: { width: W, height: H, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    }, React.createElement('span', { style: { fontSize: 11, color: '#94A3B8' } }, 'No data yet'));
   }
 
-  const W = 500, H = 100, PAD_L = 0, PAD_R = 8, PAD_T = 16, PAD_B = 28;
-  const chartW = W - PAD_L - PAD_R;
-  const chartH = H - PAD_T - PAD_B;
-  const max = Math.max(...data.map(d => d.value), 1);
-  const pts  = data.map((d, i) => {
-    const x = PAD_L + (i / (data.length - 1)) * chartW;
-    const y = PAD_T + (1 - d.value / max) * chartH;
-    return { x, y, ...d };
-  });
-  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const fillD = `${pathD} L${pts[pts.length-1].x.toFixed(1)},${(PAD_T+chartH).toFixed(1)} L${PAD_L},${(PAD_T+chartH).toFixed(1)} Z`;
+  const max   = Math.max(...data.map(d => d.value), 1);
+  const yTick = (v) => (PAD.t + (1 - v / max) * cH).toFixed(1);
+  const xTick = (i) => (PAD.l + (i / Math.max(data.length - 1, 1)) * cW).toFixed(1);
 
+  const pts = data.map((d, i) => ({ x: parseFloat(xTick(i)), y: parseFloat(yTick(d.value)), ...d }));
+  const lineD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const fillD = `${lineD} L${pts[pts.length-1].x},${PAD.t + cH} L${PAD.l},${PAD.t + cH} Z`;
+
+  // Native: simple bars
   if (Platform.OS !== 'web') {
-    // Native: simple bars
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: H, gap: 4, paddingHorizontal: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 100, gap: 5, paddingHorizontal: 4, marginTop: 8 }}>
         {data.map((d, i) => {
-          const h = Math.max(4, Math.round((d.value / max) * (H - PAD_B)));
+          const barH = Math.max(3, Math.round((d.value / max) * 72));
           const isLast = i === data.length - 1;
           return (
             <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-              <View style={{ width: '70%', height: h, backgroundColor: isLast ? BRAND : BRAND + '55', borderRadius: 3 }} />
-              <Text style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{d.label}</Text>
+              <View style={{ width: '65%', height: barH, backgroundColor: isLast ? BRAND : BRAND + '44', borderRadius: 3 }} />
+              <Text style={{ fontSize: 8, color: COLORS.textMute, marginTop: 4 }}>{d.label}</Text>
             </View>
           );
         })}
@@ -168,41 +167,39 @@ function SalesLineChart({ data = [] }) {
     );
   }
 
-  const svgHtml = `
-  <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  // Y-axis labels
+  const yLabels = [0, 0.5, 1].map(v => ({
+    y: yTick(v * max),
+    label: v === 0 ? '0' : v === 1 ? (max >= 1000 ? (max/1000).toFixed(0)+'K' : max.toFixed(0)) : (max/2 >= 1000 ? (max/2000).toFixed(0)+'K' : (max/2).toFixed(0)),
+  }));
+
+  const svgHtml = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${BRAND}" stop-opacity="0.4"/>
-        <stop offset="100%" stop-color="${BRAND}" stop-opacity="0.02"/>
+      <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${BRAND}" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="${BRAND}" stop-opacity="0.01"/>
       </linearGradient>
     </defs>
-    <!-- Gridlines -->
-    ${[0.25,0.5,0.75,1].map(v => {
-      const y = (PAD_T + (1-v)*chartH).toFixed(1);
-      return `<line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
-    }).join('')}
-    <!-- Fill -->
-    <path d="${fillD}" fill="url(#lineFill)"/>
-    <!-- Line -->
-    <path d="${pathD}" fill="none" stroke="${BRAND}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <!-- Dots + labels -->
+    ${yLabels.map(l => `
+      <line x1="${PAD.l}" y1="${l.y}" x2="${W - PAD.r}" y2="${l.y}" stroke="#F1F5F9" stroke-width="1"/>
+      <text x="${PAD.l - 4}" y="${parseFloat(l.y) + 3}" text-anchor="end" font-size="8" fill="#94A3B8">${l.label}</text>
+    `).join('')}
+    <path d="${fillD}" fill="url(#g)"/>
+    <path d="${lineD}" fill="none" stroke="${BRAND}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     ${pts.map((p, i) => {
       const isLast = i === pts.length - 1;
-      const valTxt = p.value > 0 ? (p.value >= 1000 ? (p.value/1000).toFixed(1)+'K' : p.value.toFixed(0)) : '';
+      const fmt = p.value >= 1000 ? (p.value/1000).toFixed(1)+'K' : p.value > 0 ? p.value.toFixed(0) : '';
       return `
-        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${isLast ? 5 : 3}"
-          fill="${isLast ? BRAND : '#1E293B'}" stroke="${BRAND}" stroke-width="${isLast ? 0 : 2}"/>
-        ${isLast ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" fill="${BRAND}22"/>` : ''}
-        ${valTxt ? `<text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}" text-anchor="middle"
-          font-size="8" fill="${isLast ? BRAND : 'rgba(255,255,255,0.4)'}" font-weight="${isLast ? '700':'400'}">${valTxt}</text>` : ''}
-        <text x="${p.x.toFixed(1)}" y="${H}" text-anchor="middle"
-          font-size="9" fill="rgba(255,255,255,0.4)">${p.label}</text>
+        ${isLast ? `<circle cx="${p.x}" cy="${p.y}" r="8" fill="${BRAND}1A"/>` : ''}
+        <circle cx="${p.x}" cy="${p.y}" r="${isLast ? 4 : 2.5}" fill="${isLast ? BRAND : '#fff'}" stroke="${BRAND}" stroke-width="1.5"/>
+        ${fmt && isLast ? `<text x="${p.x}" y="${p.y - 9}" text-anchor="middle" font-size="8" font-weight="700" fill="${BRAND}">${fmt}</text>` : ''}
+        <text x="${p.x}" y="${H - 4}" text-anchor="middle" font-size="8" fill="#94A3B8">${p.label}</text>
       `;
     }).join('')}
   </svg>`;
 
   return React.createElement('div', {
-    style: { width: '100%', height: H, marginTop: 8 },
+    style: { width: W, height: H },
     dangerouslySetInnerHTML: { __html: svgHtml },
   });
 }
@@ -414,73 +411,79 @@ export default function DashboardScreen({ navigation }) {
         </View>
       </View>
 
-      {/* ── Sales Line Chart — full width ── */}
-      <View style={s.lineChartCard}>
-        <View style={s.lineChartHeader}>
-          <View>
-            <Text style={s.lineChartTitle}>Sales Trend</Text>
-            <Text style={s.lineChartSub}>Last 6 months</Text>
+      {/* ── Charts row: line chart + donut side by side ── */}
+      <View style={s.chartsRow}>
+
+        {/* Sales trend — white card, fixed square */}
+        <View style={s.trendCard}>
+          <View style={s.trendCardHeader}>
+            <View>
+              <Text style={s.trendCardTitle}>Sales Trend</Text>
+              <Text style={s.trendCardSub}>Last 6 months</Text>
+            </View>
+            {monthlyTrend.length > 0 && (
+              <View style={[s.trendBadge, {
+                backgroundColor: monthlyTrend[monthlyTrend.length-1]?.value >= (monthlyTrend[monthlyTrend.length-2]?.value||0) ? '#F0FDF4' : '#FEF2F2'
+              }]}>
+                <Text style={[s.trendBadgeTxt, {
+                  color: monthlyTrend[monthlyTrend.length-1]?.value >= (monthlyTrend[monthlyTrend.length-2]?.value||0) ? '#16A34A' : '#DC2626'
+                }]}>
+                  {monthlyTrend[monthlyTrend.length-1]?.value >= (monthlyTrend[monthlyTrend.length-2]?.value||0) ? '↑' : '↓'}{' '}
+                  {formatINRCompact(monthlyTrend[monthlyTrend.length-1]?.value || 0)}
+                </Text>
+              </View>
+            )}
           </View>
-          {monthlyTrend.length > 0 && (
-            <View style={s.lineChartBadge}>
-              <Text style={s.lineChartBadgeTxt}>
-                {monthlyTrend[monthlyTrend.length-1]?.value > monthlyTrend[monthlyTrend.length-2]?.value ? '↑' : '↓'}
-                {' '}{formatINRCompact(monthlyTrend[monthlyTrend.length-1]?.value || 0)}
+          <SalesLineChart data={monthlyTrend} />
+        </View>
+
+        {/* Right column: donut + 3 mini stats */}
+        <View style={s.chartRightCol}>
+
+          {/* Donut */}
+          <View style={s.donutCard}>
+            <Text style={s.donutTitle}>Breakdown</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+              <DonutChart collected={collected} outstanding={receivables} expenses={monthExpenses} size={72} />
+              <View style={{ flex: 1, gap: 4 }}>
+                {[
+                  { color: '#22C55E', label: 'Collected',  value: formatINRCompact(collected) },
+                  { color: '#F59E0B', label: 'Receivable', value: formatINRCompact(receivables) },
+                  { color: '#EF4444', label: 'Expenses',   value: formatINRCompact(monthExpenses) },
+                ].map((item, i) => (
+                  <View key={i} style={s.donutLegendRow}>
+                    <View style={[s.donutDot, { backgroundColor: item.color }]} />
+                    <Text style={s.donutLegendLabel} numberOfLines={1}>{item.label}</Text>
+                    <Text style={s.donutLegendVal}>{item.value}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          {/* 3 mini stat cards */}
+          <View style={s.miniStatsRow}>
+            <View style={[s.statMiniCard, { borderTopColor: netProfit >= 0 ? '#16A34A' : '#DC2626' }]}>
+              <Icon name={netProfit >= 0 ? 'trending-up' : 'trending-down'} size={14} color={netProfit >= 0 ? '#16A34A' : '#DC2626'} />
+              <Text style={s.statMiniLbl}>Net Profit</Text>
+              <Text style={[s.statMiniVal, { color: netProfit >= 0 ? '#16A34A' : '#DC2626' }]}>
+                {formatINRCompact(Math.abs(netProfit))}
               </Text>
             </View>
-          )}
-        </View>
-        <SalesLineChart data={monthlyTrend} />
-      </View>
+            <View style={[s.statMiniCard, { borderTopColor: '#3B82F6' }]}>
+              <Icon name="check-circle" size={14} color="#3B82F6" />
+              <Text style={s.statMiniLbl}>Collected</Text>
+              <Text style={[s.statMiniVal, { color: '#3B82F6' }]}>
+                {monthlySales > 0 ? Math.round((collected / monthlySales) * 100) : 0}%
+              </Text>
+            </View>
+            <View style={[s.statMiniCard, { borderTopColor: BRAND }]}>
+              <Icon name="shopping-bag" size={14} color={BRAND} />
+              <Text style={s.statMiniLbl}>Open POs</Text>
+              <Text style={[s.statMiniVal, { color: BRAND }]}>{openPOs.length}</Text>
+            </View>
+          </View>
 
-      {/* ── Donut + Stats row ── */}
-      <View style={s.chartRow}>
-        <View style={s.donutCard}>
-          <Text style={s.donutTitle}>Breakdown</Text>
-          <Text style={s.donutSub}>This month</Text>
-          <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 8 }}>
-            <DonutChart collected={collected} outstanding={receivables} expenses={monthExpenses} size={96} />
-          </View>
-          {[
-            { color: '#22C55E', label: 'Collected',  value: formatINRCompact(collected) },
-            { color: '#F59E0B', label: 'Receivable', value: formatINRCompact(receivables) },
-            { color: '#EF4444', label: 'Expenses',   value: formatINRCompact(monthExpenses) },
-          ].map((item, i) => (
-            <View key={i} style={s.donutLegendRow}>
-              <View style={[s.donutDot, { backgroundColor: item.color }]} />
-              <Text style={s.donutLegendLabel}>{item.label}</Text>
-              <Text style={s.donutLegendVal}>{item.value}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Net profit & collection rate */}
-        <View style={{ flex: 1, gap: 10 }}>
-          <View style={s.statMiniCard}>
-            <View style={[s.statMiniIcon, { backgroundColor: netProfit >= 0 ? '#F0FDF4' : '#FEF2F2' }]}>
-              <Icon name={netProfit >= 0 ? 'trending-up' : 'trending-down'} size={16} color={netProfit >= 0 ? '#16A34A' : '#DC2626'} />
-            </View>
-            <Text style={s.statMiniLbl}>Net Profit</Text>
-            <Text style={[s.statMiniVal, { color: netProfit >= 0 ? '#16A34A' : '#DC2626' }]}>
-              {netProfit >= 0 ? '' : '−'}{formatINRCompact(Math.abs(netProfit))}
-            </Text>
-          </View>
-          <View style={s.statMiniCard}>
-            <View style={[s.statMiniIcon, { backgroundColor: '#EFF6FF' }]}>
-              <Icon name="check-circle" size={16} color="#3B82F6" />
-            </View>
-            <Text style={s.statMiniLbl}>Collection Rate</Text>
-            <Text style={[s.statMiniVal, { color: '#3B82F6' }]}>
-              {monthlySales > 0 ? Math.round((collected / monthlySales) * 100) : 0}%
-            </Text>
-          </View>
-          <View style={s.statMiniCard}>
-            <View style={[s.statMiniIcon, { backgroundColor: '#FFF7ED' }]}>
-              <Icon name="shopping-bag" size={16} color="#F59E0B" />
-            </View>
-            <Text style={s.statMiniLbl}>Open POs</Text>
-            <Text style={[s.statMiniVal, { color: '#F59E0B' }]}>{openPOs.length}</Text>
-          </View>
         </View>
       </View>
 
@@ -877,29 +880,33 @@ const s = StyleSheet.create({
   heroStatLbl: { fontSize:8, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.4 },
   heroDiv:     { width:1, height:28, backgroundColor:'rgba(255,255,255,0.08)' },
 
-  // Line chart (full-width)
-  lineChartCard:   { backgroundColor:'#1E293B', borderRadius:RADIUS.xl, padding:16, marginBottom:12 },
-  lineChartHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:2 },
-  lineChartTitle:  { fontSize:14, fontWeight:FONTS.bold, color:'#fff' },
-  lineChartSub:    { fontSize:10, color:'rgba(255,255,255,0.35)', marginTop:2 },
-  lineChartBadge:  { backgroundColor: BRAND+'22', paddingHorizontal:10, paddingVertical:4, borderRadius:RADIUS.full },
-  lineChartBadgeTxt:{ fontSize:12, fontWeight:FONTS.bold, color:BRAND },
+  // Charts row — trend + right column side by side
+  chartsRow:       { flexDirection:'row', gap:10, marginBottom:12, alignItems:'flex-start' },
 
-  // Charts row — donut + mini stats
-  chartRow:     { flexDirection:'row', gap:10, marginBottom:12 },
-  donutCard:    { flex:1, backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:14, borderWidth:1, borderColor:COLORS.border },
-  donutTitle:   { fontSize:13, fontWeight:FONTS.bold, color:COLORS.text },
-  donutSub:     { fontSize:10, color:COLORS.textMute, marginTop:1 },
-  donutLegendRow:{ flexDirection:'row', alignItems:'center', gap:6, marginBottom:4 },
-  donutDot:     { width:8, height:8, borderRadius:4, flexShrink:0 },
-  donutLegendLabel: { flex:1, fontSize:10, color:COLORS.textSub },
-  donutLegendVal:   { fontSize:10, fontWeight:FONTS.bold, color:COLORS.text },
+  // Trend card — white bg, fixed size
+  trendCard:       { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:14, borderWidth:1, borderColor:COLORS.border, flex:0, alignSelf:'flex-start' },
+  trendCardHeader: { flexDirection:'row', alignItems:'flex-start', justifyContent:'space-between', marginBottom:6 },
+  trendCardTitle:  { fontSize:13, fontWeight:FONTS.bold, color:COLORS.text },
+  trendCardSub:    { fontSize:10, color:COLORS.textMute, marginTop:2 },
+  trendBadge:      { paddingHorizontal:8, paddingVertical:3, borderRadius:RADIUS.full },
+  trendBadgeTxt:   { fontSize:11, fontWeight:FONTS.bold },
 
-  // Mini stat cards (right side of donut row)
-  statMiniCard: { flex:1, backgroundColor:COLORS.card, borderRadius:RADIUS.lg, padding:12, borderWidth:1, borderColor:COLORS.border },
-  statMiniIcon: { width:28, height:28, borderRadius:8, alignItems:'center', justifyContent:'center', marginBottom:6 },
-  statMiniLbl:  { fontSize:10, color:COLORS.textMute, marginBottom:3 },
-  statMiniVal:  { fontSize:16, fontWeight:FONTS.black },
+  // Right column
+  chartRightCol:   { flex:1, gap:10 },
+
+  // Donut card
+  donutCard:        { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, borderWidth:1, borderColor:COLORS.border },
+  donutTitle:       { fontSize:12, fontWeight:FONTS.bold, color:COLORS.text },
+  donutLegendRow:   { flexDirection:'row', alignItems:'center', gap:5 },
+  donutDot:         { width:7, height:7, borderRadius:4, flexShrink:0 },
+  donutLegendLabel: { flex:1, fontSize:9, color:COLORS.textSub },
+  donutLegendVal:   { fontSize:9, fontWeight:FONTS.bold, color:COLORS.text },
+
+  // Mini stats row — 3 compact cards in a row
+  miniStatsRow:  { flexDirection:'row', gap:7 },
+  statMiniCard:  { flex:1, backgroundColor:COLORS.card, borderRadius:RADIUS.lg, padding:10, borderWidth:1, borderColor:COLORS.border, borderTopWidth:2, gap:4 },
+  statMiniLbl:   { fontSize:9, color:COLORS.textMute },
+  statMiniVal:   { fontSize:13, fontWeight:FONTS.black },
 
   // KPI grid
   kpiGrid: { flexDirection:'row', flexWrap:'wrap', gap:10, marginBottom:12 },
