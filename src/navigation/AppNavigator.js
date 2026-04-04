@@ -21,6 +21,9 @@ import SettingsScreen    from '../screens/Settings/SettingsScreen';
 import QuotationListScreen   from '../screens/Quotation/QuotationListScreen';
 import CreateQuotation       from '../screens/Quotation/CreateQuotation';
 import QuotationDetailScreen from '../screens/Quotation/QuotationDetailScreen';
+import POListScreen     from '../screens/PurchaseOrder/POListScreen';
+import CreatePOScreen   from '../screens/PurchaseOrder/CreatePOScreen';
+import PODetailScreen   from '../screens/PurchaseOrder/PODetailScreen';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -46,6 +49,15 @@ function QuotationStack() {
     </Stack.Navigator>
   );
 }
+function POStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="POList"     component={POListScreen} />
+      <Stack.Screen name="CreatePO"   component={CreatePOScreen} />
+      <Stack.Screen name="PODetail"   component={PODetailScreen} />
+    </Stack.Navigator>
+  );
+}
 function PartiesStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -57,9 +69,12 @@ function PartiesStack() {
 function MoreStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Expenses" component={ExpensesScreen} />
-      <Stack.Screen name="Reports"  component={ReportsScreen} />
-      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Expenses"        component={ExpensesScreen} />
+      <Stack.Screen name="Reports"         component={ReportsScreen} />
+      <Stack.Screen name="Settings"        component={SettingsScreen} />
+      <Stack.Screen name="PurchaseOrders"  component={POListScreen} />
+      <Stack.Screen name="CreatePO"        component={CreatePOScreen} />
+      <Stack.Screen name="PODetail"        component={PODetailScreen} />
     </Stack.Navigator>
   );
 }
@@ -134,6 +149,7 @@ const SIDEBAR_ITEMS = [
   { name: 'Inventory',     label: 'Items',      icon: 'package',     tab: 'Inventory',     screen: null       },
   { name: 'Expenses',      label: 'Expenses',   icon: 'credit-card', tab: 'More',          screen: 'Expenses' },
   { name: 'Reports',       label: 'Reports',    icon: 'bar-chart-2', tab: 'More',          screen: 'Reports'  },
+  { name: 'PurchaseOrders',label: 'PO Orders',   icon: 'clipboard',   tab: 'More',          screen: 'PurchaseOrders' },
   { name: 'Settings',      label: 'Settings',   icon: 'settings',    tab: 'More',          screen: 'Settings' },
 ];
 

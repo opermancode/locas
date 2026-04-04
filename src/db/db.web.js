@@ -98,6 +98,14 @@ export async function getParties(type = null) {
   return filtered.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export async function getParty(id) {
+  try {
+    return await stores.parties.getItem(String(id));
+  } catch (e) {
+    return null;
+  }
+}
+
 export async function saveParty(data) {
   if (data.id) {
     const existing = await stores.parties.getItem(String(data.id));
@@ -579,6 +587,7 @@ export async function saveQuotation(quotation, lineItems) {
 export async function getQuotations(filters = {}) {
   let all = await getAll(stores.quotations, q => !q.deleted_at);
 
+  if (filters.party_id) all = all.filter(q => q.party_id === filters.party_id);
   if (filters.status) all = all.filter(q => q.status === filters.status);
   if (filters.from) all = all.filter(q => q.date >= filters.from);
   if (filters.to) all = all.filter(q => q.date <= filters.to);
@@ -813,5 +822,185 @@ export async function getLowStockProducts(limit = 5) {
   } catch (e) {
     console.error('getLowStockProducts error:', e);
     return [];
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PURCHASE ORDERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const stores_po = {
+  purchase_orders: localforage.createInstance({ name: 'locas', storeName: 'purchase_orders' }),
+  po_items:        localforage.createInstance({ name: 'locas', storeName: 'po_items' }),
+};
+
+let _poNumberLock = Promise.resolve();
+
+async function nextPoNumber() {
+  const result = _poNumberLock.then(async () => {
+    const key = 'po_seq';
+    const current = (await stores.meta.getItem(key)) || 0;
+    const next = current + 1;
+    await stores.meta.setItem(key, next);
+    return `PO-${String(next).padStart(4, '0')}`;
+  });
+  _poNumberLock = result.catch(() => {});
+  return result;
+}
+
+export async function savePurchaseOrder(po, lineItems) {
+  let poId;
+
+  if (po.id) {
+    // Update existing
+    const existing = await stores_po.purchase_orders.getItem(String(po.id));
+    await stores_po.purchase_orders.setItem(String(po.id), {
+      ...existing,
+      party_id:      po.party_id || null,
+      party_name:    po.party_name || '',
+      party_gstin:   po.party_gstin || '',
+      party_address: po.party_address || '',
+      date:          po.date,
+      valid_until:   po.valid_until || '',
+      notes:         po.notes || '',
+      terms:         po.terms || '',
+      updated_at:    new Date().toISOString(),
+    });
+    poId = po.id;
+
+    // Delete old line items, re-insert
+    const oldKeys = [];
+    await stores_po.po_items.iterate((val, key) => {
+      if (val.po_id === Number(po.id)) oldKeys.push(key);
+    });
+    for (const k of oldKeys) await stores_po.po_items.removeItem(k);
+
+  } else {
+    poId = (await (async () => {
+      const key = 'po_items_id_seq';
+      const cur = (await stores.meta.getItem('po_id_seq')) || 0;
+      const next = cur + 1;
+      await stores.meta.setItem('po_id_seq', next);
+      return next;
+    })());
+    const poNumber = await nextPoNumber();
+    await stores_po.purchase_orders.setItem(String(poId), {
+      id: poId,
+      po_number:     poNumber,
+      party_id:      po.party_id || null,
+      party_name:    po.party_name || '',
+      party_gstin:   po.party_gstin || '',
+      party_address: po.party_address || '',
+      date:          po.date,
+      valid_until:   po.valid_until || '',
+      status:        'active',  // active | partial | completed | cancelled
+      notes:         po.notes || '',
+      terms:         po.terms || '',
+      created_at:    new Date().toISOString(),
+      updated_at:    new Date().toISOString(),
+      deleted_at:    null,
+    });
+  }
+
+  // Insert line items
+  for (const item of lineItems) {
+    const itemKey = 'po_items_seq';
+    const cur = (await stores.meta.getItem(itemKey)) || 0;
+    const next = cur + 1;
+    await stores.meta.setItem(itemKey, next);
+    await stores_po.po_items.setItem(String(next), {
+      id:           next,
+      po_id:        poId,
+      item_id:      item.item_id || null,
+      name:         item.name,
+      hsn:          item.hsn || '',
+      unit:         item.unit || 'pcs',
+      qty_ordered:  item.qty_ordered,
+      qty_delivered: 0,
+      rate:         item.rate || 0,
+      notes:        item.notes || '',
+    });
+  }
+
+  return poId;
+}
+
+export async function getPurchaseOrders(filters = {}) {
+  const all = [];
+  await stores_po.purchase_orders.iterate((val) => { if (!val.deleted_at) all.push(val); });
+  let result = all;
+  if (filters.party_id) result = result.filter(p => p.party_id === filters.party_id);
+  if (filters.status)   result = result.filter(p => p.status === filters.status);
+  return result.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+}
+
+export async function getPurchaseOrderDetail(id) {
+  const po = await stores_po.purchase_orders.getItem(String(id));
+  if (!po) return null;
+  const items = [];
+  await stores_po.po_items.iterate((val) => {
+    if (val.po_id === Number(id)) items.push(val);
+  });
+  return { ...po, items: items.sort((a, b) => a.id - b.id) };
+}
+
+export async function getOpenPOsForParty(partyId) {
+  // Returns POs for this party that still have undelivered items
+  const all = await getPurchaseOrders({ party_id: partyId });
+  return all.filter(po => po.status === 'active' || po.status === 'partial');
+}
+
+/**
+ * Record delivery against a PO when an invoice is created.
+ * deliveries = [{ po_item_id, qty_delivered }]
+ * Automatically updates PO status (partial / completed).
+ */
+export async function recordPODelivery(poId, deliveries) {
+  for (const d of deliveries) {
+    const item = await stores_po.po_items.getItem(String(d.po_item_id));
+    if (!item) continue;
+    const newDelivered = Math.min(
+      item.qty_ordered,
+      (item.qty_delivered || 0) + d.qty_delivered
+    );
+    await stores_po.po_items.setItem(String(d.po_item_id), {
+      ...item,
+      qty_delivered: newDelivered,
+    });
+  }
+
+  // Recompute PO status
+  const items = [];
+  await stores_po.po_items.iterate((val) => {
+    if (val.po_id === Number(poId)) items.push(val);
+  });
+
+  const allDone = items.every(i => i.qty_delivered >= i.qty_ordered);
+  const anyDone = items.some(i => i.qty_delivered > 0);
+  const newStatus = allDone ? 'completed' : anyDone ? 'partial' : 'active';
+
+  const po = await stores_po.purchase_orders.getItem(String(poId));
+  if (po) {
+    await stores_po.purchase_orders.setItem(String(poId), {
+      ...po, status: newStatus, updated_at: new Date().toISOString(),
+    });
+  }
+}
+
+export async function updatePOStatus(poId, status) {
+  const po = await stores_po.purchase_orders.getItem(String(poId));
+  if (po) {
+    await stores_po.purchase_orders.setItem(String(poId), {
+      ...po, status, updated_at: new Date().toISOString(),
+    });
+  }
+}
+
+export async function deletePurchaseOrder(id) {
+  const po = await stores_po.purchase_orders.getItem(String(id));
+  if (po) {
+    await stores_po.purchase_orders.setItem(String(id), {
+      ...po, deleted_at: new Date().toISOString(),
+    });
   }
 }

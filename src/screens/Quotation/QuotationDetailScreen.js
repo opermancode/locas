@@ -61,42 +61,53 @@ export default function QuotationDetailScreen({ navigation, route }) {
     }
   };
 
-  const handleConvertToInvoice = () => {
-    Alert.alert(
-      'Convert to Invoice',
-      'This will create a new invoice from this quotation. The quotation will be marked as converted.\n\nStock will be deducted and party balance will be updated.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Convert',
-          style: 'default',
-          onPress: async () => {
-            setConverting(true);
-            try {
-              const invoiceId = await convertQuotationToInvoice(id);
-              Alert.alert(
-                'Success',
-                'Invoice created successfully!',
-                [
-                  {
-                    text: 'View Invoice',
-                    onPress: () => navigation.replace('InvoiceDetail', { id: invoiceId }),
-                  },
-                  {
-                    text: 'Stay Here',
-                    onPress: () => load(), // Reload to show converted status
-                  },
-                ]
-              );
-            } catch (e) {
-              Alert.alert('Error', e.message);
-            } finally {
-              setConverting(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleConvertToInvoice = async () => {
+    // Web: Alert.alert button callbacks are ignored — use window.confirm instead
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm('Convert to Invoice?\n\nThis will create a new invoice from this quotation. Stock will be deducted and party balance updated.\n\nThis cannot be undone.')
+      : await new Promise(resolve => {
+          Alert.alert(
+            'Convert to Invoice',
+            'This will create a new invoice from this quotation. The quotation will be marked as converted.\n\nStock will be deducted and party balance will be updated.',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Convert', style: 'default', onPress: () => resolve(true) },
+            ]
+          );
+        });
+
+    if (!confirmed) return;
+
+    setConverting(true);
+    try {
+      const invoiceId = await convertQuotationToInvoice(id);
+      // On web show a simple confirm to navigate; on native use Alert
+      if (Platform.OS === 'web') {
+        const viewNow = window.confirm('Invoice created successfully!\n\nClick OK to view the invoice, or Cancel to stay here.');
+        if (viewNow) {
+          navigation.replace('InvoiceDetail', { invoiceId });
+        } else {
+          load();
+        }
+      } else {
+        Alert.alert(
+          'Success',
+          'Invoice created successfully!',
+          [
+            { text: 'View Invoice', onPress: () => navigation.replace('InvoiceDetail', { invoiceId }) },
+            { text: 'Stay Here',    onPress: () => load() },
+          ]
+        );
+      }
+    } catch (e) {
+      if (Platform.OS === 'web') {
+        window.alert('Error: ' + e.message);
+      } else {
+        Alert.alert('Error', e.message);
+      }
+    } finally {
+      setConverting(false);
+    }
   };
 
   const handleEdit = () => {
@@ -107,26 +118,26 @@ export default function QuotationDetailScreen({ navigation, route }) {
     navigation.navigate('CreateQuotation', { quotation });
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete Quotation',
-      'Are you sure you want to delete this quotation? This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteQuotation(id);
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert('Error', e.message);
-            }
-          },
-        },
-      ]
-    );
+  const handleDelete = async () => {
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`Delete ${quotation.quote_number}? This cannot be undone.`)
+      : await new Promise(resolve => {
+          Alert.alert(
+            'Delete Quotation',
+            'Are you sure you want to delete this quotation? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          );
+        });
+    if (!confirmed) return;
+    try {
+      await deleteQuotation(id);
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    }
   };
 
   const handleShare = async () => {
@@ -226,7 +237,7 @@ export default function QuotationDetailScreen({ navigation, route }) {
             {quotation.converted_invoice_id && (
               <TouchableOpacity
                 style={styles.viewInvoiceBtn}
-                onPress={() => navigation.navigate('InvoiceDetail', { id: quotation.converted_invoice_id })}
+                onPress={() => navigation.navigate('InvoiceDetail', { invoiceId: quotation.converted_invoice_id })}
               >
                 <Text style={styles.viewInvoiceBtnText}>View Invoice</Text>
               </TouchableOpacity>
