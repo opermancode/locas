@@ -1,10 +1,9 @@
 LOCAS - SMART BILLING FOR INDIA
 END USER LICENSE AGREEMENT & PRIVACY POLICY
 
-Last updated: March 2026
-Developed by: Omkar Jagtap
-GitHub: https://github.com/opermancode/locas
-Contact: https://github.com/opermancode/locas/issues
+Create Date: March 2026
+Developed by: Omkar Ganesh Jagtap
+Contact: https://locas-business.vercel.app/index.html#contact
 
 By installing Locas, you agree to the following terms. Please read carefully.
 
@@ -114,11 +113,11 @@ PART 2 - PRIVACY POLICY
    use after an update constitutes acceptance of the new terms.
 
 9. CONTACT
-   GitHub Issues: https://github.com/opermancode/locas/issues
+   Issues: https://locas-business.vercel.app/support.html
 
 ================================================================
 
 By clicking "I Agree" you confirm that you have read, understood and
 agree to these Terms and Conditions and Privacy Policy.
 
-Copyright (C) 2026 Omkar Jagtap. All rights reserved.
+Copyright (C) 2026 locastitch. locasdot, All rights reserved.
