@@ -128,6 +128,102 @@ export default function InventoryScreen({ navigation, route }) {
     ]);
   };
 
+
+  // ── Export Stock Inventory to CSV ─────────────────────────────
+  const exportStockInventory = () => {
+    if (items.length === 0) {
+      if (Platform.OS === 'web') {
+        window.alert('No items to export. Add some inventory items first.');
+      } else {
+        Alert.alert('No Items', 'Add some inventory items first.');
+      }
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+      const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '-');
+
+      // CSV header
+      const headers = [
+        'Sr No', 'Item Name', 'Code', 'HSN/SAC', 'Unit',
+        'Sale Price (₹)', 'Cost Price (₹)', 'GST Rate (%)',
+        'Current Stock', 'Min Stock', 'Stock Value (₹)', 'Status'
+      ];
+
+      // CSV rows
+      const rows = items.map((item, idx) => {
+        const stockValue = (item.stock || 0) * (item.sale_price || 0);
+        const isLow = item.min_stock > 0 && item.stock <= item.min_stock;
+        const isNeg = item.stock < 0;
+        const status = isNeg ? 'Negative Stock' : isLow ? 'Low Stock' : 'OK';
+
+        // Escape any commas or quotes in text fields
+        const esc = (val) => {
+          const str = String(val || '');
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        };
+
+        return [
+          idx + 1,
+          esc(item.name),
+          esc(item.code || ''),
+          esc(item.hsn || ''),
+          esc(item.unit || 'pcs'),
+          (item.sale_price || 0).toFixed(2),
+          (item.purchase_price || 0).toFixed(2),
+          item.gst_rate || 0,
+          item.stock || 0,
+          item.min_stock || 0,
+          stockValue.toFixed(2),
+          status,
+        ].join(',');
+      });
+
+      // Summary rows at bottom
+      const totalValue = items.reduce((s, i) => s + ((i.stock || 0) * (i.sale_price || 0)), 0);
+      const lowCount   = items.filter(i => i.min_stock > 0 && i.stock <= i.min_stock).length;
+      const negCount   = items.filter(i => i.stock < 0).length;
+
+      const csv = [
+        `LOCAS — Stock Inventory Report`,
+        `Generated: ${dateStr} ${timeStr}`,
+        `Total Items: ${items.length}  |  Low Stock: ${lowCount}  |  Negative Stock: ${negCount}  |  Total Stock Value: ₹${totalValue.toFixed(2)}`,
+        '',
+        headers.join(','),
+        ...rows,
+        '',
+        `,,,,,,,,,,Total Stock Value,${totalValue.toFixed(2)}`,
+      ].join('\n');
+
+      if (Platform.OS === 'web') {
+        // Browser download
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href     = url;
+        link.download = `Stock_Inventory_${dateStr}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        Alert.alert('Export', 'CSV export is available on desktop/web version.');
+      }
+    } catch (e) {
+      console.error('Export failed:', e);
+      if (Platform.OS === 'web') {
+        window.alert('Export failed: ' + e.message);
+      } else {
+        Alert.alert('Export Failed', e.message);
+      }
+    }
+  };
+
   // ── Stats ──────────────────────────────────────────────────────
   const totalItems    = items.length;
   const lowStockCount = items.filter(i => i.min_stock > 0 && i.stock <= i.min_stock).length;
@@ -188,10 +284,20 @@ export default function InventoryScreen({ navigation, route }) {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Inventory</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
-          <Text style={styles.addBtnText}>+ Add</Text>
-        </TouchableOpacity>
+        <View>
+          <Text style={styles.headerTitle}>Inventory</Text>
+          <Text style={styles.headerSub}>{items.length} item{items.length !== 1 ? 's' : ''} in stock</Text>
+        </View>
+        <View style={styles.headerBtns}>
+          <TouchableOpacity style={styles.exportBtn} onPress={exportStockInventory}>
+            <Icon name="download" size={14} color="#0EA5E9" />
+            <Text style={styles.exportBtnText}>Export CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
+            <Icon name="plus" size={14} color="#fff" />
+            <Text style={styles.addBtnText}>Add Item</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stats strip */}
@@ -773,6 +879,9 @@ const styles = StyleSheet.create({
   loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
   notFound:       { fontSize: 15, color: COLORS.textMute },
 
+  headerBtns:        { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exportBtn:         { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD' },
+  exportBtnText:     { color: '#0EA5E9', fontWeight: FONTS.bold, fontSize: 13 },
   chipActive:        { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
   chipTextActive:    { color: '#fff', fontWeight: FONTS.bold },
   gstChip:           { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
