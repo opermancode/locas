@@ -12,6 +12,8 @@ import * as DB from '../../db';
 import { formatINRCompact, formatINR } from '../../utils/gst';
 import { getLicenseStatus } from '../../utils/licenseSystem';
 import { COLORS, RADIUS, FONTS } from '../../theme';
+import { Chart, registerables } from 'chart.js';
+Chart.register(...registerables);
 
 const RENEW_URL = 'https://your-website.com/renew';
 const BRAND = '#FF6B00';
@@ -32,10 +34,78 @@ function Sparkline({ points = [], width = 80, height = 32, color = '#4ADE80' }) 
   return React.createElement('div', { style: { width, height }, dangerouslySetInnerHTML: { __html: svg } });
 }
 
-// ── Inline SVG bar chart — fits inside a flex card ────────────────
-function BarChart({ data = [], height = 70 }) {
-  if (!data.length || Platform.OS !== 'web') {
-    // Native fallback
+// ── Smooth area chart (web) + native bar fallback ─────────────────
+function BarChart({ data = [], height = 80 }) {
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !canvasRef.current || !data.length) return;
+
+    if (chartRef.current) {
+      chartRef.current.destroy();
+      chartRef.current = null;
+    }
+
+    const vals   = data.map(d => d.value);
+    const labels = data.map(d => d.label);
+
+    const PURPLE      = '#7F77DD';
+    const PURPLE_FILL = 'rgba(127,119,221,0.18)';
+    const GRID        = 'rgba(255,255,255,0.06)';
+    const TICK        = 'rgba(255,255,255,0.3)';
+
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: vals,
+          borderColor: PURPLE,
+          borderWidth: 2,
+          fill: true,
+          backgroundColor: PURPLE_FILL,
+          tension: 0.45,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: PURPLE,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 500 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0F172A',
+            borderColor: PURPLE,
+            borderWidth: 1,
+            titleColor: '#fff',
+            bodyColor: TICK,
+            callbacks: {
+              label: ctx => ' ₹' + ctx.parsed.y.toLocaleString('en-IN'),
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: GRID },
+            ticks: { color: TICK, font: { size: 10 } },
+          },
+          y: { display: false, grid: { display: false } },
+        },
+      },
+    });
+
+    return () => {
+      chartRef.current?.destroy();
+      chartRef.current = null;
+    };
+  }, [data]);
+
+  // Native fallback
+  if (Platform.OS !== 'web') {
     if (!data.length) return null;
     const max = Math.max(...data.map(d => d.value), 1);
     return (
@@ -53,36 +123,12 @@ function BarChart({ data = [], height = 70 }) {
       </View>
     );
   }
-  const W = 320, H = height;
-  const PAD = { l:0, r:0, t:16, b:20 };
-  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
-  const max = Math.max(...data.map(d => d.value), 1);
-  const barW = Math.floor(cW / data.length) - 4;
-  const svgHtml = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${BRAND}" stop-opacity="0.9"/>
-        <stop offset="100%" stop-color="${BRAND}" stop-opacity="0.4"/>
-      </linearGradient>
-      <linearGradient id="bgd" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="rgba(255,255,255,0.2)"/>
-        <stop offset="100%" stop-color="rgba(255,255,255,0.05)"/>
-      </linearGradient>
-    </defs>
-    ${data.map((d, i) => {
-      const barH = Math.max(3, Math.round((d.value / max) * cH));
-      const x = PAD.l + i * (cW / data.length) + 2;
-      const y = PAD.t + cH - barH;
-      const isLast = i === data.length - 1;
-      const fmt = d.value > 0 ? (d.value >= 1000 ? (d.value/1000).toFixed(0)+'K' : d.value.toFixed(0)) : '';
-      return `
-        <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${isLast ? 'url(#bg)' : 'url(#bgd)'}"/>
-        ${isLast && fmt ? `<text x="${x + barW/2}" y="${y - 4}" text-anchor="middle" font-size="8" fill="${BRAND}" font-weight="700">${fmt}</text>` : ''}
-        <text x="${x + barW/2}" y="${H}" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.4)">${d.label}</text>
-      `;
-    }).join('')}
-  </svg>`;
-  return React.createElement('div', { style:{ width:'100%', height:H }, dangerouslySetInnerHTML:{ __html: svgHtml } });
+
+  return (
+    <View style={{ flex:1, width:'100%', height }}>
+      {React.createElement('canvas', { ref: canvasRef })}
+    </View>
+  );
 }
 
 // ── Donut ─────────────────────────────────────────────────────────
@@ -272,7 +318,7 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ══ MAIN GRID — flex fills remaining height ══════════ */}
+        {/* ══ MAIN GRID ════════════════════════════════════════ */}
         <View style={s.grid}>
 
           {/* ── LEFT COLUMN ── */}
@@ -306,7 +352,7 @@ export default function DashboardScreen({ navigation }) {
               </View>
             </View>
 
-            {/* Bar chart card */}
+            {/* Area chart card */}
             <View style={s.chartCard}>
               <View style={s.chartCardHeader}>
                 <Text style={s.chartCardTitle}>Sales Trend</Text>
@@ -559,7 +605,7 @@ const s = StyleSheet.create({
   heroStatLbl: { fontSize:7, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.3 },
   heroDiv:     { width:1, backgroundColor:'rgba(255,255,255,0.08)' },
 
-  // Bar chart card (dark)
+  // Area chart card (dark)
   chartCard:       { backgroundColor:'#1E293B', borderRadius:RADIUS.xl, padding:12, flex:1 },
   chartCardHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:4 },
   chartCardTitle:  { fontSize:12, fontWeight:FONTS.bold, color:'#fff' },
