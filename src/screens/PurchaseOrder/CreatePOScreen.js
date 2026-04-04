@@ -18,6 +18,7 @@ export default function CreatePOScreen({ navigation, route }) {
 
   const [date, setDate]         = useState(today());
   const [validUntil, setValid]  = useState(addDays(today(), 30));
+  const [clientPoNo, setClientPoNo] = useState(''); // Customer's own PO number
   const [notes, setNotes]       = useState('');
   const [terms, setTerms]       = useState('');
   const [party, setParty]       = useState(null);
@@ -42,6 +43,7 @@ export default function CreatePOScreen({ navigation, route }) {
     if (editPO) {
       setDate(editPO.date);
       setValid(editPO.valid_until || '');
+      setClientPoNo(editPO.client_po_number || '');
       setNotes(editPO.notes || '');
       setTerms(editPO.terms || '');
       setParty(editPO.party_id ? { id: editPO.party_id, name: editPO.party_name } : null);
@@ -109,6 +111,7 @@ export default function CreatePOScreen({ navigation, route }) {
         party_address: party.address || '',
         date,
         valid_until:   validUntil,
+        client_po_number: clientPoNo.trim(),
         notes,
         terms,
       };
@@ -182,6 +185,27 @@ export default function CreatePOScreen({ navigation, route }) {
           <View style={{ flex: 1 }}>
             <SL>Valid Until</SL>
             <TextInput style={styles.input} value={validUntil} onChangeText={setValid} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMute} />
+          </View>
+        </View>
+
+        {/* Client PO Number */}
+        <View style={styles.clientPoBox}>
+          <View style={styles.clientPoIconWrap}>
+            <Icon name="hash" size={16} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <SL>Client's PO Number (optional)</SL>
+            <TextInput
+              style={styles.input}
+              value={clientPoNo}
+              onChangeText={setClientPoNo}
+              placeholder="e.g. PO-2025-00142  (customer's own PO ref)"
+              placeholderTextColor={COLORS.textMute}
+              autoCapitalize="characters"
+            />
+            <Text style={styles.clientPoHint}>
+              Enter the PO number from your customer's order so you can reference it later.
+            </Text>
           </View>
         </View>
 
@@ -414,6 +438,9 @@ const styles = StyleSheet.create({
   row:      { flexDirection: 'row' },
   input:    { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: COLORS.text },
   pickerBtn:{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13 },
+  clientPoBox:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.lg, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: COLORS.primary + '33' },
+  clientPoIconWrap:{ width: 32, height: 32, borderRadius: 10, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 18 },
+  clientPoHint:    { fontSize: 11, color: COLORS.primary, marginTop: 5, opacity: 0.7 },
   pickerVal:{ flex: 1, fontSize: 14, fontWeight: FONTS.semibold, color: COLORS.text },
   pickerSub:{ fontSize: 11, color: COLORS.textSub, marginTop: 1 },
   pickerPlaceholder: { flex: 1, fontSize: 14, color: COLORS.textMute },
