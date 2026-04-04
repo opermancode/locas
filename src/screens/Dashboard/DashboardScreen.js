@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, Image, Linking, Animated, Platform, Dimensions,
-  ActivityIndicator, TextInput, Modal, Keyboard,
+  RefreshControl, Animated, Platform, Dimensions,
+  ActivityIndicator, TextInput, Modal, Keyboard, Image, Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,82 +10,69 @@ import { useFocusEffect } from '@react-navigation/native';
 import Icon from '../../utils/Icon';
 import * as DB from '../../db';
 import { formatINRCompact, formatINR } from '../../utils/gst';
-import { checkForUpdate, performUpdate } from '../../utils/updateChecker';
 import { getLicenseStatus } from '../../utils/licenseSystem';
+import { COLORS, RADIUS, FONTS } from '../../theme';
 
-// URLs (update these)
 const RENEW_URL = 'https://your-website.com/renew';
+const BRAND = '#FF6B00';
 
-const { width } = Dimensions.get('window');
-const isDesktop = Platform.OS === 'web' && width > 900;
-const cardWidth = (width - 48) / 2;
+function useIsWide() {
+  const [wide, setWide] = useState(Platform.OS === 'web' && Dimensions.get('window').width >= 900);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const sub = Dimensions.addEventListener('change', ({ window }) => setWide(window.width >= 900));
+    return () => sub?.remove();
+  }, []);
+  return wide;
+}
 
 export default function DashboardScreen({ navigation }) {
-  const insets = useSafeAreaInsets();
-  const [stats, setStats] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const insets   = useSafeAreaInsets();
+  const isWide   = useIsWide();
+
+  const [stats, setStats]               = useState(null);
+  const [profile, setProfile]           = useState(null);
   const [recentInvoices, setRecentInvoices] = useState([]);
-  const [topParties, setTopParties] = useState([]);
-  const [lowStock, setLowStock] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  // Search
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState(null);
-  const [searching, setSearching] = useState(false);
-  const [showSearchModal, setShowSearchModal] = useState(false);
-  const searchInputRef = useRef(null);
-  const searchTimeout = useRef(null);
-
-  // Banners
-  const [updateInfo, setUpdateInfo] = useState(null);
-  const [updateLoading, setUpdateLoading] = useState(false);
+  const [topParties, setTopParties]     = useState([]);
+  const [lowStock, setLowStock]         = useState([]);
+  const [openPOs, setOpenPOs]           = useState([]);
+  const [refreshing, setRefreshing]     = useState(false);
+  const [loading, setLoading]           = useState(true);
   const [licenseStatus, setLicenseStatus] = useState(null);
   const [licenseDismissed, setLicenseDismissed] = useState(false);
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LOAD DATA
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Search
+  const [searchQuery, setSearchQuery]   = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching]       = useState(false);
+  const [showSearch, setShowSearch]     = useState(false);
+  const searchRef  = useRef(null);
+  const searchTimer = useRef(null);
+  const fadeAnim   = useRef(new Animated.Value(0)).current;
 
   const load = async () => {
     try {
-      // Load all data with safe fallbacks
       const [data, prof, license] = await Promise.all([
-        DB.getDashboardStats?.() || Promise.resolve({}),
-        DB.getProfile?.() || Promise.resolve(null),
-        getLicenseStatus?.() || Promise.resolve(null),
+        DB.getDashboardStats(),
+        DB.getProfile(),
+        getLicenseStatus().catch(() => null),
       ]);
-
-      setStats(data || {});
+      setStats(data);
       setProfile(prof);
       setLicenseStatus(license);
 
-      // Load optional data
-      try {
-        if (DB.getRecentInvoices) {
-          const invoices = await DB.getRecentInvoices(5);
-          setRecentInvoices(invoices || []);
-        }
-      } catch (_) {}
+      const [inv, parties, stock, pos] = await Promise.all([
+        DB.getRecentInvoices(6).catch(() => []),
+        DB.getTopParties(5).catch(() => []),
+        DB.getLowStockProducts(5).catch(() => []),
+        DB.getPurchaseOrders({ status: 'active' }).catch(() => []),
+      ]);
+      setRecentInvoices(inv || []);
+      setTopParties(parties || []);
+      setLowStock(stock || []);
+      setOpenPOs((pos || []).slice(0, 4));
 
-      try {
-        if (DB.getTopParties) {
-          const parties = await DB.getTopParties(5);
-          setTopParties(parties || []);
-        }
-      } catch (_) {}
-
-      try {
-        if (DB.getLowStockProducts) {
-          const stock = await DB.getLowStockProducts(5);
-          setLowStock(stock || []);
-        }
-      } catch (_) {}
-
-      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 350, useNativeDriver: true }).start();
     } catch (e) {
       console.error('Dashboard load error:', e);
     } finally {
@@ -96,384 +83,363 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  // Check for updates
-  useEffect(() => {
-    (async () => {
+  // Search
+  const handleSearch = (q) => {
+    setSearchQuery(q);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!q.trim()) { setSearchResults(null); setSearching(false); return; }
+    setSearching(true);
+    searchTimer.current = setTimeout(async () => {
       try {
-        const result = await checkForUpdate?.();
-        if (result?.hasUpdate) setUpdateInfo(result);
-      } catch (_) {}
-    })();
-  }, []);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SEARCH
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  const handleSearch = async (query) => {
-    setSearchQuery(query);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-
-    if (!query.trim()) {
-      setSearchResults(null);
-      setSearching(false);
-      return;
-    }
-
-    searchTimeout.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        if (DB.globalSearch) {
-          const results = await DB.globalSearch(query.trim());
-          setSearchResults(results);
-        } else {
-          setSearchResults({ invoices: [], quotations: [], parties: [], products: [] });
-        }
-      } catch (e) {
-        console.error('Search error:', e);
+        const r = await DB.globalSearch(q.trim());
+        setSearchResults(r);
+      } catch (_) {
         setSearchResults({ invoices: [], quotations: [], parties: [], products: [] });
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
+      } finally { setSearching(false); }
+    }, 280);
   };
 
-  const openSearchModal = () => {
-    setShowSearchModal(true);
-    setTimeout(() => searchInputRef.current?.focus(), 100);
+  const openSearch = () => {
+    setShowSearch(true);
+    setTimeout(() => searchRef.current?.focus(), 80);
   };
-
-  const closeSearchModal = () => {
-    setShowSearchModal(false);
+  const closeSearch = () => {
+    setShowSearch(false);
     setSearchQuery('');
     setSearchResults(null);
     Keyboard.dismiss();
   };
-
-  const handleResultPress = (type, item) => {
-    closeSearchModal();
-    switch (type) {
-      case 'invoice':
-        navigation.navigate('InvoicesTab', { screen: 'InvoiceDetail', params: { invoiceId: item.id } });
-        break;
-      case 'quotation':
-        navigation.navigate('QuotationsTab', { screen: 'QuotationDetail', params: { id: item.id } });
-        break;
-      case 'party':
-        navigation.navigate('PartiesTab', { screen: 'PartyDetail', params: { partyId: item.id } });
-        break;
-      case 'product':
-        navigation.navigate('Inventory');
-        break;
-    }
-  };
-
-  const getTotalResults = () => {
-    if (!searchResults) return 0;
-    return (searchResults.invoices?.length || 0) + (searchResults.quotations?.length || 0) +
-           (searchResults.parties?.length || 0) + (searchResults.products?.length || 0);
-  };
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HELPERS
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  const handleUpdate = async () => {
-    setUpdateLoading(true);
-    await performUpdate?.(updateInfo);
-    setUpdateLoading(false);
-  };
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    load();
+  const goResult = (type, item) => {
+    closeSearch();
+    if (type === 'invoice')   navigation.navigate('InvoicesTab', { screen: 'InvoiceDetail', params: { invoiceId: item.id } });
+    if (type === 'quotation') navigation.navigate('QuotationsTab', { screen: 'QuotationDetail', params: { id: item.id } });
+    if (type === 'party')     navigation.navigate('PartiesTab', { screen: 'PartyDetail', params: { partyId: item.id } });
+    if (type === 'product')   navigation.navigate('Inventory');
   };
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
-  const salesGrowth = stats?.lastMonthSales > 0
-    ? Math.round(((stats?.monthSales - stats?.lastMonthSales) / stats?.lastMonthSales) * 100)
-    : 0;
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (date.toDateString() === today.toDateString()) return 'Today';
-    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  const formatDate = (ds) => {
+    if (!ds) return '';
+    const d = new Date(ds), t = new Date();
+    const y = new Date(t); y.setDate(y.getDate() - 1);
+    if (d.toDateString() === t.toDateString()) return 'Today';
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   };
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SEARCH RESULT ITEM
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  const SearchResultItem = ({ type, item }) => {
-    const config = {
-      invoice: { icon: 'file-text', color: '#3B82F6', label: 'INVOICE', title: item.invoice_number, subtitle: `${item.party_name || 'Cash Sale'} • ${formatINR(item.total)}` },
-      quotation: { icon: 'clipboard', color: '#8B5CF6', label: 'QUOTE', title: item.quote_number, subtitle: `${item.party_name || 'No Party'} • ${formatINR(item.total)}` },
-      party: { icon: 'user', color: '#10B981', label: 'PARTY', title: item.name, subtitle: `${item.phone || 'No phone'} • Balance: ${formatINR(Math.abs(item.balance || 0))}` },
-      product: { icon: 'package', color: '#F59E0B', label: 'PRODUCT', title: item.name, subtitle: `₹${item.price} • Stock: ${item.stock || 0}` },
-    }[type];
-
-    return (
-      <TouchableOpacity style={styles.searchResultItem} onPress={() => handleResultPress(type, item)}>
-        <View style={[styles.searchResultIcon, { backgroundColor: `${config.color}15` }]}>
-          <Icon name={config.icon} size={18} color={config.color} />
-        </View>
-        <View style={styles.searchResultContent}>
-          <View style={styles.searchResultHeader}>
-            <Text style={styles.searchResultTitle} numberOfLines={1}>{config.title}</Text>
-            <View style={[styles.searchResultLabel, { backgroundColor: `${config.color}15` }]}>
-              <Text style={[styles.searchResultLabelText, { color: config.color }]}>{config.label}</Text>
-            </View>
-          </View>
-          <Text style={styles.searchResultSubtitle} numberOfLines={1}>{config.subtitle}</Text>
-        </View>
-        <Icon name="chevron-right" size={18} color="#D1D5DB" />
-      </TouchableOpacity>
-    );
-  };
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LOADING
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Pull real values from the correct getDashboardStats shape
+  const monthlySales   = stats?.sales?.total        || 0;
+  const monthlyCount   = stats?.sales?.count         || 0;
+  const collected      = stats?.collected?.total     || 0;
+  const receivables    = stats?.receivables?.total   || 0;
+  const payables       = stats?.payables?.total      || 0;
+  const monthExpenses  = stats?.expenses?.total      || 0;
+  const netProfit      = monthlySales - monthExpenses;
+  const topCustomers   = stats?.topCustomers         || [];
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <StatusBar style="dark" />
-        <ActivityIndicator size="large" color="#FF6B00" />
+      <View style={[s.container, s.center]}>
+        <ActivityIndicator size="large" color={BRAND} />
       </View>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RENDER
-  // ═══════════════════════════════════════════════════════════════════════════
+  const MainContent = (
+    <Animated.View style={{ opacity: fadeAnim }}>
 
-  return (
-    <View style={[styles.container, { paddingTop: isDesktop ? 0 : insets.top }]}>
-      <StatusBar style="light" />
+      {/* ── Greeting + search ── */}
+      <View style={s.topBar}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.greetTxt}>{greeting} 👋</Text>
+          <Text style={s.bizName} numberOfLines={1}>{profile?.name || 'My Business'}</Text>
+        </View>
+        <TouchableOpacity style={s.searchTrigger} onPress={openSearch}>
+          <Icon name="search" size={18} color={COLORS.textSub} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={s.settingsBtn}
+          onPress={() => navigation.navigate('More', { screen: 'Settings' })}
+        >
+          <Icon name="settings" size={18} color={COLORS.textSub} />
+        </TouchableOpacity>
+      </View>
 
-      {/* Header */}
-      {!isDesktop && (
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.logoWrap}>
-              <Image source={require('../../../assets/icon.png')} style={styles.logoImg} resizeMode="contain" />
-            </View>
-            <View>
-              <Text style={styles.greeting}>{greeting}</Text>
-              <Text style={styles.bizName} numberOfLines={1}>{profile?.name || 'LOCAS'}</Text>
-            </View>
-          </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate('More', { screen: 'Settings' })}>
-              <Icon name="settings" size={20} color="rgba(255,255,255,0.8)" />
-            </TouchableOpacity>
-          </View>
+      {/* ── Banners ── */}
+      {licenseStatus?.warning && !licenseDismissed && (
+        <View style={s.bannerWarn}>
+          <Icon name="alert-triangle" size={14} color="#92400E" />
+          <Text style={s.bannerWarnTxt}>License expires in {licenseStatus.daysLeft} days</Text>
+          <TouchableOpacity style={s.bannerRenewBtn} onPress={() => Linking.openURL(RENEW_URL)}>
+            <Text style={s.bannerRenewTxt}>Renew</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setLicenseDismissed(true)} style={{ padding: 2 }}>
+            <Icon name="x" size={14} color="#92400E" />
+          </TouchableOpacity>
         </View>
       )}
+      {lowStock.length > 0 && (
+        <TouchableOpacity style={s.bannerDanger} onPress={() => navigation.navigate('Inventory')}>
+          <Icon name="alert-circle" size={14} color="#991B1B" />
+          <Text style={s.bannerDangerTxt}>{lowStock.length} item{lowStock.length > 1 ? 's' : ''} running low on stock</Text>
+          <Icon name="chevron-right" size={14} color="#991B1B" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
+      )}
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF6B00" />}
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Animated.View style={{ opacity: fadeAnim }}>
+      {/* ── This month hero card ── */}
+      <View style={s.heroCard}>
+        <View style={s.heroTop}>
+          <View>
+            <Text style={s.heroLabel}>This month's sales</Text>
+            <Text style={s.heroAmt}>{formatINR(monthlySales)}</Text>
+            <Text style={s.heroSub}>{monthlyCount} invoice{monthlyCount !== 1 ? 's' : ''} this month</Text>
+          </View>
+          <View style={s.heroBadge}>
+            <Icon name="trending-up" size={20} color={BRAND} />
+          </View>
+        </View>
 
-          {/* Search Bar */}
-          <TouchableOpacity style={styles.searchBar} onPress={openSearchModal} activeOpacity={0.8}>
-            <Icon name="search" size={18} color="#9CA3AF" />
-            <Text style={styles.searchPlaceholder}>Search invoices, parties, products...</Text>
+        <View style={s.heroRow}>
+          <HeroStat label="Collected"  value={formatINRCompact(collected)}   color="#4ADE80" />
+          <View style={s.heroDiv} />
+          <HeroStat label="Receivable" value={formatINRCompact(receivables)} color="#FCD34D" />
+          <View style={s.heroDiv} />
+          <HeroStat label="Expenses"   value={formatINRCompact(monthExpenses)} color="#F87171" />
+          <View style={s.heroDiv} />
+          <HeroStat label="Net"        value={formatINRCompact(netProfit)}   color={netProfit >= 0 ? '#4ADE80' : '#F87171'} />
+        </View>
+      </View>
+
+      {/* ── KPI grid — 4 tiles ── */}
+      <View style={s.kpiGrid}>
+        <TouchableOpacity style={[s.kpiTile, { borderTopColor: '#3B82F6' }]} onPress={() => navigation.navigate('InvoicesTab')}>
+          <View style={[s.kpiIcon, { backgroundColor: '#EFF6FF' }]}>
+            <Icon name="file-text" size={17} color="#3B82F6" />
+          </View>
+          <Text style={s.kpiAmt}>{formatINRCompact(receivables)}</Text>
+          <Text style={s.kpiLbl}>Outstanding</Text>
+          <Text style={s.kpiSub}>Tap to view invoices</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[s.kpiTile, { borderTopColor: '#8B5CF6' }]} onPress={() => navigation.navigate('PartiesTab')}>
+          <View style={[s.kpiIcon, { backgroundColor: '#F5F3FF' }]}>
+            <Icon name="users" size={17} color="#8B5CF6" />
+          </View>
+          <Text style={s.kpiAmt}>{topParties.length}</Text>
+          <Text style={s.kpiLbl}>Top Parties</Text>
+          <Text style={s.kpiSub}>By outstanding balance</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[s.kpiTile, { borderTopColor: '#10B981' }]} onPress={() => navigation.navigate('QuotationsTab')}>
+          <View style={[s.kpiIcon, { backgroundColor: '#ECFDF5' }]}>
+            <Icon name="clipboard" size={17} color="#10B981" />
+          </View>
+          <Text style={s.kpiAmt}>{openPOs.length}</Text>
+          <Text style={s.kpiLbl}>Open POs</Text>
+          <Text style={s.kpiSub}>Purchase orders active</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[s.kpiTile, { borderTopColor: '#F59E0B' }]} onPress={() => navigation.navigate('More', { screen: 'Expenses' })}>
+          <View style={[s.kpiIcon, { backgroundColor: '#FFFBEB' }]}>
+            <Icon name="credit-card" size={17} color="#F59E0B" />
+          </View>
+          <Text style={s.kpiAmt}>{formatINRCompact(monthExpenses)}</Text>
+          <Text style={s.kpiLbl}>Expenses</Text>
+          <Text style={s.kpiSub}>This month</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Quick actions ── */}
+      <SectionHeader title="Quick Actions" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.qaScroll}>
+        {[
+          { label: 'New Invoice',  icon: 'file-plus',   color: BRAND,      bg: '#FFF0E6', onPress: () => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' }) },
+          { label: 'New Quotation', icon: 'clipboard',  color: '#8B5CF6',  bg: '#F5F3FF', onPress: () => navigation.navigate('QuotationsTab', { screen: 'CreateQuotation' }) },
+          { label: 'New PO',       icon: 'package',     color: '#10B981',  bg: '#ECFDF5', onPress: () => navigation.navigate('More', { screen: 'PurchaseOrders' }) },
+          { label: 'Add Party',    icon: 'user-plus',   color: '#3B82F6',  bg: '#EFF6FF', onPress: () => navigation.navigate('PartiesTab') },
+          { label: 'Add Expense',  icon: 'minus-circle', color: '#EF4444', bg: '#FEF2F2', onPress: () => navigation.navigate('More', { screen: 'Expenses' }) },
+          { label: 'Inventory',    icon: 'box',         color: '#6366F1',  bg: '#EEF2FF', onPress: () => navigation.navigate('Inventory') },
+          { label: 'Reports',      icon: 'bar-chart-2', color: '#0EA5E9',  bg: '#F0F9FF', onPress: () => navigation.navigate('More', { screen: 'Reports' }) },
+          { label: 'Settings',     icon: 'settings',    color: '#64748B',  bg: '#F1F5F9', onPress: () => navigation.navigate('More', { screen: 'Settings' }) },
+        ].map((a, i) => (
+          <TouchableOpacity key={i} style={s.qaItem} onPress={a.onPress} activeOpacity={0.75}>
+            <View style={[s.qaIcon, { backgroundColor: a.bg }]}>
+              <Icon name={a.icon} size={20} color={a.color} />
+            </View>
+            <Text style={s.qaLabel}>{a.label}</Text>
           </TouchableOpacity>
+        ))}
+      </ScrollView>
 
-          {/* License Banner */}
-          {licenseStatus?.warning && !licenseDismissed && (
-            <View style={styles.licenseBanner}>
-              <View style={styles.bannerLeft}>
-                <Icon name="alert-triangle" size={16} color="#F59E0B" />
-                <Text style={styles.licenseText}>License expires in {licenseStatus.daysLeft} days</Text>
-              </View>
-              <View style={styles.bannerActions}>
-                <TouchableOpacity style={styles.licenseRenewBtn} onPress={() => Linking.openURL(RENEW_URL)}>
-                  <Text style={styles.licenseRenewText}>Renew</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setLicenseDismissed(true)}>
-                  <Icon name="x" size={16} color="#92400E" />
-                </TouchableOpacity>
-              </View>
+      {/* ── Two-column layout on wide screens ── */}
+      <View style={isWide ? s.wideColumns : null}>
+
+        {/* LEFT: Recent invoices + Top customers */}
+        <View style={isWide ? s.wideLeft : null}>
+
+          {/* Recent invoices */}
+          <SectionHeader
+            title="Recent Invoices"
+            action="See all"
+            onAction={() => navigation.navigate('InvoicesTab')}
+          />
+          <View style={s.tableCard}>
+            {/* Table header */}
+            <View style={s.tHead}>
+              <Text style={[s.tHLabel, { flex: 1.4 }]}>Invoice</Text>
+              <Text style={[s.tHLabel, { flex: 2 }]}>Customer</Text>
+              <Text style={[s.tHLabel, { flex: 1.1, textAlign: 'right' }]}>Amount</Text>
+              <Text style={[s.tHLabel, { flex: 0.9, textAlign: 'center' }]}>Status</Text>
             </View>
-          )}
 
-          {/* Update Banner */}
-          {updateInfo?.hasUpdate && (
-            <View style={styles.updateBanner}>
-              <View style={styles.bannerLeft}>
-                <Icon name="download-cloud" size={16} color="#fff" />
-                <Text style={styles.updateText}>Update v{updateInfo.latestVersion} available</Text>
-              </View>
-              <TouchableOpacity style={styles.updateBtn} onPress={handleUpdate} disabled={updateLoading}>
-                {updateLoading ? <ActivityIndicator size="small" color="#FF6B00" /> : <Text style={styles.updateBtnText}>Update</Text>}
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Low Stock Alert */}
-          {lowStock.length > 0 && (
-            <TouchableOpacity style={styles.alertBanner} onPress={() => navigation.navigate('More', { screen: 'Products' })}>
-              <View style={styles.bannerLeft}>
-                <Icon name="alert-circle" size={16} color="#DC2626" />
-                <Text style={styles.alertText}>{lowStock.length} products low on stock</Text>
-              </View>
-              <Icon name="chevron-right" size={16} color="#DC2626" />
-            </TouchableOpacity>
-          )}
-
-          {/* Revenue Card */}
-          <View style={styles.revenueCard}>
-            <View style={styles.revenueHeader}>
-              <Text style={styles.revenueLabel}>This Month's Revenue</Text>
-              {salesGrowth !== 0 && (
-                <View style={[styles.growthBadge, salesGrowth < 0 && styles.growthBadgeNeg]}>
-                  <Icon name={salesGrowth >= 0 ? 'trending-up' : 'trending-down'} size={12} color={salesGrowth >= 0 ? '#10B981' : '#EF4444'} />
-                  <Text style={[styles.growthText, salesGrowth < 0 && styles.growthTextNeg]}>{salesGrowth >= 0 ? '+' : ''}{salesGrowth}%</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.revenueValue}>{formatINR(stats?.monthSales || 0)}</Text>
-            <View style={styles.revenueStats}>
-              <View style={styles.revenueStat}>
-                <Text style={styles.revenueStatLabel}>Collected</Text>
-                <Text style={[styles.revenueStatValue, { color: '#10B981' }]}>{formatINR(stats?.monthCollected || 0)}</Text>
-              </View>
-              <View style={styles.revenueStatDivider} />
-              <View style={styles.revenueStat}>
-                <Text style={styles.revenueStatLabel}>Pending</Text>
-                <Text style={[styles.revenueStatValue, { color: '#F59E0B' }]}>{formatINR(stats?.monthPending || 0)}</Text>
-              </View>
-              <View style={styles.revenueStatDivider} />
-              <View style={styles.revenueStat}>
-                <Text style={styles.revenueStatLabel}>Invoices</Text>
-                <Text style={styles.revenueStatValue}>{stats?.monthInvoices || 0}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Stats Grid */}
-          <View style={styles.statsGrid}>
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#EFF6FF' }]} onPress={() => navigation.navigate('InvoicesTab')}>
-              <View style={[styles.statIcon, { backgroundColor: '#3B82F6' }]}><Icon name="file-text" size={18} color="#fff" /></View>
-              <Text style={styles.statValue}>{stats?.todayInvoices || 0}</Text>
-              <Text style={styles.statLabel}>Today's Invoices</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#ECFDF5' }]} onPress={() => navigation.navigate('More', { screen: 'Reports' })}>
-              <View style={[styles.statIcon, { backgroundColor: '#10B981' }]}><Icon name="trending-up" size={18} color="#fff" /></View>
-              <Text style={styles.statValue}>{formatINRCompact(stats?.todaySales || 0)}</Text>
-              <Text style={styles.statLabel}>Today's Sales</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#FFFBEB' }]} onPress={() => navigation.navigate('PartiesTab')}>
-              <View style={[styles.statIcon, { backgroundColor: '#F59E0B' }]}><Icon name="clock" size={18} color="#fff" /></View>
-              <Text style={styles.statValue}>{formatINRCompact(stats?.totalPending || 0)}</Text>
-              <Text style={styles.statLabel}>Total Pending</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: '#F5F3FF' }]} onPress={() => navigation.navigate('PartiesTab')}>
-              <View style={[styles.statIcon, { backgroundColor: '#8B5CF6' }]}><Icon name="users" size={18} color="#fff" /></View>
-              <Text style={styles.statValue}>{stats?.totalParties || 0}</Text>
-              <Text style={styles.statLabel}>Total Parties</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Quick Actions */}
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickActionsScroll}>
-            {[
-              { label: 'New Invoice', icon: 'plus', color: '#FF6B00', onPress: () => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' }) },
-              { label: 'Quotation', icon: 'clipboard', color: '#8B5CF6', onPress: () => navigation.navigate('QuotationsTab', { screen: 'CreateQuotation' }) },
-              { label: 'Add Party', icon: 'user-plus', color: '#10B981', onPress: () => navigation.navigate('PartiesTab') },
-              { label: 'Products', icon: 'package', color: '#3B82F6', onPress: () => navigation.navigate('Inventory') },
-              { label: 'Expenses', icon: 'credit-card', color: '#06B6D4', onPress: () => navigation.navigate('More', { screen: 'Expenses' }) },
-              { label: 'Reports', icon: 'bar-chart-2', color: '#F59E0B', onPress: () => navigation.navigate('More', { screen: 'Reports' }) },
-            ].map((action, i) => (
-              <TouchableOpacity key={i} style={styles.quickAction} onPress={action.onPress}>
-                <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
-                  <Icon name={action.icon} size={22} color="#fff" />
-                </View>
-                <Text style={styles.quickActionLabel}>{action.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Recent Invoices */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Invoices</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('InvoicesTab')}>
-              <Text style={styles.seeAllBtn}>See All</Text>
-            </TouchableOpacity>
-          </View>
-          {recentInvoices.length > 0 ? (
-            <View style={styles.listCard}>
-              {recentInvoices.map((inv, idx) => (
+            {recentInvoices.length === 0 ? (
+              <View style={s.emptyRow}>
+                <Icon name="file-text" size={22} color={COLORS.textMute} />
+                <Text style={s.emptyTxt}>No invoices yet</Text>
                 <TouchableOpacity
-                  key={inv.id}
-                  style={[styles.invoiceRow, idx < recentInvoices.length - 1 && styles.rowBorder]}
-                  onPress={() => navigation.navigate('InvoicesTab', { screen: 'InvoiceDetail', params: { invoiceId: inv.id } })}
+                  style={s.emptyAction}
+                  onPress={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}
                 >
-                  <View style={styles.invoiceLeft}>
-                    <Text style={styles.invoiceNumber}>{inv.invoice_number}</Text>
-                    <Text style={styles.invoiceParty} numberOfLines={1}>{inv.party_name || 'Cash Sale'}</Text>
-                  </View>
-                  <View style={styles.invoiceRight}>
-                    <Text style={styles.invoiceAmount}>{formatINR(inv.total)}</Text>
-                    <View style={styles.invoiceMeta}>
-                      <Text style={styles.invoiceDate}>{formatDate(inv.date)}</Text>
-                      <View style={[styles.statusDot, inv.status === 'paid' && { backgroundColor: '#10B981' }, inv.status === 'partial' && { backgroundColor: '#F59E0B' }, inv.status === 'unpaid' && { backgroundColor: '#EF4444' }]} />
-                    </View>
-                  </View>
+                  <Text style={s.emptyActionTxt}>Create first invoice →</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Icon name="file-text" size={32} color="#D1D5DB" />
-              <Text style={styles.emptyText}>No invoices yet</Text>
-              <TouchableOpacity style={styles.emptyBtn} onPress={() => navigation.navigate('InvoicesTab', { screen: 'CreateInvoice' })}>
-                <Text style={styles.emptyBtnText}>Create First Invoice</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+              </View>
+            ) : (
+              recentInvoices.map((inv, i) => {
+                const isPaid = inv.status === 'paid';
+                const isOverdue = !isPaid && inv.due_date && inv.due_date < new Date().toISOString().split('T')[0];
+                const statusCfg = isPaid
+                  ? { bg: '#D1FAE5', text: '#065F46', label: 'Paid' }
+                  : isOverdue
+                  ? { bg: '#FECACA', text: '#7F1D1D', label: 'Overdue' }
+                  : inv.status === 'partial'
+                  ? { bg: '#FEF3C7', text: '#92400E', label: 'Partial' }
+                  : { bg: '#FEE2E2', text: '#991B1B', label: 'Unpaid' };
 
-          {/* Top Parties */}
+                return (
+                  <TouchableOpacity
+                    key={inv.id}
+                    style={[s.tRow, i % 2 === 0 && s.tRowEven]}
+                    onPress={() => navigation.navigate('InvoicesTab', { screen: 'InvoiceDetail', params: { invoiceId: inv.id } })}
+                    activeOpacity={0.75}
+                  >
+                    <View style={{ flex: 1.4 }}>
+                      <Text style={s.tInvNum} numberOfLines={1}>{inv.invoice_number}</Text>
+                      <Text style={s.tDate}>{formatDate(inv.date)}</Text>
+                    </View>
+                    <Text style={[s.tCell, { flex: 2 }]} numberOfLines={1}>
+                      {inv.party_name || 'Walk-in'}
+                    </Text>
+                    <Text style={[s.tAmt, { flex: 1.1 }]} numberOfLines={1}>
+                      {formatINR(inv.total)}
+                    </Text>
+                    <View style={{ flex: 0.9, alignItems: 'center' }}>
+                      <View style={[s.pill, { backgroundColor: statusCfg.bg }]}>
+                        <Text style={[s.pillTxt, { color: statusCfg.text }]}>{statusCfg.label}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+
+          {/* Top customers this month */}
+          {topCustomers.length > 0 && (
+            <>
+              <SectionHeader title="Top Customers This Month" />
+              <View style={s.tableCard}>
+                <View style={s.tHead}>
+                  <Text style={[s.tHLabel, { flex: 2 }]}>Customer</Text>
+                  <Text style={[s.tHLabel, { flex: 1, textAlign: 'right' }]}>Sales</Text>
+                </View>
+                {topCustomers.map((c, i) => (
+                  <View key={i} style={[s.tRow, i % 2 === 0 && s.tRowEven]}>
+                    <View style={[s.customerDot, { backgroundColor: BRAND }]}>
+                      <Text style={s.customerDotTxt}>{(c.party_name || '?')[0].toUpperCase()}</Text>
+                    </View>
+                    <Text style={[s.tCell, { flex: 2, marginLeft: 8 }]} numberOfLines={1}>{c.party_name || 'Unknown'}</Text>
+                    <Text style={[s.tAmt, { flex: 1 }]}>{formatINR(c.total)}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* RIGHT: Outstanding parties + Open POs + Low stock */}
+        <View style={isWide ? s.wideRight : null}>
+
+          {/* Outstanding parties */}
           {topParties.length > 0 && (
             <>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Top Outstanding</Text>
-                <TouchableOpacity onPress={() => navigation.navigate('PartiesTab')}>
-                  <Text style={styles.seeAllBtn}>See All</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.listCard}>
-                {topParties.map((party, idx) => (
+              <SectionHeader
+                title="Outstanding Balances"
+                action="See all"
+                onAction={() => navigation.navigate('PartiesTab')}
+              />
+              <View style={s.listCard}>
+                {topParties.map((p, i) => (
                   <TouchableOpacity
-                    key={party.id}
-                    style={[styles.partyRow, idx < topParties.length - 1 && styles.rowBorder]}
-                    onPress={() => navigation.navigate('PartiesTab', { screen: 'PartyDetail', params: { partyId: party.id } })}
+                    key={p.id}
+                    style={[s.partyRow, i < topParties.length - 1 && s.rowBorder]}
+                    onPress={() => navigation.navigate('PartiesTab', { screen: 'PartyDetail', params: { partyId: p.id } })}
+                    activeOpacity={0.75}
                   >
-                    <View style={styles.partyAvatar}>
-                      <Text style={styles.partyInitial}>{(party.name || 'P')[0].toUpperCase()}</Text>
+                    <View style={s.partyAvatar}>
+                      <Text style={s.partyAvatarTxt}>{(p.name || 'P')[0].toUpperCase()}</Text>
                     </View>
-                    <View style={styles.partyInfo}>
-                      <Text style={styles.partyName} numberOfLines={1}>{party.name}</Text>
-                      <Text style={styles.partyPhone}>{party.phone || 'No phone'}</Text>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={s.partyName} numberOfLines={1}>{p.name}</Text>
+                      {p.phone ? <Text style={s.partySub}>{p.phone}</Text> : null}
                     </View>
-                    <View style={styles.partyBalance}>
-                      <Text style={[styles.partyAmount, party.balance > 0 && { color: '#EF4444' }]}>{formatINR(Math.abs(party.balance || 0))}</Text>
-                      <Text style={styles.partyBalanceLabel}>{party.balance > 0 ? 'To Receive' : party.balance < 0 ? 'To Pay' : 'Settled'}</Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[s.partyAmt, p.balance > 0 && { color: COLORS.danger }]}>
+                        {formatINR(Math.abs(p.balance || 0))}
+                      </Text>
+                      <Text style={s.partyLbl}>{p.balance > 0 ? 'To receive' : 'To pay'}</Text>
+                    </View>
+                    <Icon name="chevron-right" size={14} color={COLORS.textMute} style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* Open Purchase Orders */}
+          {openPOs.length > 0 && (
+            <>
+              <SectionHeader
+                title="Open Purchase Orders"
+                action="See all"
+                onAction={() => navigation.navigate('More', { screen: 'PurchaseOrders' })}
+              />
+              <View style={s.listCard}>
+                {openPOs.map((po, i) => (
+                  <TouchableOpacity
+                    key={po.id}
+                    style={[s.poRow, i < openPOs.length - 1 && s.rowBorder]}
+                    onPress={() => navigation.navigate('More', { screen: 'PODetail', params: { poId: po.id } })}
+                    activeOpacity={0.75}
+                  >
+                    <View style={s.poIcon}>
+                      <Icon name="package" size={14} color={COLORS.primary} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={s.poNum} numberOfLines={1}>{po.po_number}</Text>
+                      <Text style={s.poParty} numberOfLines={1}>{po.party_name}</Text>
+                    </View>
+                    <View style={[s.pill, po.status === 'partial'
+                      ? { backgroundColor: '#FEF3C7' }
+                      : { backgroundColor: '#DBEAFE' }
+                    ]}>
+                      <Text style={[s.pillTxt, po.status === 'partial'
+                        ? { color: '#92400E' }
+                        : { color: '#1E40AF' }
+                      ]}>
+                        {po.status === 'partial' ? 'Partial' : 'Active'}
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -481,246 +447,371 @@ export default function DashboardScreen({ navigation }) {
             </>
           )}
 
-          {/* Business Summary */}
-          <Text style={styles.sectionTitle}>Business Summary</Text>
-          <View style={styles.summaryGrid}>
-            {[
-              { icon: 'trending-up', color: '#10B981', value: formatINRCompact(stats?.totalSales || 0), label: 'All Time Sales' },
-              { icon: 'file-text', color: '#3B82F6', value: stats?.totalInvoices || 0, label: 'Total Invoices' },
-              { icon: 'package', color: '#8B5CF6', value: stats?.totalProducts || 0, label: 'Products' },
-              { icon: 'calendar', color: '#F59E0B', value: stats?.avgInvoiceValue ? formatINRCompact(stats.avgInvoiceValue) : '₹0', label: 'Avg Invoice' },
-            ].map((item, i) => (
-              <View key={i} style={[styles.summaryItem, i === 3 && { borderBottomWidth: 0 }]}>
-                <Icon name={item.icon} size={20} color={item.color} />
-                <View style={styles.summaryItemContent}>
-                  <Text style={styles.summaryItemValue}>{item.value}</Text>
-                  <Text style={styles.summaryItemLabel}>{item.label}</Text>
-                </View>
+          {/* Low Stock */}
+          {lowStock.length > 0 && (
+            <>
+              <SectionHeader
+                title="Low Stock Alert"
+                action="View all"
+                onAction={() => navigation.navigate('Inventory')}
+              />
+              <View style={s.listCard}>
+                {lowStock.map((item, i) => {
+                  const pct = item.min_stock > 0 ? Math.min(1, item.stock / item.min_stock) : 0;
+                  return (
+                    <View key={item.id} style={[s.stockRow, i < lowStock.length - 1 && s.rowBorder]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.stockName} numberOfLines={1}>{item.name}</Text>
+                        <View style={s.stockBar}>
+                          <View style={[s.stockFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: pct < 0.3 ? COLORS.danger : COLORS.warning }]} />
+                        </View>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', marginLeft: 12 }}>
+                        <Text style={[s.stockQty, { color: COLORS.danger }]}>{item.stock} {item.unit}</Text>
+                        <Text style={s.stockMin}>min {item.min_stock}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
-            ))}
-          </View>
+            </>
+          )}
 
-          <View style={{ height: 100 }} />
-        </Animated.View>
+        </View>
+      </View>
+
+      <View style={{ height: 60 }} />
+    </Animated.View>
+  );
+
+  return (
+    <View style={[s.container, { paddingTop: isWide ? 0 : insets.top }]}>
+      <StatusBar style="dark" />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={BRAND} />}
+        contentContainerStyle={[s.scroll, isWide && s.scrollWide]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {MainContent}
       </ScrollView>
 
-      {/* Search Modal */}
-      <Modal visible={showSearchModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeSearchModal}>
-        <View style={[styles.searchModal, { paddingTop: insets.top }]}>
-          <View style={styles.searchModalHeader}>
-            <View style={styles.searchInputContainer}>
-              <Icon name="search" size={18} color="#9CA3AF" />
-              <TextInput
-                ref={searchInputRef}
-                style={styles.searchInput}
-                placeholder="Search invoices, parties, products..."
-                placeholderTextColor="#9CA3AF"
-                value={searchQuery}
-                onChangeText={handleSearch}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => handleSearch('')}>
-                  <Icon name="x-circle" size={18} color="#9CA3AF" />
-                </TouchableOpacity>
-              )}
+      {/* ── Global Search Modal ── */}
+      <Modal visible={showSearch} animationType="fade" transparent onRequestClose={closeSearch}>
+        <View style={s.searchOverlay}>
+          <View style={[s.searchSheet, { paddingTop: insets.top + 8 }]}>
+            {/* Search input */}
+            <View style={s.searchHeader}>
+              <View style={s.searchInputWrap}>
+                <Icon name="search" size={16} color={COLORS.textMute} />
+                <TextInput
+                  ref={searchRef}
+                  style={s.searchInput}
+                  placeholder="Search invoices, parties, products..."
+                  placeholderTextColor={COLORS.textMute}
+                  value={searchQuery}
+                  onChangeText={handleSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => handleSearch('')}>
+                    <Icon name="x" size={15} color={COLORS.textMute} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity style={s.searchCancel} onPress={closeSearch}>
+                <Text style={s.searchCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.searchCancelBtn} onPress={closeSearchModal}>
-              <Text style={styles.searchCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
 
-          <ScrollView style={styles.searchResults} keyboardShouldPersistTaps="handled">
-            {searching ? (
-              <View style={styles.searchLoading}>
-                <ActivityIndicator size="small" color="#FF6B00" />
-                <Text style={styles.searchLoadingText}>Searching...</Text>
-              </View>
-            ) : searchResults ? (
-              getTotalResults() > 0 ? (
-                <>
-                  {searchResults.invoices?.length > 0 && (
-                    <View style={styles.searchSection}>
-                      <Text style={styles.searchSectionTitle}>Invoices ({searchResults.invoices.length})</Text>
-                      {searchResults.invoices.map(item => <SearchResultItem key={`inv-${item.id}`} type="invoice" item={item} />)}
-                    </View>
-                  )}
-                  {searchResults.quotations?.length > 0 && (
-                    <View style={styles.searchSection}>
-                      <Text style={styles.searchSectionTitle}>Quotations ({searchResults.quotations.length})</Text>
-                      {searchResults.quotations.map(item => <SearchResultItem key={`quo-${item.id}`} type="quotation" item={item} />)}
-                    </View>
-                  )}
-                  {searchResults.parties?.length > 0 && (
-                    <View style={styles.searchSection}>
-                      <Text style={styles.searchSectionTitle}>Parties ({searchResults.parties.length})</Text>
-                      {searchResults.parties.map(item => <SearchResultItem key={`par-${item.id}`} type="party" item={item} />)}
-                    </View>
-                  )}
-                  {searchResults.products?.length > 0 && (
-                    <View style={styles.searchSection}>
-                      <Text style={styles.searchSectionTitle}>Products ({searchResults.products.length})</Text>
-                      {searchResults.products.map(item => <SearchResultItem key={`pro-${item.id}`} type="product" item={item} />)}
-                    </View>
-                  )}
-                </>
-              ) : (
-                <View style={styles.noResults}>
-                  <Icon name="search" size={48} color="#E5E7EB" />
-                  <Text style={styles.noResultsText}>No results found</Text>
-                  <Text style={styles.noResultsHint}>Try different keywords</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
+              {searching ? (
+                <View style={s.searchLoading}>
+                  <ActivityIndicator size="small" color={BRAND} />
+                  <Text style={s.searchLoadingTxt}>Searching...</Text>
                 </View>
-              )
-            ) : (
-              <View style={styles.searchHints}>
-                <Text style={styles.searchHintsTitle}>Search for</Text>
-                {[
-                  { icon: 'file-text', color: '#3B82F6', text: 'Invoice numbers (INV-0001)' },
-                  { icon: 'clipboard', color: '#8B5CF6', text: 'Quotation numbers (QUO-0001)' },
-                  { icon: 'user', color: '#10B981', text: 'Party names or phone numbers' },
-                  { icon: 'package', color: '#F59E0B', text: 'Product names or SKU' },
-                ].map((hint, i) => (
-                  <View key={i} style={styles.searchHintItem}>
-                    <Icon name={hint.icon} size={16} color={hint.color} />
-                    <Text style={styles.searchHintText}>{hint.text}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </ScrollView>
+              ) : searchResults ? (
+                (() => {
+                  const total = (searchResults.invoices?.length || 0) +
+                    (searchResults.quotations?.length || 0) +
+                    (searchResults.parties?.length || 0) +
+                    (searchResults.products?.length || 0);
+                  return total === 0 ? (
+                    <View style={s.searchEmpty}>
+                      <Icon name="search" size={36} color={COLORS.border} />
+                      <Text style={s.searchEmptyTxt}>No results for "{searchQuery}"</Text>
+                    </View>
+                  ) : (
+                    <>
+                      {[
+                        { key: 'invoices',   type: 'invoice',   label: 'Invoices',   icon: 'file-text', color: '#3B82F6' },
+                        { key: 'quotations', type: 'quotation', label: 'Quotations', icon: 'clipboard', color: '#8B5CF6' },
+                        { key: 'parties',    type: 'party',     label: 'Parties',    icon: 'users',     color: '#10B981' },
+                        { key: 'products',   type: 'product',   label: 'Products',   icon: 'package',   color: '#F59E0B' },
+                      ].map(({ key, type, label, icon, color }) =>
+                        searchResults[key]?.length > 0 ? (
+                          <View key={key} style={s.searchSection}>
+                            <Text style={s.searchSectionTitle}>{label} ({searchResults[key].length})</Text>
+                            {searchResults[key].map(item => {
+                              const title = item.invoice_number || item.quote_number || item.name;
+                              const sub = type === 'invoice'   ? `${item.party_name || 'Walk-in'} · ${formatINR(item.total)}`
+                                        : type === 'quotation' ? `${item.party_name || 'No party'} · ${formatINR(item.total)}`
+                                        : type === 'party'     ? `${item.phone || ''} · Bal: ${formatINR(Math.abs(item.balance || 0))}`
+                                        : `₹${item.price} · Stock: ${item.stock || 0}`;
+                              return (
+                                <TouchableOpacity
+                                  key={`${type}-${item.id}`}
+                                  style={s.searchResultRow}
+                                  onPress={() => goResult(type, item)}
+                                >
+                                  <View style={[s.searchResultIcon, { backgroundColor: color + '18' }]}>
+                                    <Icon name={icon} size={16} color={color} />
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={s.searchResultTitle} numberOfLines={1}>{title}</Text>
+                                    <Text style={s.searchResultSub} numberOfLines={1}>{sub}</Text>
+                                  </View>
+                                  <Icon name="chevron-right" size={14} color={COLORS.border} />
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        ) : null
+                      )}
+                    </>
+                  );
+                })()
+              ) : (
+                <View style={s.searchHints}>
+                  <Text style={s.searchHintsTitle}>Search across everything</Text>
+                  {[
+                    { icon: 'file-text', color: '#3B82F6', text: 'Invoice numbers — INV-0001' },
+                    { icon: 'clipboard', color: '#8B5CF6', text: 'Quotation numbers — QUO-0001' },
+                    { icon: 'users',     color: '#10B981', text: 'Party names or phone numbers' },
+                    { icon: 'package',   color: '#F59E0B', text: 'Product names or HSN codes' },
+                  ].map((h, i) => (
+                    <View key={i} style={s.searchHintRow}>
+                      <Icon name={h.icon} size={15} color={h.color} />
+                      <Text style={s.searchHintTxt}>{h.text}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  loadingContainer: { alignItems: 'center', justifyContent: 'center' },
-  header: { backgroundColor: '#1F2937', paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoWrap: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  logoImg: { width: 28, height: 28 },
-  greeting: { fontSize: 12, color: 'rgba(255,255,255,0.6)' },
-  bizName: { fontSize: 17, fontWeight: '700', color: '#fff', maxWidth: 180 },
-  headerBtn: { padding: 8 },
-  scroll: { padding: 16 },
+// ── Sub-components ──────────────────────────────────────────────
+function SectionHeader({ title, action, onAction }) {
+  return (
+    <View style={s.sectionHeader}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      {action && (
+        <TouchableOpacity onPress={onAction}>
+          <Text style={s.sectionAction}>{action} →</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
 
-  // Search Bar
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16, gap: 10, borderWidth: 1, borderColor: '#E5E7EB' },
-  searchPlaceholder: { fontSize: 14, color: '#9CA3AF', flex: 1 },
+function HeroStat({ label, value, color }) {
+  return (
+    <View style={s.heroStat}>
+      <Text style={[s.heroStatVal, { color }]}>{value}</Text>
+      <Text style={s.heroStatLbl}>{label}</Text>
+    </View>
+  );
+}
+
+// ── Styles ──────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  center:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll:    { padding: 16 },
+  scrollWide:{ padding: 24 },
+
+  // Top bar
+  topBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.card,
+    padding: 14, borderRadius: RADIUS.lg,
+    marginBottom: 12,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  greetTxt: { fontSize: 12, color: COLORS.textMute, marginBottom: 1 },
+  bizName:  { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text, maxWidth: 220 },
+  searchTrigger: { width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  settingsBtn:   { width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
 
   // Banners
-  licenseBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FEF3C7', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#FCD34D' },
-  updateBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FF6B00', padding: 12, borderRadius: 12, marginBottom: 12 },
-  alertBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#FECACA' },
-  bannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  bannerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  licenseText: { fontSize: 13, fontWeight: '500', color: '#92400E' },
-  updateText: { fontSize: 13, fontWeight: '500', color: '#fff' },
-  alertText: { fontSize: 13, fontWeight: '500', color: '#DC2626' },
-  licenseRenewBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6 },
-  licenseRenewText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-  updateBtn: { backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6 },
-  updateBtnText: { fontSize: 12, fontWeight: '700', color: '#FF6B00' },
+  bannerWarn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF3C7', borderRadius: RADIUS.md,
+    padding: 11, marginBottom: 10,
+    borderWidth: 1, borderColor: '#FDE68A',
+  },
+  bannerWarnTxt:  { flex: 1, fontSize: 12, fontWeight: FONTS.medium, color: '#92400E' },
+  bannerRenewBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  bannerRenewTxt: { fontSize: 11, fontWeight: FONTS.bold, color: '#fff' },
+  bannerDanger: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF2F2', borderRadius: RADIUS.md,
+    padding: 11, marginBottom: 10,
+    borderWidth: 1, borderColor: '#FECACA',
+  },
+  bannerDangerTxt: { flex: 1, fontSize: 12, fontWeight: FONTS.medium, color: '#991B1B' },
 
-  // Revenue Card
-  revenueCard: { backgroundColor: '#1F2937', borderRadius: 16, padding: 20, marginBottom: 16 },
-  revenueHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  revenueLabel: { fontSize: 13, color: 'rgba(255,255,255,0.6)' },
-  growthBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  growthBadgeNeg: { backgroundColor: 'rgba(239,68,68,0.15)' },
-  growthText: { fontSize: 12, fontWeight: '600', color: '#10B981' },
-  growthTextNeg: { color: '#EF4444' },
-  revenueValue: { fontSize: 32, fontWeight: '800', color: '#fff', marginBottom: 16 },
-  revenueStats: { flexDirection: 'row', alignItems: 'center' },
-  revenueStat: { flex: 1, alignItems: 'center' },
-  revenueStatLabel: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 2 },
-  revenueStatValue: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  revenueStatDivider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' },
+  // Hero card
+  heroCard: {
+    backgroundColor: '#0F172A', borderRadius: RADIUS.xl,
+    padding: 20, marginBottom: 14,
+  },
+  heroTop:  { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 },
+  heroLabel:{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 },
+  heroAmt:  { fontSize: 30, fontWeight: FONTS.black, color: '#fff', marginBottom: 2 },
+  heroSub:  { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
+  heroBadge:{ width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,107,0,0.15)', alignItems: 'center', justifyContent: 'center' },
+  heroRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.md, padding: 12 },
+  heroStat: { flex: 1, alignItems: 'center' },
+  heroStatVal: { fontSize: 13, fontWeight: FONTS.bold, marginBottom: 2 },
+  heroStatLbl: { fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.4 },
+  heroDiv:  { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.08)' },
 
-  // Stats
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
-  statCard: { width: cardWidth, padding: 14, borderRadius: 14 },
-  statIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  statValue: { fontSize: 20, fontWeight: '800', color: '#1F2937', marginBottom: 2 },
-  statLabel: { fontSize: 11, color: '#6B7280' },
+  // KPI grid
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  kpiTile: {
+    flex: 1, minWidth: '45%',
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg, padding: 14,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderTopWidth: 3,
+  },
+  kpiIcon: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  kpiAmt:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 2 },
+  kpiLbl:  { fontSize: 12, fontWeight: FONTS.semibold, color: COLORS.text, marginBottom: 1 },
+  kpiSub:  { fontSize: 10, color: COLORS.textMute },
 
-  // Sections
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, marginTop: 8 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1F2937', marginBottom: 12 },
-  seeAllBtn: { fontSize: 13, fontWeight: '600', color: '#FF6B00' },
+  // Quick actions
+  qaScroll: { paddingBottom: 4, gap: 10, marginBottom: 14 },
+  qaItem:   { alignItems: 'center', width: 72 },
+  qaIcon:   { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  qaLabel:  { fontSize: 10, color: COLORS.textSub, textAlign: 'center', fontWeight: FONTS.medium, lineHeight: 13 },
 
-  // Quick Actions
-  quickActionsScroll: { marginBottom: 20, marginHorizontal: -16, paddingHorizontal: 16 },
-  quickAction: { alignItems: 'center', marginRight: 16, width: 70 },
-  quickActionIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  quickActionLabel: { fontSize: 11, color: '#6B7280', textAlign: 'center' },
+  // Section header
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, marginTop: 6 },
+  sectionTitle:  { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text },
+  sectionAction: { fontSize: 12, color: BRAND, fontWeight: FONTS.semibold },
 
-  // List
-  listCard: { backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', marginBottom: 20 },
-  rowBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  invoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
-  invoiceLeft: { flex: 1 },
-  invoiceNumber: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
-  invoiceParty: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  invoiceRight: { alignItems: 'flex-end' },
-  invoiceAmount: { fontSize: 14, fontWeight: '700', color: '#1F2937' },
-  invoiceMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  invoiceDate: { fontSize: 11, color: '#9CA3AF' },
-  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D1D5DB' },
+  // Wide layout
+  wideColumns: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
+  wideLeft:    { flex: 1.5 },
+  wideRight:   { flex: 1 },
 
-  // Party
-  partyRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-  partyAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  partyInitial: { fontSize: 16, fontWeight: '700', color: '#6B7280' },
-  partyInfo: { flex: 1 },
-  partyName: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
-  partyPhone: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  partyBalance: { alignItems: 'flex-end' },
-  partyAmount: { fontSize: 14, fontWeight: '700', color: '#1F2937' },
-  partyBalanceLabel: { fontSize: 10, color: '#9CA3AF', marginTop: 2 },
+  // Table card
+  tableCard: {
+    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
+    borderWidth: 1, borderColor: COLORS.border,
+    overflow: 'hidden', marginBottom: 14,
+  },
+  tHead: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  tHLabel: { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.5 },
+  tRow:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  tRowEven:{ backgroundColor: '#FAFBFF' },
+  tInvNum: { fontSize: 13, fontWeight: FONTS.bold, color: BRAND },
+  tDate:   { fontSize: 10, color: COLORS.textMute, marginTop: 1 },
+  tCell:   { fontSize: 13, color: COLORS.text },
+  tAmt:    { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.text, textAlign: 'right' },
+  customerDot: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  customerDotTxt: { fontSize: 11, fontWeight: FONTS.black, color: '#fff' },
+
+  // List card
+  listCard: {
+    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
+    borderWidth: 1, borderColor: COLORS.border,
+    overflow: 'hidden', marginBottom: 14,
+  },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
+
+  // Party rows
+  partyRow:      { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  partyAvatar:   { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  partyAvatarTxt:{ fontSize: 14, fontWeight: FONTS.black, color: BRAND },
+  partyName:     { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
+  partySub:      { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
+  partyAmt:      { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.text },
+  partyLbl:      { fontSize: 10, color: COLORS.textMute, marginTop: 1 },
+
+  // PO rows
+  poRow:   { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  poIcon:  { width: 32, height: 32, borderRadius: 8, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  poNum:   { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.text },
+  poParty: { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
+
+  // Stock rows
+  stockRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  stockName:{ fontSize: 13, fontWeight: FONTS.medium, color: COLORS.text, marginBottom: 6 },
+  stockBar: { height: 4, backgroundColor: COLORS.border, borderRadius: 2, overflow: 'hidden' },
+  stockFill:{ height: 4, borderRadius: 2 },
+  stockQty: { fontSize: 13, fontWeight: FONTS.bold },
+  stockMin: { fontSize: 10, color: COLORS.textMute, marginTop: 1 },
+
+  // Pills
+  pill:    { paddingHorizontal: 7, paddingVertical: 3, borderRadius: RADIUS.full },
+  pillTxt: { fontSize: 9, fontWeight: FONTS.black, letterSpacing: 0.3 },
 
   // Empty
-  emptyCard: { backgroundColor: '#fff', borderRadius: 14, padding: 32, alignItems: 'center', marginBottom: 20 },
-  emptyText: { fontSize: 14, color: '#9CA3AF', marginTop: 12, marginBottom: 16 },
-  emptyBtn: { backgroundColor: '#FF6B00', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  emptyBtnText: { fontSize: 13, fontWeight: '600', color: '#fff' },
+  emptyRow:    { padding: 28, alignItems: 'center', gap: 8 },
+  emptyTxt:    { fontSize: 13, color: COLORS.textMute },
+  emptyAction: { marginTop: 4 },
+  emptyActionTxt: { fontSize: 13, color: BRAND, fontWeight: FONTS.semibold },
 
-  // Summary
-  summaryGrid: { backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden' },
-  summaryItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 12 },
-  summaryItemContent: { flex: 1 },
-  summaryItemValue: { fontSize: 16, fontWeight: '700', color: '#1F2937' },
-  summaryItemLabel: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-
-  // Search Modal
-  searchModal: { flex: 1, backgroundColor: '#F9FAFB' },
-  searchModalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', gap: 12 },
-  searchInputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
-  searchInput: { flex: 1, fontSize: 15, color: '#1F2937' },
-  searchCancelBtn: { paddingVertical: 8, paddingLeft: 4 },
-  searchCancelText: { fontSize: 15, fontWeight: '500', color: '#FF6B00' },
-  searchResults: { flex: 1, padding: 16 },
-  searchLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 32, gap: 8 },
-  searchLoadingText: { fontSize: 14, color: '#6B7280' },
-  searchSection: { marginBottom: 20 },
-  searchSectionTitle: { fontSize: 13, fontWeight: '600', color: '#6B7280', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  searchResultItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, gap: 12 },
-  searchResultIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  searchResultContent: { flex: 1 },
-  searchResultHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  searchResultTitle: { fontSize: 14, fontWeight: '600', color: '#1F2937', flex: 1 },
-  searchResultLabel: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  searchResultLabelText: { fontSize: 9, fontWeight: '700' },
-  searchResultSubtitle: { fontSize: 12, color: '#6B7280' },
-  noResults: { alignItems: 'center', paddingVertical: 48 },
-  noResultsText: { fontSize: 16, fontWeight: '600', color: '#6B7280', marginTop: 16 },
-  noResultsHint: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
-  searchHints: { paddingVertical: 16 },
-  searchHintsTitle: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 16 },
-  searchHintItem: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  searchHintText: { fontSize: 14, color: '#6B7280' },
+  // Search modal
+  searchOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  searchSheet:   { flex: 1, backgroundColor: COLORS.bg },
+  searchHeader:  {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingBottom: 10,
+    backgroundColor: COLORS.card,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  searchInputWrap: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.bg, borderRadius: RADIUS.md,
+    paddingHorizontal: 12, paddingVertical: 9,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  searchInput:     { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 0 },
+  searchCancel:    { paddingLeft: 4, paddingVertical: 8 },
+  searchCancelTxt: { fontSize: 14, fontWeight: FONTS.semibold, color: BRAND },
+  searchLoading:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 10 },
+  searchLoadingTxt:{ fontSize: 14, color: COLORS.textSub },
+  searchEmpty:     { alignItems: 'center', paddingVertical: 48, gap: 10 },
+  searchEmptyTxt:  { fontSize: 14, color: COLORS.textMute },
+  searchSection:   { padding: 14 },
+  searchSectionTitle: { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8 },
+  searchResultRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
+    padding: 11, marginBottom: 6,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  searchResultIcon:  { width: 36, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  searchResultTitle: { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
+  searchResultSub:   { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
+  searchHints:     { padding: 20 },
+  searchHintsTitle:{ fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 16 },
+  searchHintRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  searchHintTxt:   { fontSize: 13, color: COLORS.textSub },
 });

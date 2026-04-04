@@ -9,7 +9,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   getQuotationDetail, updateQuotationStatus, deleteQuotation,
   convertQuotationToInvoice, getProfile,
+  getOpenPOsForParty, getPurchaseOrderDetail, recordPODelivery,
 } from '../../db';
+import PODeliveryModal from '../PurchaseOrder/PODeliveryModal';
 import { formatINR } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 
@@ -28,6 +30,9 @@ export default function QuotationDetailScreen({ navigation, route }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
+  const [poModal, setPOModal]         = useState(false);
+  const [openPOs, setOpenPOs]         = useState([]);
+  const [createdInvoiceId, setCreatedInvoiceId] = useState(null);
 
   const load = async () => {
     try {
@@ -81,23 +86,31 @@ export default function QuotationDetailScreen({ navigation, route }) {
     setConverting(true);
     try {
       const invoiceId = await convertQuotationToInvoice(id);
-      // On web show a simple confirm to navigate; on native use Alert
+      setCreatedInvoiceId(invoiceId);
+
+      // Check if this customer has open POs that this invoice might fulfill
+      if (quotation.party_id) {
+        try {
+          const pos = await getOpenPOsForParty(quotation.party_id);
+          if (pos.length > 0) {
+            const posWithItems = await Promise.all(pos.map(p => getPurchaseOrderDetail(p.id)));
+            setOpenPOs(posWithItems);
+            setPOModal(true);
+            return; // PO modal will handle navigation after
+          }
+        } catch (_) {}
+      }
+
+      // No POs — navigate directly
       if (Platform.OS === 'web') {
         const viewNow = window.confirm('Invoice created successfully!\n\nClick OK to view the invoice, or Cancel to stay here.');
-        if (viewNow) {
-          navigation.replace('InvoiceDetail', { invoiceId });
-        } else {
-          load();
-        }
+        if (viewNow) navigation.replace('InvoiceDetail', { invoiceId });
+        else load();
       } else {
-        Alert.alert(
-          'Success',
-          'Invoice created successfully!',
-          [
-            { text: 'View Invoice', onPress: () => navigation.replace('InvoiceDetail', { invoiceId }) },
-            { text: 'Stay Here',    onPress: () => load() },
-          ]
-        );
+        Alert.alert('Success', 'Invoice created successfully!', [
+          { text: 'View Invoice', onPress: () => navigation.replace('InvoiceDetail', { invoiceId }) },
+          { text: 'Stay Here',    onPress: () => load() },
+        ]);
       }
     } catch (e) {
       if (Platform.OS === 'web') {
@@ -154,6 +167,23 @@ export default function QuotationDetailScreen({ navigation, route }) {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handlePOConfirm = async (poDelivery) => {
+    setPOModal(false);
+    try {
+      if (poDelivery?.poId && poDelivery?.deliveries?.length > 0) {
+        await recordPODelivery(poDelivery.poId, poDelivery.deliveries);
+      }
+    } catch (e) { console.warn('PO delivery record failed:', e.message); }
+    if (createdInvoiceId) navigation.replace('InvoiceDetail', { invoiceId: createdInvoiceId });
+    else load();
+  };
+
+  const handlePOSkip = () => {
+    setPOModal(false);
+    if (createdInvoiceId) navigation.replace('InvoiceDetail', { invoiceId: createdInvoiceId });
+    else load();
   };
 
   if (loading) {
@@ -381,6 +411,14 @@ export default function QuotationDetailScreen({ navigation, route }) {
           </TouchableOpacity>
         )}
       </View>
+      {/* PO Delivery Modal — shown after quotation→invoice conversion */}
+      <PODeliveryModal
+        visible={poModal}
+        pos={openPOs}
+        invoiceItems={quotation?.items || []}
+        onConfirm={handlePOConfirm}
+        onSkip={handlePOSkip}
+      />
     </View>
   );
 }

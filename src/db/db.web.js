@@ -929,7 +929,7 @@ export async function getPurchaseOrders(filters = {}) {
   const all = [];
   await stores_po.purchase_orders.iterate((val) => { if (!val.deleted_at) all.push(val); });
   let result = all;
-  if (filters.party_id) result = result.filter(p => p.party_id === filters.party_id);
+  if (filters.party_id) result = result.filter(p => Number(p.party_id) === Number(filters.party_id));
   if (filters.status)   result = result.filter(p => p.status === filters.status);
   return result.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }

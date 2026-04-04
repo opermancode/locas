@@ -25,12 +25,13 @@ export default function PODeliveryModal({ visible, pos, invoiceItems, onConfirm,
       const pre = {};
       pos[0]?.items?.forEach(poItem => {
         const match = invoiceItems?.find(ii =>
-          ii.name?.toLowerCase() === poItem.name?.toLowerCase() ||
-          (ii.item_id && ii.item_id === poItem.item_id)
+          ii.name?.toLowerCase().trim() === poItem.name?.toLowerCase().trim() ||
+          (ii.item_id && poItem.item_id && Number(ii.item_id) === Number(poItem.item_id))
         );
         if (match) {
           const remaining = poItem.qty_ordered - (poItem.qty_delivered || 0);
-          pre[poItem.id] = String(Math.min(remaining, parseFloat(match.qty) || 0));
+          const invoiceQty = parseFloat(match.qty) || parseFloat(match.qty_ordered) || 0;
+          pre[poItem.id] = String(Math.min(remaining, invoiceQty));
         }
       });
       setDeliveries(pre);

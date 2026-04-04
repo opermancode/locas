@@ -10,7 +10,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getParties, getItems,
   saveInvoice, getProfile, peekNextInvoiceNumber,
+  getOpenPOsForParty, recordPODelivery,
 } from '../../db';
+import PODeliveryModal from '../PurchaseOrder/PODeliveryModal';
 import {
   calcLineItem, calcInvoiceTotals, detectSupplyType,
   GST_RATES, formatINR, today, addDays, PAYMENT_METHODS, round,
@@ -42,6 +44,11 @@ export default function CreateInvoice({ navigation, route }) {
   const [totals, setTotals]     = useState({});
   const [profile, setProfile]   = useState(null);
   const [saving, setSaving]     = useState(false);
+
+  // ── PO linking state ──────────────────────────────────────────
+  const [openPOs, setOpenPOs]       = useState([]);
+  const [poModal, setPOModal]       = useState(false);
+  const [pendingSave, setPendingSave] = useState(null); // holds invoice+lineItems while PO modal is open
 
   // ── Modal state ───────────────────────────────────────────────
   const [partyModal, setPartyModal] = useState(false);
@@ -233,7 +240,7 @@ export default function CreateInvoice({ navigation, route }) {
     setSaving(true);
     try {
       const invoice = {
-        ...(editInvoice ? { id: editInvoice.id } : {}),  // pass id for UPDATE
+        ...(editInvoice ? { id: editInvoice.id } : {}),
         type:             'sale',
         party_id:         party?.id || null,
         party_name:       party?.name || '',
@@ -258,7 +265,7 @@ export default function CreateInvoice({ navigation, route }) {
         terms,
       };
 
-      const invoiceId = await saveInvoice(invoice, lineItems.map(it => ({
+      const mappedItems = lineItems.map(it => ({
         item_id:  it.item_id,
         name:     it.name,
         hsn:      it.hsn || '',
@@ -272,13 +279,67 @@ export default function CreateInvoice({ navigation, route }) {
         sgst:     it.sgst,
         igst:     it.igst,
         total:    it.total,
-      })));
+      }));
+
+      // ── Check for open POs for this customer (only on new invoices for sales) ──
+      if (!editInvoice && party?.id) {
+        try {
+          const pos = await getOpenPOsForParty(party.id);
+          if (pos.length > 0) {
+            // Load full details for each PO
+            const { getPurchaseOrderDetail } = await import('../../db');
+            const posWithItems = await Promise.all(pos.map(p => getPurchaseOrderDetail(p.id)));
+            setPendingSave({ invoice, mappedItems });
+            setOpenPOs(posWithItems);
+            setPOModal(true);
+            setSaving(false);
+            return; // wait for PO modal response
+          }
+        } catch (_) {} // if PO check fails, just save normally
+      }
+
+      await doSave(invoice, mappedItems, null);
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to save');
+      setSaving(false);
+    }
+  };
+
+  const doSave = async (invoice, mappedItems, poDelivery) => {
+    setSaving(true);
+    try {
+      const invoiceId = await saveInvoice(invoice, mappedItems);
+
+      // Record PO delivery if user linked this invoice to a PO
+      if (poDelivery?.poId && poDelivery?.deliveries?.length > 0) {
+        try {
+          await recordPODelivery(poDelivery.poId, poDelivery.deliveries);
+        } catch (e) {
+          console.warn('PO delivery record failed:', e.message);
+        }
+      }
 
       navigation.replace('InvoiceDetail', { invoiceId });
     } catch (e) {
-      Alert.alert('Error', e.message);
+      Alert.alert('Error', e.message || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Called when user confirms PO delivery from the modal
+  const handlePOConfirm = (poDelivery) => {
+    setPOModal(false);
+    if (pendingSave) {
+      doSave(pendingSave.invoice, pendingSave.mappedItems, poDelivery);
+    }
+  };
+
+  // Called when user skips PO linking
+  const handlePOSkip = () => {
+    setPOModal(false);
+    if (pendingSave) {
+      doSave(pendingSave.invoice, pendingSave.mappedItems, null);
     }
   };
 
@@ -909,6 +970,15 @@ export default function CreateInvoice({ navigation, route }) {
           )}
         </View>
       </Modal>
+      {/* ══ PO Delivery Modal ═══════════════════════════════ */}
+      <PODeliveryModal
+        visible={poModal}
+        pos={openPOs}
+        invoiceItems={lineItems}
+        onConfirm={handlePOConfirm}
+        onSkip={handlePOSkip}
+      />
+
     </KeyboardAvoidingView>
   );
 }
