@@ -114,6 +114,7 @@ export default function InventoryScreen({ navigation, route }) {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkSaving,  setBulkSaving]  = useState(false);
   const [bulkDone,    setBulkDone]    = useState(null);
+  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'product' | 'service'
 
   const load = async () => {
     try {
@@ -136,8 +137,6 @@ export default function InventoryScreen({ navigation, route }) {
       navigation.setParams({ openAdd: false });
     }
   }, []));
-
-  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'product' | 'service'
 
   const apply = (data, q, lowOnly, tFilter) => {
     let out = data;
