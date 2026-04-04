@@ -13,7 +13,7 @@ import { formatINRCompact, formatINR } from '../../utils/gst';
 import { getLicenseStatus } from '../../utils/licenseSystem';
 import { COLORS, RADIUS, FONTS } from '../../theme';
 
-const RENEW_URL = 'https://locas-business.vercel.app/renew';
+const RENEW_URL = 'https://locas-business.vercel.app/renew.html';
 const BRAND = '#FF6B00';
 
 // ── Sparkline (hero card top-right) ───────────────────────────────
