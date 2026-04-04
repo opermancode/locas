@@ -11,6 +11,15 @@ const WebView = Platform.OS === 'web'
   ? ({ source, style }) => {
       const iframeRef = React.useRef(null);
       const [h, setH] = React.useState(style?.height || 900);
+      // Use blob URL instead of encodeURIComponent — avoids encoding 15KB HTML string on every render
+      const blobUrl = React.useMemo(() => {
+        if (!source?.html) return null;
+        const blob = new Blob([source.html], { type: 'text/html;charset=utf-8' });
+        return URL.createObjectURL(blob);
+      }, [source?.html]);
+      React.useEffect(() => {
+        return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+      }, [blobUrl]);
       React.useEffect(() => {
         const el = iframeRef.current;
         if (!el) return;
@@ -22,10 +31,10 @@ const WebView = Platform.OS === 'web'
         };
         el.addEventListener('load', onLoad);
         return () => el.removeEventListener('load', onLoad);
-      }, [source?.html]);
+      }, [blobUrl]);
       return React.createElement('iframe', {
         ref: iframeRef,
-        src: source?.html ? `data:text/html,${encodeURIComponent(source.html)}` : source?.uri,
+        src: blobUrl || source?.uri,
         style: { border: 'none', width: '100%', height: h, display: 'block' },
       });
     }

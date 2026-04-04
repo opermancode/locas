@@ -348,6 +348,10 @@ export default function InventoryScreen({ navigation, route }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
         contentContainerStyle={styles.list}
+        windowSize={5}
+        maxToRenderPerBatch={10}
+        initialNumToRender={12}
+        removeClippedSubviews={true}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Icon name="package" size={32} color={COLORS.primary} />
