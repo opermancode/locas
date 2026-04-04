@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, Modal, ScrollView, Alert, RefreshControl, StatusBar,
+  ActivityIndicator, FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -24,6 +25,62 @@ const EMPTY_FORM = {
 const SERVICE_UNITS = ['hrs', 'days', 'visit', 'job', 'month', 'year', 'fixed'];
 const PRODUCT_UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'metre', 'box', 'bag', 'dozen', 'set'];
 
+// Bulk upload template columns
+const ITEM_TEMPLATE_COLS  = ['Name*', 'Type (product/service)*', 'Sale Price*', 'Purchase Price', 'GST% (0/5/12/18/28)', 'Unit', 'HSN/SAC', 'Item Code', 'Opening Stock', 'Min Stock Alert', 'Description'];
+const ITEM_TEMPLATE_SAMPLE = [
+  ['Rice 25kg Bag', 'product', '1200', '950', '5', 'kg', '1006', 'RICE25', '50', '10', ''],
+  ['Installation Charges', 'service', '2500', '', '18', 'hrs', '9987', 'INST01', '', '', 'Labour charges for installation'],
+];
+
+// CSV helpers
+function escCSV(v) {
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r => r.map(escCSV).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Parse uploaded items CSV
+function parseItemsCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) throw new Error('File must have a header row and at least one data row');
+  const header = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+  const col = (key) => header.findIndex(h => h.includes(key));
+  const nameIdx  = col('name'), typeIdx = col('type'), saleIdx = col('sale');
+  const buyIdx   = col('purchase'), gstIdx  = col('gst'), unitIdx = col('unit');
+  const hsnIdx   = col('hsn'), codeIdx = col('code'), stockIdx = col('stock');
+  const minIdx   = col('min'), descIdx = col('desc');
+  if (nameIdx === -1) throw new Error('Could not find "Name" column');
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    // Handle quoted commas
+    const cols = lines[i].match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || lines[i].split(',').map(c => c.trim());
+    const name = nameIdx !== -1 ? cols[nameIdx] : '';
+    if (!name) continue;
+    const type = typeIdx !== -1 ? (cols[typeIdx]?.toLowerCase() || 'product') : 'product';
+    results.push({
+      name,
+      item_type:      type === 'service' ? 'service' : 'product',
+      sale_price:     saleIdx  !== -1 ? parseFloat(cols[saleIdx]  || '0') || 0 : 0,
+      purchase_price: buyIdx   !== -1 ? parseFloat(cols[buyIdx]   || '0') || 0 : 0,
+      gst_rate:       gstIdx   !== -1 ? parseInt(cols[gstIdx]     || '18') || 18 : 18,
+      unit:           unitIdx  !== -1 ? cols[unitIdx] || (type === 'service' ? 'hrs' : 'pcs') : 'pcs',
+      hsn:            hsnIdx   !== -1 ? cols[hsnIdx]  || '' : '',
+      code:           codeIdx  !== -1 ? cols[codeIdx] || '' : '',
+      stock:          stockIdx !== -1 ? parseFloat(cols[stockIdx] || '0') || 0 : 0,
+      min_stock:      minIdx   !== -1 ? parseFloat(cols[minIdx]   || '0') || 0 : 0,
+      description:    descIdx  !== -1 ? cols[descIdx] || '' : '',
+    });
+  }
+  return results;
+}
+
 export default function InventoryScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
 
@@ -36,6 +93,13 @@ export default function InventoryScreen({ navigation, route }) {
   const [modal, setModal]   = useState(false);
   const [form, setForm]     = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+
+  // Bulk upload state
+  const [bulkModal,   setBulkModal]   = useState(false);
+  const [bulkParsed,  setBulkParsed]  = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkSaving,  setBulkSaving]  = useState(false);
+  const [bulkDone,    setBulkDone]    = useState(null);
 
   const load = async () => {
     try {
@@ -341,11 +405,17 @@ export default function InventoryScreen({ navigation, route }) {
           <Text style={s.headerSub}>{items.length} item{items.length !== 1 ? 's' : ''}</Text>
         </View>
         <View style={s.headerBtns}>
-          {/* Excel-style export icon button */}
+          {/* Excel export */}
           <TouchableOpacity style={s.excelBtn} onPress={exportStockInventory}>
             <ExcelIcon />
             <Text style={s.excelBtnTxt}>Export</Text>
           </TouchableOpacity>
+          {/* Bulk Upload */}
+          <TouchableOpacity style={s.bulkBtn} onPress={openBulkModal}>
+            <Icon name="upload" size={14} color="#8B5CF6" />
+            <Text style={s.bulkBtnTxt}>Bulk Upload</Text>
+          </TouchableOpacity>
+          {/* Add single */}
           <TouchableOpacity style={s.addBtn} onPress={openAdd}>
             <Icon name="plus" size={14} color="#fff" />
             <Text style={s.addBtnTxt}>Add Item</Text>
@@ -544,6 +614,160 @@ export default function InventoryScreen({ navigation, route }) {
           <View style={{ height: 40 }} />
         </ScrollView>
       </View>
+
+      {/* ── Bulk Upload Modal ─────────────────────────────── */}
+      <Modal visible={bulkModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={s.modalContainer}>
+          <View style={s.modalHeader}>
+            <TouchableOpacity onPress={() => { setBulkModal(false); setBulkParsed(null); setBulkDone(null); }}>
+              <Text style={s.modalCancel}>Close</Text>
+            </TouchableOpacity>
+            <Text style={s.modalTitle}>Bulk Item Upload</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <ScrollView style={s.modalScroll} keyboardShouldPersistTaps="handled">
+
+            {/* Step 1 */}
+            <View style={s.bulkStep}>
+              <View style={s.bulkStepNum}><Text style={s.bulkStepNumTxt}>1</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.bulkStepTitle}>Download Template</Text>
+                <Text style={s.bulkStepDesc}>Download the CSV template, fill your items, then upload it back.</Text>
+              </View>
+            </View>
+
+            {/* Template preview card */}
+            <View style={s.templateCard}>
+              <View style={s.templateHeader}>
+                <ExcelIcon />
+                <Text style={s.templateName}>LOCAS_Items_Template.csv</Text>
+              </View>
+              <View style={s.templateCols}>
+                {ITEM_TEMPLATE_COLS.map((col, i) => (
+                  <View key={i} style={[s.templateCol, col.includes('*') && s.templateColRequired]}>
+                    <Text style={[s.templateColTxt, col.includes('*') && s.templateColTxtRequired]}>
+                      {col.replace('*', '')}
+                      {col.includes('*') ? <Text style={{ color: COLORS.danger }}>*</Text> : null}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={s.templateHint}>* Required. GST must be one of: 0, 5, 12, 18, 28</Text>
+            </View>
+
+            <TouchableOpacity style={s.downloadBtn} onPress={handleDownloadTemplate}>
+              <ExcelIcon />
+              <Text style={s.downloadBtnTxt}>Download Template (.csv)</Text>
+            </TouchableOpacity>
+
+            {/* Step 2 */}
+            <View style={[s.bulkStep, { marginTop: 20 }]}>
+              <View style={s.bulkStepNum}><Text style={s.bulkStepNumTxt}>2</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.bulkStepTitle}>Upload Filled File</Text>
+                <Text style={s.bulkStepDesc}>Select your filled CSV to preview and import.</Text>
+              </View>
+            </View>
+
+            {/* Upload zone */}
+            {!bulkParsed && !bulkDone && (
+              <TouchableOpacity style={s.uploadZone} onPress={handlePickCSV} disabled={bulkLoading}>
+                {bulkLoading
+                  ? <ActivityIndicator size="large" color={COLORS.primary} />
+                  : <>
+                      <View style={s.uploadZoneIcon}>
+                        <Icon name="upload" size={28} color={COLORS.primary} />
+                      </View>
+                      <Text style={s.uploadZoneTitle}>Click to Select CSV File</Text>
+                      <Text style={s.uploadZoneSub}>Supported: .csv exported from Excel or Google Sheets</Text>
+                    </>
+                }
+              </TouchableOpacity>
+            )}
+
+            {/* Preview */}
+            {bulkParsed && (
+              <>
+                <View style={s.previewHeader}>
+                  <View style={s.previewBadge}>
+                    <Icon name="check-circle" size={14} color={COLORS.success} />
+                    <Text style={s.previewBadgeTxt}>{bulkParsed.length} items found</Text>
+                  </View>
+                  <TouchableOpacity style={s.rePickBtn} onPress={() => setBulkParsed(null)}>
+                    <Icon name="refresh-cw" size={13} color={COLORS.primary} />
+                    <Text style={s.rePickBtnTxt}>Change file</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={s.previewTable}>
+                  <View style={s.previewThead}>
+                    {['Name', 'Type', 'Sale ₹', 'GST%', 'Unit', 'Stock'].map((h, i) => (
+                      <Text key={h} style={[s.previewTh, i === 0 && { flex: 2 }]}>{h}</Text>
+                    ))}
+                  </View>
+                  {bulkParsed.slice(0, 8).map((item, i) => (
+                    <View key={i} style={[s.previewTrow, i % 2 === 0 && { backgroundColor: '#FAFBFF' }]}>
+                      <Text style={[s.previewTd, { flex: 2 }]} numberOfLines={1}>{item.name}</Text>
+                      <View style={[s.typePill,
+                        item.item_type === 'service' ? { backgroundColor: '#E0F2FE' } : { backgroundColor: COLORS.primaryLight }
+                      ]}>
+                        <Text style={[s.typePillTxt,
+                          { color: item.item_type === 'service' ? '#0369A1' : COLORS.primary, fontSize: 8 }
+                        ]}>
+                          {item.item_type === 'service' ? 'Svc' : 'Prd'}
+                        </Text>
+                      </View>
+                      <Text style={s.previewTd} numberOfLines={1}>₹{item.sale_price}</Text>
+                      <Text style={s.previewTd} numberOfLines={1}>{item.gst_rate}%</Text>
+                      <Text style={s.previewTd} numberOfLines={1}>{item.unit}</Text>
+                      <Text style={s.previewTd} numberOfLines={1}>
+                        {item.item_type === 'service' ? '—' : item.stock}
+                      </Text>
+                    </View>
+                  ))}
+                  {bulkParsed.length > 8 && (
+                    <View style={s.previewMore}>
+                      <Text style={s.previewMoreTxt}>+{bulkParsed.length - 8} more items</Text>
+                    </View>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={[s.importBtn, bulkSaving && { opacity: 0.5 }]}
+                  onPress={handleBulkSave}
+                  disabled={bulkSaving}
+                >
+                  {bulkSaving
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <><Icon name="upload" size={15} color="#fff" /><Text style={s.importBtnTxt}>  Import {bulkParsed.length} Items</Text></>
+                  }
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Success */}
+            {bulkDone && (
+              <View style={s.doneCard}>
+                <View style={s.doneIcon}>
+                  <Icon name="check-circle" size={32} color={COLORS.success} />
+                </View>
+                <Text style={s.doneTitle}>Import Complete!</Text>
+                <Text style={s.doneSub}>
+                  {bulkDone.added} items added successfully
+                  {bulkDone.failed > 0 ? `
+${bulkDone.failed} failed` : ''}
+                </Text>
+                <TouchableOpacity style={s.doneBtn} onPress={() => { setBulkModal(false); setBulkDone(null); }}>
+                  <Text style={s.doneBtnTxt}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* ── Add / Edit Modal ───────────────────────────────── */}
       <Modal visible={modal} animationType="slide" presentationStyle="pageSheet">
@@ -933,4 +1157,57 @@ const s = StyleSheet.create({
   // Export button (legacy duplicate — kept for modal references)
   exportBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 14, borderRadius: RADIUS.lg, marginTop: 8 },
   exportBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+
+  // Bulk upload button in header
+  bulkBtn:    { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:11, paddingVertical:8, borderRadius:RADIUS.md, backgroundColor:'#F5F3FF', borderWidth:1, borderColor:'#C4B5FD' },
+  bulkBtnTxt: { fontSize:12, fontWeight:FONTS.bold, color:'#8B5CF6' },
+
+  // Bulk modal
+  bulkStep:      { flexDirection:'row', alignItems:'flex-start', gap:12, marginBottom:14 },
+  bulkStepNum:   { width:28, height:28, borderRadius:14, backgroundColor:COLORS.primary, alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:2 },
+  bulkStepNumTxt:{ fontSize:13, fontWeight:FONTS.black, color:'#fff' },
+  bulkStepTitle: { fontSize:15, fontWeight:FONTS.bold, color:COLORS.text, marginBottom:3 },
+  bulkStepDesc:  { fontSize:13, color:COLORS.textSub, lineHeight:19 },
+
+  templateCard:        { backgroundColor:'#F0FDF4', borderRadius:RADIUS.lg, borderWidth:1, borderColor:'#86EFAC', padding:14, marginBottom:12 },
+  templateHeader:      { flexDirection:'row', alignItems:'center', gap:8, marginBottom:10 },
+  templateName:        { fontSize:13, fontWeight:FONTS.bold, color:'#16A34A' },
+  templateCols:        { flexDirection:'row', flexWrap:'wrap', gap:6, marginBottom:8 },
+  templateCol:         { paddingHorizontal:8, paddingVertical:4, borderRadius:RADIUS.sm, backgroundColor:'#fff', borderWidth:1, borderColor:'#86EFAC' },
+  templateColRequired: { borderColor:COLORS.danger, backgroundColor:'#FEF2F2' },
+  templateColTxt:      { fontSize:10, fontWeight:FONTS.medium, color:COLORS.textSub },
+  templateColTxtRequired: { color:COLORS.danger, fontWeight:FONTS.bold },
+  templateHint:        { fontSize:11, color:COLORS.textMute },
+
+  downloadBtn:    { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, backgroundColor:'#16A34A', paddingVertical:13, borderRadius:RADIUS.lg, marginBottom:8 },
+  downloadBtnTxt: { fontSize:14, fontWeight:FONTS.bold, color:'#fff' },
+
+  uploadZone:      { alignItems:'center', justifyContent:'center', paddingVertical:36, borderRadius:RADIUS.xl, borderWidth:2, borderColor:COLORS.primary, borderStyle:'dashed', backgroundColor:COLORS.primaryLight, gap:10, marginBottom:8 },
+  uploadZoneIcon:  { width:60, height:60, borderRadius:30, backgroundColor:COLORS.card, alignItems:'center', justifyContent:'center' },
+  uploadZoneTitle: { fontSize:15, fontWeight:FONTS.bold, color:COLORS.primary },
+  uploadZoneSub:   { fontSize:12, color:COLORS.textSub, textAlign:'center', paddingHorizontal:20 },
+
+  previewHeader:   { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:10 },
+  previewBadge:    { flexDirection:'row', alignItems:'center', gap:6, backgroundColor:COLORS.successLight, paddingHorizontal:10, paddingVertical:5, borderRadius:RADIUS.full },
+  previewBadgeTxt: { fontSize:12, fontWeight:FONTS.bold, color:COLORS.success },
+  rePickBtn:       { flexDirection:'row', alignItems:'center', gap:5 },
+  rePickBtnTxt:    { fontSize:12, color:COLORS.primary, fontWeight:FONTS.semibold },
+
+  previewTable:  { backgroundColor:COLORS.card, borderRadius:RADIUS.lg, borderWidth:1, borderColor:COLORS.border, overflow:'hidden', marginBottom:14 },
+  previewThead:  { flexDirection:'row', backgroundColor:'#F1F5F9', paddingVertical:8, paddingHorizontal:10, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  previewTh:     { flex:1, fontSize:10, fontWeight:FONTS.bold, color:COLORS.textMute, textTransform:'uppercase', letterSpacing:0.4, paddingHorizontal:4 },
+  previewTrow:   { flexDirection:'row', alignItems:'center', paddingVertical:9, paddingHorizontal:10, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  previewTd:     { flex:1, fontSize:11, color:COLORS.text, paddingHorizontal:4 },
+  previewMore:   { padding:10, alignItems:'center', backgroundColor:'#F8FAFC' },
+  previewMoreTxt:{ fontSize:12, color:COLORS.textMute, fontWeight:FONTS.medium },
+
+  importBtn:    { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, backgroundColor:COLORS.primary, paddingVertical:14, borderRadius:RADIUS.lg, marginBottom:8 },
+  importBtnTxt: { fontSize:14, fontWeight:FONTS.bold, color:'#fff' },
+
+  doneCard:  { alignItems:'center', padding:28, backgroundColor:COLORS.successLight, borderRadius:RADIUS.xl, borderWidth:1, borderColor:COLORS.success+'44' },
+  doneIcon:  { width:64, height:64, borderRadius:32, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', marginBottom:14 },
+  doneTitle: { fontSize:20, fontWeight:FONTS.black, color:COLORS.success, marginBottom:8 },
+  doneSub:   { fontSize:14, color:COLORS.success, textAlign:'center', lineHeight:21, marginBottom:20, opacity:0.8 },
+  doneBtn:   { backgroundColor:COLORS.success, paddingHorizontal:32, paddingVertical:12, borderRadius:RADIUS.lg },
+  doneBtnTxt:{ color:'#fff', fontWeight:FONTS.bold, fontSize:14 },
 });
