@@ -146,12 +146,12 @@ const MOBILE_TABS = [
 const SIDEBAR_ITEMS = [
   { name: 'Dashboard',     label: 'Home',       icon: 'home',        tab: 'Dashboard',     screen: null       },
   { name: 'InvoicesTab',   label: 'Invoices',   icon: 'file-text',   tab: 'InvoicesTab',   screen: null       },
-  { name: 'QuotationsTab', label: 'Quotations', icon: 'clipboard',   tab: 'QuotationsTab', screen: null       },
   { name: 'PartiesTab',    label: 'Parties',    icon: 'users',       tab: 'PartiesTab',    screen: null       },
   { name: 'Inventory',     label: 'Items',      icon: 'package',     tab: 'Inventory',     screen: null       },
   { name: 'Expenses',      label: 'Expenses',   icon: 'credit-card', tab: 'More',          screen: 'Expenses' },
   { name: 'Reports',       label: 'Reports',    icon: 'bar-chart-2', tab: 'More',          screen: 'Reports'  },
-  { name: 'PurchaseOrders',label: 'PO Orders',   icon: 'clipboard',   tab: 'More',          screen: 'PurchaseOrders' },
+  { name: 'PurchaseOrders',label: 'PO Orders',  icon: 'shopping-bag',tab: 'More',          screen: 'PurchaseOrders' },
+  { name: 'QuotationsTab', label: 'Quotations', icon: 'clipboard',   tab: 'QuotationsTab', screen: null       },
   { name: 'Settings',      label: 'Settings',   icon: 'settings',    tab: 'More',          screen: 'Settings' },
   { name: 'HelpSupport',   label: 'Help & Support', icon: 'help-circle', tab: 'More',     screen: 'HelpSupport' },
 ];
@@ -176,7 +176,16 @@ function MobileTabBar({ state, navigation }) {
             <TouchableOpacity
               key={tab.name}
               style={styles.tabItem}
-              onPress={() => navigation.navigate(tab.name)}
+              onPress={() => {
+                const screenMap = {
+                  InvoicesTab:   'InvoiceList',
+                  QuotationsTab: 'QuotationList',
+                  PartiesTab:    'PartiesList',
+                };
+                const initial = screenMap[tab.name];
+                if (initial) navigation.navigate(tab.name, { screen: initial });
+                else navigation.navigate(tab.name);
+              }}
               activeOpacity={0.7}
             >
               <View style={[styles.iconPill, focused && styles.iconPillActive]}>
@@ -202,10 +211,37 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
   const w = expanded ? W_EXPANDED : W_COLLAPSED;
 
   const activeTabName = MOBILE_TABS[state.index]?.name;
-  const isActive = (item) => item.screen ? activeTabName === 'More' : activeTabName === item.tab;
+
+  // Get the currently active screen name inside the More stack
+  const moreRoute = state.routes?.find(r => r.name === 'More');
+  const activeMoreScreen = moreRoute?.state?.routes?.[moreRoute.state.index ?? 0]?.name ?? null;
+
+  const isActive = (item) => {
+    if (item.screen) {
+      // Items that live inside MoreStack — only highlight the one currently showing
+      return activeTabName === 'More' && activeMoreScreen === item.screen;
+    }
+    // Top-level tabs (Dashboard, Invoices, Quotations, Parties, Inventory)
+    return activeTabName === item.tab;
+  };
   const go = (item) => {
-    if (item.screen) navigation.navigate(item.tab, { screen: item.screen });
-    else navigation.navigate(item.tab);
+    if (item.screen) {
+      navigation.navigate(item.tab, { screen: item.screen });
+    } else {
+      // Reset the stack to its initial screen so tapping the tab
+      // always shows the list, not whatever was last open (e.g. CreateInvoice)
+      const screenMap = {
+        InvoicesTab:   'InvoiceList',
+        QuotationsTab: 'QuotationList',
+        PartiesTab:    'PartiesList',
+      };
+      const initialScreen = screenMap[item.tab];
+      if (initialScreen) {
+        navigation.navigate(item.tab, { screen: initialScreen });
+      } else {
+        navigation.navigate(item.tab);
+      }
+    }
   };
 
   React.useEffect(() => {
