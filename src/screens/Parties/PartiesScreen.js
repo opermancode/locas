@@ -1,111 +1,186 @@
 import Icon from '../../utils/Icon';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, ScrollView, Alert, RefreshControl, StatusBar,
+  View, Text, StyleSheet, TouchableOpacity,
+  TextInput, Modal, ScrollView, Alert, RefreshControl,
+  StatusBar, FlatList, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { getParties, saveParty, deleteParty } from '../../db';
-import { INDIAN_STATES, formatINR } from '../../utils/gst';
-import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
-
-const TYPE_FILTERS = ['All', 'Customer', 'Supplier'];
+import { INDIAN_STATES, formatINR, formatINRCompact } from '../../utils/gst';
+import { COLORS, RADIUS, FONTS } from '../../theme';
 
 const EMPTY_FORM = {
   name: '', phone: '', email: '', address: '',
   gstin: '', state: '', state_code: '', pan: '', type: 'customer',
 };
 
+// CSV template columns (must match bulk upload parser below)
+const TEMPLATE_COLS = ['Name*','Type (customer/supplier)*','Phone','Email','GSTIN','PAN','State','Address'];
+const TEMPLATE_SAMPLE = [
+  ['Rahul Traders','customer','9876543210','rahul@example.com','22AAAAA0000A1Z5','AAAAA0000A','Maharashtra','123 Main Road, Mumbai'],
+  ['Shree Suppliers','supplier','8765432109','','','','Gujarat',''],
+];
+
+// ── CSV / Excel helpers ────────────────────────────────────────────
+function esc(v) {
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r => r.map(esc).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Parse uploaded CSV ─────────────────────────────────────────────
+function parsePartiesCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) throw new Error('File must have a header row and at least one data row');
+
+  const header = lines[0].split(',').map(h => h.replace(/"/g,'').trim().toLowerCase());
+  const nameIdx    = header.findIndex(h => h.includes('name'));
+  const typeIdx    = header.findIndex(h => h.includes('type'));
+  const phoneIdx   = header.findIndex(h => h.includes('phone'));
+  const emailIdx   = header.findIndex(h => h.includes('email'));
+  const gstinIdx   = header.findIndex(h => h.includes('gstin'));
+  const panIdx     = header.findIndex(h => h.includes('pan'));
+  const stateIdx   = header.findIndex(h => h.includes('state'));
+  const addressIdx = header.findIndex(h => h.includes('address'));
+
+  if (nameIdx === -1) throw new Error('Could not find "Name" column in the file');
+
+  const results = [], errors = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g,'').trim());
+    const name = nameIdx !== -1 ? cols[nameIdx] : '';
+    if (!name) continue;
+    const type = typeIdx !== -1 ? cols[typeIdx]?.toLowerCase() : 'customer';
+    results.push({
+      name,
+      type: type === 'supplier' ? 'supplier' : 'customer',
+      phone:   phoneIdx   !== -1 ? cols[phoneIdx]   || '' : '',
+      email:   emailIdx   !== -1 ? cols[emailIdx]   || '' : '',
+      gstin:   gstinIdx   !== -1 ? (cols[gstinIdx]   || '').toUpperCase() : '',
+      pan:     panIdx     !== -1 ? (cols[panIdx]     || '').toUpperCase() : '',
+      state:   stateIdx   !== -1 ? cols[stateIdx]   || '' : '',
+      address: addressIdx !== -1 ? cols[addressIdx] || '' : '',
+    });
+  }
+  return { results, errors };
+}
+
 export default function PartiesScreen({ navigation }) {
   const insets = useSafeAreaInsets();
 
-  const [parties, setParties]     = useState([]);
-  const [filtered, setFiltered]   = useState([]);
-  const [search, setSearch]       = useState('');
-  const [typeFilter, setTypeFilter] = useState('All');
+  const [parties,   setParties]   = useState([]);
+  const [search,    setSearch]    = useState('');
+  const [typeFilter, setTypeFilter] = useState('all'); // all | customer | supplier
   const [refreshing, setRefreshing] = useState(false);
+  const [sortKey,   setSortKey]   = useState('name');
+  const [sortAsc,   setSortAsc]   = useState(true);
 
-  const [modal, setModal]         = useState(false);
-  const [form, setForm]           = useState(EMPTY_FORM);
-  const [saving, setSaving]       = useState(false);
+  // Add/Edit modal
+  const [modal,   setModal]   = useState(false);
+  const [form,    setForm]    = useState(EMPTY_FORM);
+  const [saving,  setSaving]  = useState(false);
   const [stateModal, setStateModal] = useState(false);
   const [stateSearch, setStateSearch] = useState('');
+
+  // Bulk upload modal
+  const [bulkModal,   setBulkModal]   = useState(false);
+  const [bulkParsed,  setBulkParsed]  = useState(null); // { results, errors }
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkSaving,  setBulkSaving]  = useState(false);
+  const [bulkDone,    setBulkDone]    = useState(null);  // { added, failed }
 
   const load = async () => {
     try {
       const data = await getParties();
       setParties(data);
-      apply(data, search, typeFilter);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setRefreshing(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setRefreshing(false); }
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  const apply = (data, q, type) => {
-    let out = data;
-    if (q.trim()) {
-      const lq = q.toLowerCase();
+  // ── Derived lists ──────────────────────────────────────────────
+  const customers = useMemo(() => parties.filter(p => p.type === 'customer'), [parties]);
+  const suppliers = useMemo(() => parties.filter(p => p.type === 'supplier'), [parties]);
+
+  const sorted = useMemo(() => {
+    let out = [...parties];
+    if (search.trim()) {
+      const lq = search.toLowerCase();
       out = out.filter(p =>
         p.name.toLowerCase().includes(lq) ||
         (p.phone || '').includes(lq) ||
-        (p.gstin || '').toLowerCase().includes(lq)
+        (p.gstin || '').toLowerCase().includes(lq) ||
+        (p.email || '').toLowerCase().includes(lq)
       );
     }
-    if (type !== 'All') {
-      out = out.filter(p => p.type === type.toLowerCase());
-    }
-    setFiltered(out);
+    if (typeFilter !== 'all') out = out.filter(p => p.type === typeFilter);
+    out.sort((a, b) => {
+      let va, vb;
+      switch (sortKey) {
+        case 'name':    va = a.name||'';          vb = b.name||'';           break;
+        case 'type':    va = a.type||'';          vb = b.type||'';           break;
+        case 'phone':   va = a.phone||'';         vb = b.phone||'';          break;
+        case 'gstin':   va = a.gstin||'';         vb = b.gstin||'';          break;
+        case 'state':   va = a.state||'';         vb = b.state||'';          break;
+        case 'balance': va = a.balance||0;        vb = b.balance||0;         break;
+        default:        va = a.name||'';          vb = b.name||'';
+      }
+      if (typeof va === 'number') return sortAsc ? va - vb : vb - va;
+      return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    return out;
+  }, [parties, search, typeFilter, sortKey, sortAsc]);
+
+  const handleSort = (key) => {
+    if (sortKey === key) setSortAsc(a => !a);
+    else { setSortKey(key); setSortAsc(true); }
   };
 
-  const handleSearch = (q) => { setSearch(q); apply(parties, q, typeFilter); };
-  const handleFilter = (f) => { setTypeFilter(f); apply(parties, search, f); };
-  const onRefresh    = () => { setRefreshing(true); load(); };
-
+  // ── CRUD ────────────────────────────────────────────────────────
   const openAdd  = () => { setForm(EMPTY_FORM); setModal(true); };
   const openEdit = (p) => {
-    setForm({
-      id: p.id, name: p.name, phone: p.phone || '', email: p.email || '',
-      address: p.address || '', gstin: p.gstin || '', state: p.state || '',
-      state_code: p.state_code || '', pan: p.pan || '', type: p.type || 'customer',
-    });
+    setForm({ id:p.id, name:p.name, phone:p.phone||'', email:p.email||'',
+      address:p.address||'', gstin:p.gstin||'', state:p.state||'',
+      state_code:p.state_code||'', pan:p.pan||'', type:p.type||'customer' });
     setModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) { Alert.alert('Error', 'Party name is required'); return; }
+    if (!form.name.trim()) { Alert.alert('Error','Party name is required'); return; }
     setSaving(true);
     try {
       await saveParty(form);
       setModal(false);
       load();
-    } catch (e) {
-      Alert.alert('Error', e.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSaving(false); }
   };
 
   const handleDelete = (p) => {
-    // FIX: Alert.alert with buttons is a no-op on React Native Web.
-    // Use window.confirm() on web so the destructive action actually fires.
+    const doIt = async () => { await deleteParty(p.id); load(); };
     if (Platform.OS === 'web') {
-      if (!window.confirm(`Delete party "${p.name}"? This cannot be undone.`)) return;
-      deleteParty(p.id).then(load);
-      return;
+      if (window.confirm(`Delete "${p.name}"? This cannot be undone.`)) doIt();
+    } else {
+      Alert.alert('Delete Party', `Delete ${p.name}?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doIt },
+      ]);
     }
-    Alert.alert('Delete Party', `Delete ${p.name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        await deleteParty(p.id);
-        load();
-      }},
-    ]);
   };
 
   const selectState = (s) => {
@@ -115,664 +190,747 @@ export default function PartiesScreen({ navigation }) {
   };
 
   const filteredStates = INDIAN_STATES.filter(s =>
-    s.name.toLowerCase().includes(stateSearch.toLowerCase()) ||
-    s.code.includes(stateSearch)
+    s.name.toLowerCase().includes(stateSearch.toLowerCase()) || s.code.includes(stateSearch)
   );
 
-  const customers = parties.filter(p => p.type === 'customer').length;
-  const suppliers = parties.filter(p => p.type === 'supplier').length;
+  // ── Export Excel (CSV) ─────────────────────────────────────────
+  const handleExportCSV = () => {
+    if (parties.length === 0) { window.alert('No parties to export'); return; }
+    const header = ['#','Name','Type','Phone','Email','GSTIN','PAN','State','Balance'];
+    const rows   = sorted.map((p, i) => [
+      i+1, p.name, p.type, p.phone||'', p.email||'',
+      p.gstin||'', p.pan||'', p.state||'',
+      (p.balance||0).toFixed(2),
+    ]);
+    downloadCSV(`Parties_${new Date().toISOString().split('T')[0]}.csv`,
+      [header, ...rows]);
+  };
 
-  // ─── Render party card ────────────────────────────────────────
-  const renderParty = ({ item }) => (
-    <TouchableOpacity
-      style={styles.partyCard}
-      onPress={() => navigation.navigate('PartyDetail', { partyId: item.id })}
-      activeOpacity={0.85}
-    >
-      <View style={styles.cardLeft}>
-        <View style={[styles.avatar, { backgroundColor: item.type === 'supplier' ? '#E0F2FE' : COLORS.primaryLight }]}>
-          <Text style={[styles.avatarText, { color: item.type === 'supplier' ? '#0369A1' : COLORS.primary }]}>
-            {item.name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.partyName} numberOfLines={1}>{item.name}</Text>
-          {item.phone ? <View style={styles.subRow}><Icon name="phone" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {item.phone}</Text></View> : null}
-          {item.gstin   ? <Text style={styles.partySub}>GST: {item.gstin}</Text> : null}
-          {item.state ? <View style={styles.subRow}><Icon name="map-pin" size={11} color={COLORS.textMute} /><Text style={styles.partySub}> {item.state}</Text></View> : null}
-        </View>
-      </View>
-      <View style={styles.cardRight}>
-        <View style={[styles.typeBadge, item.type === 'supplier' && styles.typeBadgeSupplier]}>
-          <Text style={[styles.typeText, item.type === 'supplier' && styles.typeTextSupplier]}>
-            {item.type === 'supplier' ? 'Supplier' : 'Customer'}
-          </Text>
-        </View>
-        {item.balance !== 0 && (
-          <Text style={[styles.balance, item.balance < 0 && { color: COLORS.danger }]}>
-            {item.balance > 0 ? '+' : ''}{formatINR(item.balance)}
-          </Text>
-        )}
-        <View style={styles.cardActions}>
-          <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
-            <Icon name="edit-2" size={14} color={COLORS.textSub} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(item)}>
-            <Icon name="trash-2" size={14} color={COLORS.danger} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  // ── Bulk upload ────────────────────────────────────────────────
+  const handleDownloadTemplate = () => {
+    downloadCSV('LOCAS_Parties_Template.csv', [TEMPLATE_COLS, ...TEMPLATE_SAMPLE]);
+  };
 
-  // ─────────────────────────────────────────────────────────────
+  const handlePickCSV = () => {
+    const input = document.createElement('input');
+    input.type  = 'file';
+    input.accept = '.csv,text/csv';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      setBulkLoading(true);
+      try {
+        const text = await file.text();
+        const parsed = parsePartiesCSV(text);
+        setBulkParsed(parsed);
+        setBulkDone(null);
+      } catch (e) {
+        window.alert('Parse error: ' + e.message);
+      } finally {
+        setBulkLoading(false);
+      }
+    };
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+  };
+
+  const handleBulkSave = async () => {
+    if (!bulkParsed?.results?.length) return;
+    setBulkSaving(true);
+    let added = 0, failed = 0;
+    for (const p of bulkParsed.results) {
+      try {
+        await saveParty(p);
+        added++;
+      } catch { failed++; }
+    }
+    setBulkDone({ added, failed });
+    setBulkParsed(null);
+    setBulkSaving(false);
+    load();
+  };
+
+  const openBulkModal = () => {
+    setBulkParsed(null);
+    setBulkDone(null);
+    setBulkModal(true);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+    <View style={[s.container, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.card} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Parties</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
-          <Text style={styles.addBtnText}>+ Add</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Stats strip */}
-      <View style={styles.statsStrip}>
-        <StatChip label="Total"     value={String(parties.length)} color={COLORS.secondary} />
-        <View style={styles.div} />
-        <StatChip label="Customers" value={String(customers)}      color={COLORS.primary} />
-        <View style={styles.div} />
-        <StatChip label="Suppliers" value={String(suppliers)}      color={COLORS.info} />
-      </View>
-
-      {/* Search */}
-      <View style={styles.searchBox}>
-        <Icon name="search" size={17} color={COLORS.textMute} style={{marginRight:8}} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search name, phone, GSTIN..."
-          placeholderTextColor={COLORS.textMute}
-          value={search}
-          onChangeText={handleSearch}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => handleSearch('')}>
-            <Icon name="x" size={14} color={COLORS.textMute} />
+      {/* ── Header ── */}
+      <View style={s.header}>
+        <View>
+          <Text style={s.headerTitle}>Parties</Text>
+          <Text style={s.headerSub}>{parties.length} total</Text>
+        </View>
+        <View style={s.headerBtns}>
+          {/* Excel export */}
+          <TouchableOpacity style={s.excelBtn} onPress={handleExportCSV}>
+            <ExcelIcon />
+            <Text style={s.excelBtnTxt}>Export</Text>
           </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Type filter */}
-      <View style={styles.filterRow}>
-        {TYPE_FILTERS.map(f => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterChip, typeFilter === f && styles.filterChipActive]}
-            onPress={() => handleFilter(f)}
-          >
-            <Text style={[styles.filterText, typeFilter === f && styles.filterTextActive]}>{f}</Text>
+          {/* Bulk upload */}
+          <TouchableOpacity style={s.bulkBtn} onPress={openBulkModal}>
+            <Icon name="upload" size={14} color="#8B5CF6" />
+            <Text style={s.bulkBtnTxt}>Bulk Upload</Text>
           </TouchableOpacity>
-        ))}
+          {/* Add single */}
+          <TouchableOpacity style={s.addBtn} onPress={openAdd}>
+            <Icon name="plus" size={14} color="#fff" />
+            <Text style={s.addBtnTxt}>Add Party</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={i => String(i.id)}
-        renderItem={renderParty}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Icon name="users" size={32} color={COLORS.primary} />
-            <Text style={styles.emptyTitle}>{search ? 'No parties found' : 'No parties yet'}</Text>
-            <Text style={styles.emptySub}>{search ? 'Try a different search' : 'Add customers & suppliers'}</Text>
-            {!search && (
-              <TouchableOpacity style={styles.emptyBtn} onPress={openAdd}>
-                <Text style={styles.emptyBtnText}>Add Party</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        }
-      />
+      {/* ── KPI strip ── */}
+      <View style={s.kpiStrip}>
+        <KPI label="Total"     value={String(parties.length)}   color={COLORS.text} />
+        <View style={s.kpiDiv} />
+        <KPI label="Customers" value={String(customers.length)} color={COLORS.primary} />
+        <View style={s.kpiDiv} />
+        <KPI label="Suppliers" value={String(suppliers.length)} color="#0EA5E9" />
+        <View style={s.kpiDiv} />
+        <KPI label="Receivable"
+          value={formatINRCompact(customers.reduce((s,p) => s + Math.max(0, p.balance||0), 0))}
+          color={COLORS.success} />
+        <View style={s.kpiDiv} />
+        <KPI label="Payable"
+          value={formatINRCompact(suppliers.reduce((s,p) => s + Math.max(0, -(p.balance||0)), 0))}
+          color={COLORS.danger} />
+      </View>
 
-      {/* ── Add / Edit Modal ───────────────────────────────── */}
-      <Modal visible={modal} animationType="slide" presentationStyle="pageSheet">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setModal(false)}>
-              <Text style={styles.modalCancel}>Cancel</Text>
+      {/* ── Toolbar ── */}
+      <View style={s.toolbar}>
+        <View style={s.searchBox}>
+          <Icon name="search" size={15} color={COLORS.textMute} />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search name, phone, GSTIN..."
+            placeholderTextColor={COLORS.textMute}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Icon name="x" size={14} color={COLORS.textMute} />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>{form.id ? 'Edit Party' : 'Add Party'}</Text>
-            <TouchableOpacity onPress={handleSave} disabled={saving}>
-              <Text style={[styles.modalSave, saving && { opacity: 0.4 }]}>Save</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
-
-            {/* Type toggle */}
-            <FieldLabel>Type</FieldLabel>
-            <View style={styles.typeRow}>
-              {['customer', 'supplier'].map(t => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.typeBtn, form.type === t && styles.typeBtnActive]}
-                  onPress={() => setForm(f => ({ ...f, type: t }))}
-                >
-                  <Text style={[styles.typeBtnText, form.type === t && styles.typeBtnTextActive]}>
-                    {t === 'customer' ? 'Customer' : 'Supplier'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <FieldLabel>Name *</FieldLabel>
-            <TextInput
-              style={styles.input}
-              value={form.name}
-              onChangeText={v => setForm(f => ({ ...f, name: v }))}
-              placeholder="Full name or business name"
-              placeholderTextColor={COLORS.textMute}
-            />
-
-            <FieldLabel>Phone</FieldLabel>
-            <TextInput
-              style={styles.input}
-              value={form.phone}
-              onChangeText={v => setForm(f => ({ ...f, phone: v }))}
-              placeholder="Mobile number"
-              placeholderTextColor={COLORS.textMute}
-              keyboardType="phone-pad"
-            />
-
-            <FieldLabel>Email</FieldLabel>
-            <TextInput
-              style={styles.input}
-              value={form.email}
-              onChangeText={v => setForm(f => ({ ...f, email: v }))}
-              placeholder="email@example.com"
-              placeholderTextColor={COLORS.textMute}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <FieldLabel>Address</FieldLabel>
-            <TextInput
-              style={[styles.input, styles.textarea]}
-              value={form.address}
-              onChangeText={v => setForm(f => ({ ...f, address: v }))}
-              placeholder="Full address"
-              placeholderTextColor={COLORS.textMute}
-              multiline
-              numberOfLines={2}
-            />
-
-            <FieldLabel>State</FieldLabel>
+          )}
+        </View>
+        <View style={s.chipRow}>
+          {[
+            { key:'all',      label:`All (${parties.length})` },
+            { key:'customer', label:`Customers (${customers.length})` },
+            { key:'supplier', label:`Suppliers (${suppliers.length})` },
+          ].map(f => (
             <TouchableOpacity
-              style={[styles.input, styles.statePicker]}
-              onPress={() => { setStateSearch(''); setStateModal(true); }}
+              key={f.key}
+              style={[s.chip, typeFilter===f.key && s.chipActive]}
+              onPress={() => setTypeFilter(f.key)}
             >
-              <Text style={form.state ? styles.stateText : styles.statePlaceholder}>
-                {form.state ? `${form.state} (${form.state_code})` : 'Select state...'}
-              </Text>
-              <Icon name="chevron-down" size={16} color={COLORS.textMute} />
+              <Text style={[s.chipTxt, typeFilter===f.key && s.chipTxtActive]}>{f.label}</Text>
             </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
-            <FieldLabel>GSTIN</FieldLabel>
-            <TextInput
-              style={styles.input}
-              value={form.gstin}
-              onChangeText={v => setForm(f => ({ ...f, gstin: v.toUpperCase() }))}
-              placeholder="22AAAAA0000A1Z5"
-              placeholderTextColor={COLORS.textMute}
-              autoCapitalize="characters"
-              maxLength={15}
-            />
+      {/* ── Table ── */}
+      <View style={s.tableWrap}>
+        {/* Header row */}
+        <View style={s.thead}>
+          <Text style={[s.th, {width:36,textAlign:'center'}]}>#</Text>
+          <SH label="Name"    colKey="name"    flex={2.2} sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SH label="Type"    colKey="type"    width={80}  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SH label="Phone"   colKey="phone"   flex={1.2}  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SH label="GSTIN"   colKey="gstin"   flex={1.6}  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SH label="State"   colKey="state"   flex={1.1}  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SH label="Balance" colKey="balance" flex={1.1}  align="right" sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <View style={{width:72}} />
+        </View>
 
-            <FieldLabel>PAN</FieldLabel>
-            <TextInput
-              style={styles.input}
-              value={form.pan}
-              onChangeText={v => setForm(f => ({ ...f, pan: v.toUpperCase() }))}
-              placeholder="AAAAA0000A"
-              placeholderTextColor={COLORS.textMute}
-              autoCapitalize="characters"
-              maxLength={10}
-            />
+        <ScrollView
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={COLORS.primary} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {sorted.length === 0 ? (
+            <View style={s.empty}>
+              <View style={s.emptyIcon}><Icon name="users" size={28} color={COLORS.primary} /></View>
+              <Text style={s.emptyTitle}>
+                {search || typeFilter !== 'all' ? 'No parties match' : 'No parties yet'}
+              </Text>
+              <Text style={s.emptySub}>
+                {search ? 'Try a different search' : 'Add customers and suppliers'}
+              </Text>
+              {!search && typeFilter === 'all' && (
+                <View style={s.emptyBtns}>
+                  <TouchableOpacity style={s.emptyBtn} onPress={openAdd}>
+                    <Text style={s.emptyBtnTxt}>+ Add Party</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.emptyBtnOutline} onPress={openBulkModal}>
+                    <Text style={s.emptyBtnOutlineTxt}>Bulk Upload</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ) : (
+            sorted.map((p, idx) => {
+              const isCust = p.type === 'customer';
+              const bal = p.balance || 0;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[s.trow, idx%2===0 && s.trowEven]}
+                  onPress={() => navigation.navigate('PartyDetail', { partyId: p.id })}
+                  activeOpacity={0.75}
+                >
+                  {/* # */}
+                  <Text style={[s.td,{width:36,textAlign:'center',color:COLORS.textMute,fontSize:11}]}>{idx+1}</Text>
 
-            <View style={{ height: 40 }} />
+                  {/* Name */}
+                  <View style={{flex:2.2, paddingHorizontal:8, justifyContent:'center'}}>
+                    <View style={s.nameCell}>
+                      <View style={[s.avatar, isCust ? s.avatarCust : s.avatarSupp]}>
+                        <Text style={[s.avatarTxt, isCust ? s.avatarTxtCust : s.avatarTxtSupp]}>
+                          {p.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{flex:1}}>
+                        <Text style={s.tdName} numberOfLines={1}>{p.name}</Text>
+                        {p.email ? <Text style={s.tdSub} numberOfLines={1}>{p.email}</Text> : null}
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Type */}
+                  <View style={{width:80,alignItems:'center',justifyContent:'center'}}>
+                    <View style={[s.typePill, isCust ? s.typePillCust : s.typePillSupp]}>
+                      <Text style={[s.typePillTxt, isCust ? s.typePillTxtCust : s.typePillTxtSupp]}>
+                        {isCust ? 'Customer' : 'Supplier'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Phone */}
+                  <Text style={[s.td,{flex:1.2}]} numberOfLines={1}>{p.phone||'—'}</Text>
+
+                  {/* GSTIN */}
+                  <Text style={[s.td,{flex:1.6,fontSize:11}]} numberOfLines={1}>{p.gstin||'—'}</Text>
+
+                  {/* State */}
+                  <Text style={[s.td,{flex:1.1}]} numberOfLines={1}>{p.state||'—'}</Text>
+
+                  {/* Balance */}
+                  <View style={{flex:1.1,paddingHorizontal:8,alignItems:'flex-end',justifyContent:'center'}}>
+                    {bal !== 0 ? (
+                      <>
+                        <Text style={[s.td, {paddingHorizontal:0, fontWeight:FONTS.bold,
+                          color: bal > 0 ? COLORS.success : COLORS.danger}]}>
+                          {formatINR(Math.abs(bal))}
+                        </Text>
+                        <Text style={{fontSize:9, color: bal > 0 ? COLORS.success : COLORS.danger}}>
+                          {bal > 0 ? 'To receive' : 'To pay'}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={[s.td,{paddingHorizontal:0,color:COLORS.textMute}]}>—</Text>
+                    )}
+                  </View>
+
+                  {/* Actions */}
+                  <View style={s.tdActions}>
+                    <TouchableOpacity style={s.editBtn} onPress={() => openEdit(p)}>
+                      <Icon name="edit-2" size={13} color={COLORS.textSub} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.delBtn} onPress={() => handleDelete(p)}>
+                      <Icon name="trash-2" size={13} color={COLORS.danger} />
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+          <View style={{height:40}} />
+        </ScrollView>
+      </View>
+
+      {/* ══ Add / Edit Modal ══════════════════════════════════════ */}
+      <Modal visible={modal} animationType="slide" presentationStyle="pageSheet">
+        <View style={s.modalWrap}>
+          <View style={s.modalHeader}>
+            <TouchableOpacity onPress={() => setModal(false)}>
+              <Text style={s.modalCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={s.modalTitle}>{form.id ? 'Edit Party' : 'Add Party'}</Text>
+            <TouchableOpacity onPress={handleSave} disabled={saving}>
+              <Text style={[s.modalSave, saving && {opacity:0.4}]}>
+                {saving ? 'Saving…' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={s.modalScroll} keyboardShouldPersistTaps="handled">
+            {/* Type */}
+            <FL label="Type">
+              <View style={s.typeRow}>
+                {['customer','supplier'].map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[s.typeBtn, form.type===t && (t==='customer' ? s.typeBtnCust : s.typeBtnSupp)]}
+                    onPress={() => setForm(f => ({...f, type:t}))}
+                  >
+                    <Icon name={t==='customer'?'user':'truck'} size={14}
+                      color={form.type===t ? '#fff' : COLORS.textSub} />
+                    <Text style={[s.typeBtnTxt, form.type===t && s.typeBtnTxtActive]}>
+                      {t==='customer' ? 'Customer' : 'Supplier'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </FL>
+
+            <FL label="Name *">
+              <TextInput style={s.input} value={form.name} onChangeText={v=>setForm(f=>({...f,name:v}))} placeholder="Full name or business name" placeholderTextColor={COLORS.textMute} />
+            </FL>
+            <View style={s.row}>
+              <View style={{flex:1}}>
+                <FL label="Phone">
+                  <TextInput style={s.input} value={form.phone} onChangeText={v=>setForm(f=>({...f,phone:v}))} placeholder="Mobile number" placeholderTextColor={COLORS.textMute} keyboardType="phone-pad" />
+                </FL>
+              </View>
+              <View style={{width:12}}/>
+              <View style={{flex:1}}>
+                <FL label="Email">
+                  <TextInput style={s.input} value={form.email} onChangeText={v=>setForm(f=>({...f,email:v}))} placeholder="email@example.com" placeholderTextColor={COLORS.textMute} keyboardType="email-address" autoCapitalize="none" />
+                </FL>
+              </View>
+            </View>
+            <FL label="State">
+              <TouchableOpacity style={[s.input,s.picker]} onPress={()=>{setStateSearch('');setStateModal(true);}}>
+                <Text style={form.state ? s.pickerTxt : s.pickerPlaceholder}>
+                  {form.state ? `${form.state} (${form.state_code})` : 'Select state...'}
+                </Text>
+                <Icon name="chevron-down" size={15} color={COLORS.textMute} />
+              </TouchableOpacity>
+            </FL>
+            <View style={s.row}>
+              <View style={{flex:1}}>
+                <FL label="GSTIN">
+                  <TextInput style={s.input} value={form.gstin} onChangeText={v=>setForm(f=>({...f,gstin:v.toUpperCase()}))} placeholder="22AAAAA0000A1Z5" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={15} />
+                </FL>
+              </View>
+              <View style={{width:12}}/>
+              <View style={{flex:1}}>
+                <FL label="PAN">
+                  <TextInput style={s.input} value={form.pan} onChangeText={v=>setForm(f=>({...f,pan:v.toUpperCase()}))} placeholder="AAAAA0000A" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={10} />
+                </FL>
+              </View>
+            </View>
+            <FL label="Address">
+              <TextInput style={[s.input,{minHeight:64,textAlignVertical:'top'}]} value={form.address} onChangeText={v=>setForm(f=>({...f,address:v}))} placeholder="Full address" placeholderTextColor={COLORS.textMute} multiline />
+            </FL>
+            <View style={{height:40}} />
           </ScrollView>
         </View>
       </Modal>
 
-      {/* ── State Picker Modal ─────────────────────────────── */}
+      {/* ══ State Picker ══════════════════════════════════════════ */}
       <Modal visible={stateModal} animationType="slide" presentationStyle="pageSheet">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
+        <View style={s.modalWrap}>
+          <View style={s.modalHeader}>
             <TouchableOpacity onPress={() => setStateModal(false)}>
-              <Text style={styles.modalCancel}>Cancel</Text>
+              <Text style={s.modalCancel}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Select State</Text>
-            <View style={{ width: 60 }} />
+            <Text style={s.modalTitle}>Select State</Text>
+            <View style={{width:60}} />
           </View>
-          <View style={styles.stateSearchBox}>
-            <TextInput
-              style={styles.input}
-              value={stateSearch}
-              onChangeText={setStateSearch}
-              placeholder="Search state..."
-              placeholderTextColor={COLORS.textMute}
-              autoFocus
-            />
+          <View style={s.stateSearch}>
+            <Icon name="search" size={15} color={COLORS.textMute} />
+            <TextInput style={s.stateSearchInput} value={stateSearch} onChangeText={setStateSearch} placeholder="Search..." placeholderTextColor={COLORS.textMute} autoFocus />
           </View>
           <FlatList
             data={filteredStates}
             keyExtractor={s => s.code}
             keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.stateItem} onPress={() => selectState(item)}>
-                <Text style={styles.stateName}>{item.name}</Text>
-                <Text style={styles.stateCode}>{item.code}</Text>
+            renderItem={({item}) => (
+              <TouchableOpacity style={s.stateItem} onPress={() => selectState(item)}>
+                <Text style={s.stateItemName}>{item.name}</Text>
+                <Text style={s.stateItemCode}>{item.code}</Text>
               </TouchableOpacity>
             )}
           />
+        </View>
+      </Modal>
+
+      {/* ══ Bulk Upload Modal ═════════════════════════════════════ */}
+      <Modal visible={bulkModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={s.modalWrap}>
+          <View style={s.modalHeader}>
+            <TouchableOpacity onPress={() => { setBulkModal(false); setBulkParsed(null); setBulkDone(null); }}>
+              <Text style={s.modalCancel}>Close</Text>
+            </TouchableOpacity>
+            <Text style={s.modalTitle}>Bulk Party Upload</Text>
+            <View style={{width:60}} />
+          </View>
+
+          <ScrollView style={s.modalScroll} keyboardShouldPersistTaps="handled">
+
+            {/* Step 1 — Download template */}
+            <View style={s.bulkStep}>
+              <View style={s.bulkStepNum}><Text style={s.bulkStepNumTxt}>1</Text></View>
+              <View style={{flex:1}}>
+                <Text style={s.bulkStepTitle}>Download Template</Text>
+                <Text style={s.bulkStepDesc}>
+                  Download the Excel/CSV template, fill in your party details, then upload it back here.
+                </Text>
+              </View>
+            </View>
+
+            {/* Template preview */}
+            <View style={s.templateCard}>
+              <View style={s.templateHeader}>
+                <ExcelIcon />
+                <Text style={s.templateName}>LOCAS_Parties_Template.csv</Text>
+              </View>
+              <View style={s.templateCols}>
+                {TEMPLATE_COLS.map((col, i) => (
+                  <View key={i} style={[s.templateCol, col.includes('*') && s.templateColRequired]}>
+                    <Text style={[s.templateColTxt, col.includes('*') && s.templateColTxtRequired]}>
+                      {col.replace('*','')}
+                      {col.includes('*') && <Text style={{color:COLORS.danger}}> *</Text>}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={s.templateHint}>* Required fields. Other columns are optional.</Text>
+            </View>
+
+            <TouchableOpacity style={s.downloadBtn} onPress={handleDownloadTemplate}>
+              <ExcelIcon />
+              <Text style={s.downloadBtnTxt}>Download Template (.csv)</Text>
+            </TouchableOpacity>
+
+            {/* Step 2 — Upload */}
+            <View style={[s.bulkStep, {marginTop:20}]}>
+              <View style={s.bulkStepNum}><Text style={s.bulkStepNumTxt}>2</Text></View>
+              <View style={{flex:1}}>
+                <Text style={s.bulkStepTitle}>Upload Filled File</Text>
+                <Text style={s.bulkStepDesc}>Select your filled CSV file to preview and import.</Text>
+              </View>
+            </View>
+
+            {/* Upload zone */}
+            {!bulkParsed && !bulkDone && (
+              <TouchableOpacity style={s.uploadZone} onPress={handlePickCSV} disabled={bulkLoading}>
+                {bulkLoading
+                  ? <ActivityIndicator size="large" color={COLORS.primary} />
+                  : <>
+                      <View style={s.uploadZoneIcon}>
+                        <Icon name="upload" size={28} color={COLORS.primary} />
+                      </View>
+                      <Text style={s.uploadZoneTitle}>Click to Select CSV File</Text>
+                      <Text style={s.uploadZoneSub}>Supported: .csv files exported from Excel or Google Sheets</Text>
+                    </>
+                }
+              </TouchableOpacity>
+            )}
+
+            {/* Preview parsed data */}
+            {bulkParsed && (
+              <>
+                <View style={s.previewHeader}>
+                  <View style={s.previewBadge}>
+                    <Icon name="check-circle" size={14} color={COLORS.success} />
+                    <Text style={s.previewBadgeTxt}>{bulkParsed.results.length} parties found</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => { setBulkParsed(null); }} style={s.rePickBtn}>
+                    <Icon name="refresh-cw" size={13} color={COLORS.primary} />
+                    <Text style={s.rePickBtnTxt}>Change file</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Preview table */}
+                <View style={s.previewTable}>
+                  <View style={s.previewThead}>
+                    {['Name','Type','Phone','GSTIN','State'].map(h => (
+                      <Text key={h} style={[s.previewTh, h==='Name'&&{flex:2}]}>{h}</Text>
+                    ))}
+                  </View>
+                  {bulkParsed.results.slice(0,8).map((p, i) => (
+                    <View key={i} style={[s.previewTrow, i%2===0&&{backgroundColor:'#FAFBFF'}]}>
+                      <Text style={[s.previewTd, {flex:2}]} numberOfLines={1}>{p.name}</Text>
+                      <View style={[s.typePill, p.type==='customer'?s.typePillCust:s.typePillSupp, {paddingVertical:2}]}>
+                        <Text style={[s.typePillTxt, p.type==='customer'?s.typePillTxtCust:s.typePillTxtSupp, {fontSize:8}]}>
+                          {p.type}
+                        </Text>
+                      </View>
+                      <Text style={s.previewTd} numberOfLines={1}>{p.phone||'—'}</Text>
+                      <Text style={[s.previewTd,{fontSize:10}]} numberOfLines={1}>{p.gstin||'—'}</Text>
+                      <Text style={s.previewTd} numberOfLines={1}>{p.state||'—'}</Text>
+                    </View>
+                  ))}
+                  {bulkParsed.results.length > 8 && (
+                    <View style={s.previewMore}>
+                      <Text style={s.previewMoreTxt}>+{bulkParsed.results.length - 8} more parties</Text>
+                    </View>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={[s.importBtn, bulkSaving && {opacity:0.5}]}
+                  onPress={handleBulkSave}
+                  disabled={bulkSaving}
+                >
+                  {bulkSaving
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <><Icon name="upload" size={15} color="#fff" /><Text style={s.importBtnTxt}>  Import {bulkParsed.results.length} Parties</Text></>
+                  }
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Success result */}
+            {bulkDone && (
+              <View style={s.doneCard}>
+                <View style={s.doneIcon}>
+                  <Icon name="check-circle" size={32} color={COLORS.success} />
+                </View>
+                <Text style={s.doneTitle}>Import Complete!</Text>
+                <Text style={s.doneSub}>
+                  {bulkDone.added} parties added successfully
+                  {bulkDone.failed > 0 ? `\n${bulkDone.failed} failed` : ''}
+                </Text>
+                <TouchableOpacity style={s.doneBtn} onPress={() => {
+                  setBulkModal(false); setBulkDone(null);
+                }}>
+                  <Text style={s.doneBtnTxt}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={{height:40}} />
+          </ScrollView>
         </View>
       </Modal>
     </View>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-function StatChip({ label, value, color }) {
+// ── Sub-components ─────────────────────────────────────────────────
+function KPI({ label, value, color }) {
   return (
-    <View style={styles.statChip}>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={s.kpiChip}>
+      <Text style={[s.kpiVal, {color}]}>{value}</Text>
+      <Text style={s.kpiLbl}>{label}</Text>
     </View>
   );
 }
 
-function FieldLabel({ children }) {
-  return <Text style={styles.fieldLabel}>{children}</Text>;
+function SH({ label, colKey, flex, width, align='left', sortKey, sortAsc, onSort }) {
+  const active = sortKey === colKey;
+  return (
+    <TouchableOpacity
+      style={[{paddingHorizontal:8, paddingVertical:9}, flex ? {flex} : {width}]}
+      onPress={() => onSort(colKey)}
+      activeOpacity={0.7}
+    >
+      <Text style={[s.th, {textAlign:align}, active && {color:COLORS.primary}]} numberOfLines={1}>
+        {label}{active ? (sortAsc ? ' ↑' : ' ↓') : ''}
+      </Text>
+    </TouchableOpacity>
+  );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────
+function ExcelIcon() {
+  return (
+    <View style={s.excelIconWrap}>
+      <View style={s.excelGrid}>
+        <View style={s.excelRow}>
+          <View style={[s.excelCell, s.excelCellHeader]} />
+          <View style={[s.excelCell, s.excelCellHeader, {borderRightWidth:0}]} />
+        </View>
+        <View style={[s.excelRow, {flex:1}]}>
+          <View style={[s.excelCell, {borderBottomWidth:0}]} />
+          <View style={[s.excelCell, {borderBottomWidth:0, borderRightWidth:0}]} />
+        </View>
+      </View>
+    </View>
+  );
+}
 
+function FL({ label, children }) {
+  return (
+    <View style={s.fieldWrap}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      {children}
+    </View>
+  );
+}
 
+// ── Styles ─────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  container:  { flex:1, backgroundColor:COLORS.bg },
 
-const styles = StyleSheet.create({
-  // Layout
-  container:  { flex: 1, backgroundColor: COLORS.bg },
-  center:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll:     { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
+  // Header
+  header:      { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:14, paddingVertical:12, backgroundColor:COLORS.card, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  headerTitle: { fontSize:20, fontWeight:FONTS.black, color:COLORS.text },
+  headerSub:   { fontSize:11, color:COLORS.textMute, marginTop:1 },
+  headerBtns:  { flexDirection:'row', alignItems:'center', gap:8 },
 
-  // Page header — white bar with title + action
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: COLORS.card,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  headerLeft:  { flex: 1 },
-  headerTitle: { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text, letterSpacing: -0.3 },
-  headerSub:   { fontSize: 12, color: COLORS.textMute, marginTop: 2 },
-  headerBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16, paddingVertical: 9,
-    borderRadius: RADIUS.md, flexDirection: 'row',
-    alignItems: 'center', gap: 6,
-  },
-  headerBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  addBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  addBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  newBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  newBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  backBtn:     { marginRight: 12, padding: 4 },
-  saveBtn:     { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  saveBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  // Excel export button
+  excelBtn:      { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:11, paddingVertical:8, borderRadius:RADIUS.md, backgroundColor:'#F0FDF4', borderWidth:1, borderColor:'#86EFAC' },
+  excelBtnTxt:   { fontSize:12, fontWeight:FONTS.bold, color:'#16A34A' },
+  excelIconWrap: { width:16, height:16 },
+  excelGrid:     { flex:1, borderWidth:1, borderColor:'#16A34A', borderRadius:2, overflow:'hidden' },
+  excelRow:      { flexDirection:'row', flex:1 },
+  excelCell:     { flex:1, borderRightWidth:1, borderRightColor:'#16A34A', borderBottomWidth:1, borderBottomColor:'#16A34A' },
+  excelCellHeader: { backgroundColor:'#16A34A' },
 
-  // Metric strip — 3 KPIs in a white bar below header
-  metricsBar:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  statsStrip:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  metricCell:  { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  statChip:    { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  metricVal:   { fontSize: 16, fontWeight: FONTS.black },
-  statValue:   { fontSize: 16, fontWeight: FONTS.black },
-  metricLbl:   { fontSize: 10, color: COLORS.textMute, marginTop: 2, fontWeight: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.4 },
-  statLabel:   { fontSize: 10, color: COLORS.textMute, marginTop: 2, fontWeight: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.4 },
-  metricSep:   { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
-  div:         { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
+  // Bulk upload button
+  bulkBtn:    { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:11, paddingVertical:8, borderRadius:RADIUS.md, backgroundColor:'#F5F3FF', borderWidth:1, borderColor:'#C4B5FD' },
+  bulkBtnTxt: { fontSize:12, fontWeight:FONTS.bold, color:'#8B5CF6' },
 
-  // Search bar
-  searchWrap:  { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 0 },
-  searchBox: {
-    flexDirection: 'row', alignItems: 'center',
-    margin: 16, marginBottom: 0,
-    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
-    paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.border,
-    height: 44,
-  },
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center',
-    margin: 16, marginBottom: 0,
-    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
-    paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.border,
-    height: 44,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 0 },
-  clearBtn:    { padding: 4 },
+  // Add button
+  addBtn:    { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:COLORS.primary, paddingHorizontal:14, paddingVertical:9, borderRadius:RADIUS.md },
+  addBtnTxt: { color:'#fff', fontWeight:FONTS.bold, fontSize:13 },
 
-  // Filter chips
-  filterRow:       { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip:            { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  chipOn:          { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  chipText:        { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  chipTextOn:      { color: '#fff', fontWeight: FONTS.bold },
-  filterChip:      { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  filterChipActive:{ backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  filterText:      { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  filterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
-  catChip:         { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  catChipActive:   { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  catChipText:     { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  catChipTextActive:{ color: '#fff', fontWeight: FONTS.bold },
+  // KPI strip
+  kpiStrip: { flexDirection:'row', backgroundColor:COLORS.card, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  kpiChip:  { flex:1, alignItems:'center', paddingVertical:11 },
+  kpiDiv:   { width:1, backgroundColor:COLORS.border, marginVertical:10 },
+  kpiVal:   { fontSize:14, fontWeight:FONTS.black, marginBottom:2 },
+  kpiLbl:   { fontSize:9, color:COLORS.textMute, textTransform:'uppercase', letterSpacing:0.4, textAlign:'center' },
 
-  // List
-  list: { padding: 16, paddingBottom: 100 },
+  // Toolbar
+  toolbar:    { backgroundColor:COLORS.card, borderBottomWidth:1, borderBottomColor:COLORS.border, paddingTop:10 },
+  searchBox:  { flexDirection:'row', alignItems:'center', gap:8, marginHorizontal:12, marginBottom:8, paddingHorizontal:12, height:38, backgroundColor:COLORS.bg, borderRadius:RADIUS.md, borderWidth:1, borderColor:COLORS.border },
+  searchInput:{ flex:1, fontSize:13, color:COLORS.text, paddingVertical:0 },
+  chipRow:    { flexDirection:'row', paddingHorizontal:12, paddingBottom:10, gap:7 },
+  chip:       { paddingHorizontal:13, paddingVertical:5, borderRadius:RADIUS.full, backgroundColor:COLORS.bg, borderWidth:1, borderColor:COLORS.border },
+  chipActive: { backgroundColor:COLORS.secondary, borderColor:COLORS.secondary },
+  chipTxt:    { fontSize:11, fontWeight:FONTS.medium, color:COLORS.textSub },
+  chipTxtActive:{ color:'#fff', fontWeight:FONTS.bold },
 
-  // Cards
-  card: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  partyCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  itemCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  expCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  invoiceCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, overflow: 'hidden',
-    borderWidth: 1, borderColor: COLORS.border,
-    borderLeftWidth: 4,
-  },
-  cardMain:   { padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardBody:   { padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardRow:    { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  cardLeft:   { flex: 1, marginRight: 12 },
-  cardRight:  { alignItems: 'flex-end', gap: 4 },
-  cardInfo:   { flex: 1 },
+  // Table
+  tableWrap:  { flex:1 },
+  thead:      { flexDirection:'row', backgroundColor:'#F1F5F9', borderBottomWidth:2, borderBottomColor:COLORS.border },
+  th:         { fontSize:10, fontWeight:FONTS.bold, color:COLORS.textMute, textTransform:'uppercase', letterSpacing:0.4 },
+  trow:       { flexDirection:'row', alignItems:'center', borderBottomWidth:1, borderBottomColor:COLORS.border, minHeight:48, backgroundColor:COLORS.card },
+  trowEven:   { backgroundColor:'#FAFBFF' },
+  td:         { fontSize:12, color:COLORS.text, paddingHorizontal:8 },
 
-  // Card content
-  cardName:  { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  itemName:  { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3, flex: 1 },
-  partyName: { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  cardSub:   { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  itemSub:   { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  partySub:  { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  cardMeta:  { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
-  nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  subRow:    { flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 4 },
+  nameCell:   { flexDirection:'row', alignItems:'center', gap:8 },
+  avatar:     { width:28, height:28, borderRadius:14, alignItems:'center', justifyContent:'center', flexShrink:0 },
+  avatarCust: { backgroundColor:COLORS.primaryLight },
+  avatarSupp: { backgroundColor:'#E0F2FE' },
+  avatarTxt:  { fontSize:12, fontWeight:FONTS.black },
+  avatarTxtCust: { color:COLORS.primary },
+  avatarTxtSupp: { color:'#0369A1' },
+  tdName:     { fontSize:13, fontWeight:FONTS.semibold, color:COLORS.text },
+  tdSub:      { fontSize:10, color:COLORS.textMute, marginTop:1 },
 
-  // Invoice specific
-  invoiceNo:   { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  invoiceDate: { fontSize: 12, color: COLORS.textMute },
-  total:       { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
-  salePrice:   { fontSize: 16, fontWeight: FONTS.black, color: COLORS.text },
-  purchasePrice:{ fontSize: 11, color: COLORS.textMute },
-  party:       { fontSize: 13, color: COLORS.textSub, marginBottom: 4 },
-  date:        { fontSize: 11, color: COLORS.textMute },
-  due:         { fontSize: 11, color: COLORS.warning, fontWeight: FONTS.medium },
-  dueRed:      { color: COLORS.danger },
-  badge:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  badgeText:   { fontSize: 10, fontWeight: FONTS.bold, letterSpacing: 0.3 },
-  bal:         { fontSize: 12, fontWeight: FONTS.bold },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  statusText:  { fontSize: 10, fontWeight: FONTS.bold, letterSpacing: 0.3 },
+  typePill:       { paddingHorizontal:7, paddingVertical:3, borderRadius:RADIUS.full },
+  typePillCust:   { backgroundColor:COLORS.primaryLight },
+  typePillSupp:   { backgroundColor:'#E0F2FE' },
+  typePillTxt:    { fontSize:9, fontWeight:FONTS.black, letterSpacing:0.2 },
+  typePillTxtCust:{ color:COLORS.primary },
+  typePillTxtSupp:{ color:'#0369A1' },
 
-  // Parties specific
-  avatar:     { width: 44, height: 44, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { fontSize: 18, fontWeight: FONTS.black, color: '#fff' },
-  typeBadge:  { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm, backgroundColor: COLORS.primaryLight },
-  typeBadgeSupplier: { backgroundColor: COLORS.infoLight },
-  typeText:   { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.primary },
-  typeTextSupplier: { color: COLORS.info },
-  balance:    { fontSize: 13, fontWeight: FONTS.heavy, color: COLORS.success },
+  tdActions:  { width:72, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:6, paddingHorizontal:6 },
+  editBtn:    { padding:6, borderRadius:RADIUS.sm, backgroundColor:COLORS.bgDeep },
+  delBtn:     { padding:6, borderRadius:RADIUS.sm, backgroundColor:COLORS.dangerLight },
 
-  // Inventory specific
-  lowBadge:   { backgroundColor: COLORS.dangerLight, paddingHorizontal: 7, paddingVertical: 2, borderRadius: RADIUS.sm },
-  lowText:    { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.danger },
-  stockRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 12, gap: 10 },
-  stockLabel: { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium, flex: 1 },
-  minStock:   { fontSize: 11, color: COLORS.textMute },
-  stockValue: { fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textSub },
+  // Empty
+  empty:          { alignItems:'center', paddingTop:70, paddingHorizontal:32 },
+  emptyIcon:      { width:60, height:60, borderRadius:30, backgroundColor:COLORS.primaryLight, alignItems:'center', justifyContent:'center', marginBottom:14 },
+  emptyTitle:     { fontSize:16, fontWeight:FONTS.bold, color:COLORS.text, marginBottom:6, textAlign:'center' },
+  emptySub:       { fontSize:13, color:COLORS.textMute, textAlign:'center', lineHeight:19, marginBottom:20 },
+  emptyBtns:      { flexDirection:'row', gap:10 },
+  emptyBtn:       { backgroundColor:COLORS.primary, paddingHorizontal:20, paddingVertical:10, borderRadius:RADIUS.lg },
+  emptyBtnTxt:    { color:'#fff', fontWeight:FONTS.bold, fontSize:13 },
+  emptyBtnOutline:{ paddingHorizontal:20, paddingVertical:10, borderRadius:RADIUS.lg, borderWidth:1.5, borderColor:'#8B5CF6' },
+  emptyBtnOutlineTxt:{ color:'#8B5CF6', fontWeight:FONTS.bold, fontSize:13 },
 
-  // Expenses specific
-  expAmount:  { fontSize: 16, fontWeight: FONTS.black, color: COLORS.danger },
-  expMeta:    { fontSize: 11, color: COLORS.textMute, marginTop: 3 },
-  catIcon:    { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  catLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 3 },
+  // Modal
+  modalWrap:   { flex:1, backgroundColor:COLORS.card, marginTop: Platform.OS==='web' ? 60 : 0 },
+  modalHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:20, paddingTop:16, paddingBottom:14, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  modalTitle:  { fontSize:17, fontWeight:FONTS.black, color:COLORS.text },
+  modalCancel: { fontSize:14, color:COLORS.textSub },
+  modalSave:   { fontSize:14, fontWeight:FONTS.bold, color:COLORS.primary },
+  modalScroll: { padding:18, paddingBottom:40 },
 
-  // Action buttons on cards
-  cardActions:{ flexDirection: 'row', gap: 6, marginTop: 6 },
-  editBtn:    { padding: 7, borderRadius: RADIUS.sm, backgroundColor: COLORS.bgDeep },
-  delBtn:     { padding: 7, borderRadius: RADIUS.sm, backgroundColor: COLORS.dangerLight },
+  // Form
+  fieldWrap:  { marginBottom:12 },
+  fieldLabel: { fontSize:11, fontWeight:FONTS.bold, color:COLORS.textSub, textTransform:'uppercase', letterSpacing:0.5, marginBottom:6 },
+  input:      { backgroundColor:COLORS.bg, borderWidth:1, borderColor:COLORS.border, borderRadius:RADIUS.md, paddingHorizontal:12, paddingVertical:11, fontSize:14, color:COLORS.text },
+  row:        { flexDirection:'row' },
+  picker:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between' },
+  pickerTxt:  { fontSize:14, color:COLORS.text, flex:1 },
+  pickerPlaceholder: { fontSize:14, color:COLORS.textMute, flex:1 },
 
-  // Modal — bottom sheet
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: COLORS.card,
-    borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl,
-    maxHeight: '92%',
-  },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.borderDark, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  modalTitle:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
-  modalBody:   { padding: 20 },
-  modalSave: { color: COLORS.primary, fontWeight: FONTS.bold, fontSize: 15 },
-  modalSaveText: { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
+  typeRow:        { flexDirection:'row', gap:8, marginBottom:4 },
+  typeBtn:        { flex:1, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:6, paddingVertical:10, borderRadius:RADIUS.md, backgroundColor:COLORS.bg, borderWidth:1, borderColor:COLORS.border },
+  typeBtnCust:    { backgroundColor:COLORS.primary, borderColor:COLORS.primary },
+  typeBtnSupp:    { backgroundColor:'#0EA5E9', borderColor:'#0EA5E9' },
+  typeBtnTxt:     { fontSize:13, fontWeight:FONTS.semibold, color:COLORS.textSub },
+  typeBtnTxtActive:{ color:'#fff', fontWeight:FONTS.bold },
 
-  // Form fields
-  fieldLabel: {
-    fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub,
-    textTransform: 'uppercase', letterSpacing: 0.6,
-    marginBottom: 7, marginTop: 18,
-  },
-  fieldInput: {
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, color: COLORS.text,
-  },
-  input: {
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, color: COLORS.text,
-  },
-  textarea: { minHeight: 80, textAlignVertical: 'top' },
-  row:      { flexDirection: 'row', gap: 12 },
-  pickerRow:{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  pickerChip:       { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg },
-  pickerChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  pickerChipText:   { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  pickerChipTextActive: { color: '#fff', fontWeight: FONTS.bold },
-  stateArrow:  { fontSize: 14, color: COLORS.textMute },
-  statePickerBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-  },
-  statePickerText: { fontSize: 14, color: COLORS.text },
+  // State picker
+  stateSearch:      { flexDirection:'row', alignItems:'center', gap:8, margin:12, paddingHorizontal:12, height:42, backgroundColor:COLORS.bg, borderRadius:RADIUS.md, borderWidth:1, borderColor:COLORS.border },
+  stateSearchInput: { flex:1, fontSize:14, color:COLORS.text },
+  stateItem:        { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:20, paddingVertical:13, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  stateItemName:    { fontSize:14, color:COLORS.text, fontWeight:FONTS.medium },
+  stateItemCode:    { fontSize:12, color:COLORS.textMute, backgroundColor:COLORS.bgDeep, paddingHorizontal:8, paddingVertical:3, borderRadius:RADIUS.sm },
 
-  // Reports
-  presetRow:        { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  presetChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  presetChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  presetText:       { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  presetTextActive: { color: '#fff', fontWeight: FONTS.bold },
-  reportSection: { marginBottom: 20 },
-  sectionHeading: { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 10, marginTop: 4 },
-  reportCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, marginBottom: 2 },
-  reportRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  reportRowLast: { borderBottomWidth: 0 },
-  reportLabel:{ fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  reportValue:{ fontSize: 14, fontWeight: FONTS.heavy, color: COLORS.text },
-  plCard:     { backgroundColor: COLORS.secondary, borderRadius: RADIUS.xl, padding: 20, marginBottom: 16 },
-  plTitle:    { fontSize: 11, fontWeight: FONTS.bold, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 14 },
-  plRow:      { flexDirection: 'row' },
-  plItem:     { flex: 1, alignItems: 'center' },
-  plValue:    { fontSize: 16, fontWeight: FONTS.black, marginBottom: 4 },
-  plLabel:    { fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
-  gstRow:     { flexDirection: 'row', gap: 10, marginBottom: 2 },
-  gstBox:     { flex: 1, backgroundColor: COLORS.card, borderRadius: RADIUS.lg, padding: 14, alignItems: 'center', borderTopWidth: 3, borderWidth: 1, borderColor: COLORS.border },
-  gstVal:     { fontSize: 15, fontWeight: FONTS.black, marginBottom: 4 },
-  gstLbl:     { fontSize: 10, color: COLORS.textMute, textAlign: 'center' },
-  exportBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 14, borderRadius: RADIUS.lg, marginTop: 8 },
-  exportBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  // Bulk upload modal
+  bulkStep:      { flexDirection:'row', alignItems:'flex-start', gap:12, marginBottom:14 },
+  bulkStepNum:   { width:28, height:28, borderRadius:14, backgroundColor:COLORS.primary, alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:2 },
+  bulkStepNumTxt:{ fontSize:13, fontWeight:FONTS.black, color:'#fff' },
+  bulkStepTitle: { fontSize:15, fontWeight:FONTS.bold, color:COLORS.text, marginBottom:3 },
+  bulkStepDesc:  { fontSize:13, color:COLORS.textSub, lineHeight:19 },
 
-  // Settings
-  sectionHeader:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
-  sectionTitle: { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7 },
-  settingsCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginHorizontal: 16, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  settingsRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  settingsRowLast: { borderBottomWidth: 0 },
-  settingsRowLabel: { flex: 1, fontSize: 14, fontWeight: FONTS.medium, color: COLORS.text },
-  settingsRowValue: { fontSize: 13, color: COLORS.textMute },
-  settingsInput:    { flex: 1, fontSize: 14, color: COLORS.text, textAlign: 'right' },
-  card:     { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginHorizontal: 16, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', padding: 16 },
-  infoRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  infoLabel:{ fontSize: 13, color: COLORS.textSub },
-  infoValue:{ fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
-  dangerBtn:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.dangerLight, paddingVertical: 13, borderRadius: RADIUS.lg, marginHorizontal: 16, marginTop: 4 },
-  dangerBtnText: { color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 14 },
-  infoBox:    { backgroundColor: COLORS.infoLight, borderRadius: RADIUS.md, padding: 12, marginTop: 8 },
-  infoBoxText:{ fontSize: 12, color: COLORS.info, lineHeight: 18 },
-  hintWarn:   { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.warningBg, borderRadius: RADIUS.sm, padding: 10, marginTop: 6 },
-  hintWarnText:{ fontSize: 12, color: COLORS.warning, flex: 1 },
-  hintOk:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.successBg, borderRadius: RADIUS.sm, padding: 10, marginTop: 6 },
-  hintOkText: { fontSize: 12, color: COLORS.success, flex: 1 },
-  upiOk:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  upiWarn:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  upiWarnText:{ fontSize: 12, color: COLORS.textMute },
-  driveRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: COLORS.successBg, borderRadius: RADIUS.md, marginTop: 8 },
-  driveEmail: { flex: 1, fontSize: 13, color: COLORS.success, fontWeight: FONTS.semibold },
-  backupTime: { fontSize: 13, color: COLORS.textSub },
-  backupBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 8 },
-  backupBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.card, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 6, borderWidth: 1, borderColor: COLORS.border },
-  restoreBtnText: { fontWeight: FONTS.bold, fontSize: 13, color: COLORS.text },
-  connectBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 8 },
-  connectBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.dangerLight, paddingVertical: 13, borderRadius: RADIUS.lg, marginHorizontal: 16, marginVertical: 8 },
-  signOutText:{ color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 14 },
-  pickerArrow:{ fontSize: 14, color: COLORS.textMute },
+  templateCard:       { backgroundColor:'#F0FDF4', borderRadius:RADIUS.lg, borderWidth:1, borderColor:'#86EFAC', padding:14, marginBottom:12 },
+  templateHeader:     { flexDirection:'row', alignItems:'center', gap:8, marginBottom:10 },
+  templateName:       { fontSize:13, fontWeight:FONTS.bold, color:'#16A34A' },
+  templateCols:       { flexDirection:'row', flexWrap:'wrap', gap:6, marginBottom:8 },
+  templateCol:        { paddingHorizontal:8, paddingVertical:4, borderRadius:RADIUS.sm, backgroundColor:'#fff', borderWidth:1, borderColor:'#86EFAC' },
+  templateColRequired:{ borderColor:COLORS.danger, backgroundColor:'#FEF2F2' },
+  templateColTxt:     { fontSize:10, fontWeight:FONTS.medium, color:COLORS.textSub },
+  templateColTxtRequired: { color:COLORS.danger, fontWeight:FONTS.bold },
+  templateHint:       { fontSize:11, color:COLORS.textMute },
 
-  // State picker modal
-  stateOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
-  stateSheet:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '75%' },
-  stateHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateTitle:   { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
-  stateSearchBox:{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateSearchInput:{ backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: COLORS.text },
-  stateItem:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateName:    { fontSize: 14, color: COLORS.text, fontWeight: FONTS.medium },
-  stateCode:    { fontSize: 12, color: COLORS.textMute, backgroundColor: COLORS.bgDeep, paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  stateClose:   { fontSize: 20, color: COLORS.textMute },
+  downloadBtn:    { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, backgroundColor:'#16A34A', paddingVertical:13, borderRadius:RADIUS.lg, marginBottom:8 },
+  downloadBtnTxt: { fontSize:14, fontWeight:FONTS.bold, color:'#fff' },
 
-  // Party detail
-  heroDetail:   { backgroundColor: COLORS.secondary, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24 },
-  detailAvatar: { width: 56, height: 56, borderRadius: RADIUS.full, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  detailAvatarText: { fontSize: 24, fontWeight: FONTS.black, color: '#fff' },
-  detailName:   { fontSize: 20, fontWeight: FONTS.black, color: '#fff', marginBottom: 4 },
-  detailSub:    { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
-  kpiStrip:     { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  kpiChip:      { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  kpiValue:     { fontSize: 15, fontWeight: FONTS.black, marginBottom: 2 },
-  kpiLabel:     { fontSize: 10, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4 },
-  kpiDivider:   { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
-  invRow:       { backgroundColor: COLORS.card, marginHorizontal: 16, marginBottom: 10, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  invRowTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 14 },
-  invNum:       { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  invDate:      { fontSize: 11, color: COLORS.textMute },
-  invTotal:     { fontSize: 16, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 5 },
-  balRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: COLORS.dangerBg, borderTopWidth: 1, borderTopColor: COLORS.dangerLight },
-  balLabel:     { fontSize: 11, color: COLORS.danger, fontWeight: FONTS.semibold },
-  balValue:     { fontSize: 12, fontWeight: FONTS.heavy, color: COLORS.danger },
+  uploadZone:       { alignItems:'center', justifyContent:'center', paddingVertical:36, borderRadius:RADIUS.xl, borderWidth:2, borderColor:COLORS.primary, borderStyle:'dashed', backgroundColor:COLORS.primaryLight, gap:10, marginBottom:8 },
+  uploadZoneIcon:   { width:60, height:60, borderRadius:30, backgroundColor:COLORS.card, alignItems:'center', justifyContent:'center' },
+  uploadZoneTitle:  { fontSize:15, fontWeight:FONTS.bold, color:COLORS.primary },
+  uploadZoneSub:    { fontSize:12, color:COLORS.textSub, textAlign:'center', paddingHorizontal:20 },
 
-  // Empty state
-  empty:        { alignItems: 'center', paddingTop: 70, paddingHorizontal: 32 },
-  emptyIconWrap:{ width: 80, height: 80, borderRadius: RADIUS.full, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyIcon:    { fontSize: 36 },
-  emptyTitle:   { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 8, textAlign: 'center' },
-  emptySub:     { fontSize: 13, color: COLORS.textMute, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  emptyBtn:     { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS.lg },
-  emptyBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 14 },
+  previewHeader:  { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:10 },
+  previewBadge:   { flexDirection:'row', alignItems:'center', gap:6, backgroundColor:COLORS.successLight, paddingHorizontal:10, paddingVertical:5, borderRadius:RADIUS.full },
+  previewBadgeTxt:{ fontSize:12, fontWeight:FONTS.bold, color:COLORS.success },
+  rePickBtn:      { flexDirection:'row', alignItems:'center', gap:5 },
+  rePickBtnTxt:   { fontSize:12, color:COLORS.primary, fontWeight:FONTS.semibold },
 
-  // Login
-  loginContainer: { flex: 1, backgroundColor: '#F8FAFF', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loginLogoWrap:  { alignItems: 'center', marginBottom: 40 },
-  loginLogoBox:   { width: 160, height: 60, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  loginLogoImg:   { width: 140, height: 50 },
-  loginBrand:     { fontSize: 13, color: COLORS.textMute, letterSpacing: 1 },
-  loginTagline:   { fontSize: 12, color: COLORS.textMute, marginTop: 2 },
-  loginCard:      { width: '100%', maxWidth: 420, backgroundColor: '#fff', borderRadius: RADIUS.xl, padding: 28, borderWidth: 1, borderColor: COLORS.border },
-  loginTitle:     { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 6 },
-  loginSubtitle:  { fontSize: 13, color: COLORS.textMute, marginBottom: 24 },
-  loginLabel:     { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7, marginTop: 16 },
-  loginInput:     { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, color: COLORS.text },
-  loginBtn:       { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
-  loginBtnText:   { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-  loginError:     { backgroundColor: COLORS.dangerLight, borderRadius: RADIUS.md, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  loginErrorText: { fontSize: 13, color: COLORS.danger, flex: 1 },
-  loginFooter:    { fontSize: 12, color: COLORS.textMute, marginTop: 20, textAlign: 'center' },
+  previewTable:  { backgroundColor:COLORS.card, borderRadius:RADIUS.lg, borderWidth:1, borderColor:COLORS.border, overflow:'hidden', marginBottom:14 },
+  previewThead:  { flexDirection:'row', backgroundColor:'#F1F5F9', paddingVertical:8, paddingHorizontal:10, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  previewTh:     { flex:1, fontSize:10, fontWeight:FONTS.bold, color:COLORS.textMute, textTransform:'uppercase', letterSpacing:0.4, paddingHorizontal:4 },
+  previewTrow:   { flexDirection:'row', alignItems:'center', paddingVertical:9, paddingHorizontal:10, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  previewTd:     { flex:1, fontSize:11, color:COLORS.text, paddingHorizontal:4 },
+  previewMore:   { padding:10, alignItems:'center', backgroundColor:'#F8FAFC' },
+  previewMoreTxt:{ fontSize:12, color:COLORS.textMute, fontWeight:FONTS.medium },
 
-  // Payment modal (InvoiceDetail)
-  payInvInfo:    { backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.md, padding: 14, marginBottom: 8 },
-  payInvNum:     { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.primary, marginBottom: 3 },
-  payInvParty:   { fontSize: 13, color: COLORS.text },
-  payInvBalance: { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.danger, marginTop: 4 },
-  methodRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  methodChip:    { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  methodChipActive:{ backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-  methodText:    { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  methodTextActive:{ color: COLORS.primary, fontWeight: FONTS.bold },
-  confirmBtn:    { backgroundColor: COLORS.success, borderRadius: RADIUS.lg, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
-  confirmBtnText:{ color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
+  importBtn:    { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, backgroundColor:COLORS.primary, paddingVertical:14, borderRadius:RADIUS.lg, marginBottom:8 },
+  importBtnTxt: { fontSize:14, fontWeight:FONTS.bold, color:'#fff' },
 
-  // Section title in screens
-  sectionLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
-  loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
-  notFound:       { fontSize: 15, color: COLORS.textMute },
-
-  typeRow:          { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 12 },
-  typeBtn:          { flex: 1, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
-  typeBtnActive:    { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  typeBtnText:      { fontSize: 13, fontWeight: FONTS.medium, color: COLORS.textSub },
-  typeBtnTextActive:{ color: '#fff', fontWeight: FONTS.bold },
-  statePicker:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12 },
-  stateText:        { fontSize: 14, color: COLORS.text },
-  statePlaceholder: { fontSize: 14, color: COLORS.textMute },
-  modalContainer:   { flex: 1, backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '90%', marginTop: Platform.OS === 'web' ? 60 : 0 },
-  modalScroll:      { padding: 20, paddingBottom: 40 },
-  modalCancel:      { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-
+  doneCard:   { alignItems:'center', padding:28, backgroundColor:COLORS.successLight, borderRadius:RADIUS.xl, borderWidth:1, borderColor:COLORS.success+'44' },
+  doneIcon:   { width:64, height:64, borderRadius:32, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', marginBottom:14 },
+  doneTitle:  { fontSize:20, fontWeight:FONTS.black, color:COLORS.success, marginBottom:8 },
+  doneSub:    { fontSize:14, color:COLORS.success, textAlign:'center', lineHeight:21, marginBottom:20, opacity:0.8 },
+  doneBtn:    { backgroundColor:COLORS.success, paddingHorizontal:32, paddingVertical:12, borderRadius:RADIUS.lg },
+  doneBtnTxt: { color:'#fff', fontWeight:FONTS.bold, fontSize:14 },
 });
