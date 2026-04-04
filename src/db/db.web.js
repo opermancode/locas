@@ -255,13 +255,16 @@ export async function saveInvoice(invoice, lineItems) {
     }
   }
 
+  invalidateDashboardCache();
   return invoiceId;
 }
 
 export async function getInvoices(filters = {}) {
-  let all = await getAll(stores.invoices, i => !i.deleted_at);
+  // Pre-filter at iteration level when possible to avoid loading everything
+  const typeFilter = filters.type;
+  let all = await getAll(stores.invoices, i => !i.deleted_at && (!typeFilter || i.type === typeFilter));
   if (filters.status) all = all.filter(i => i.status === filters.status);
-  if (filters.type) all = all.filter(i => i.type === filters.type);
+  // type pre-filtered in getAll for performance
   if (filters.from) all = all.filter(i => i.date >= filters.from);
   if (filters.to) all = all.filter(i => i.date <= filters.to);
   return all.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
@@ -277,6 +280,7 @@ export async function getInvoiceDetail(id) {
 }
 
 export async function recordPayment(invoiceId, amount, method, reference, date, note) {
+  invalidateDashboardCache();
   const inv = await stores.invoices.getItem(String(invoiceId));
   const outstanding = (inv.total || 0) - (inv.paid || 0);
   if (amount > outstanding + 0.001) {
@@ -303,6 +307,7 @@ export async function recordPayment(invoiceId, amount, method, reference, date, 
 }
 
 export async function deleteInvoice(id) {
+  invalidateDashboardCache();
   const inv = await stores.invoices.getItem(String(id));
   if (!inv || inv.deleted_at) return;
 
@@ -358,12 +363,26 @@ export async function deleteExpense(id) {
   await stores.expenses.setItem(String(id), { ...existing, deleted_at: new Date().toISOString() });
 }
 
+// Simple TTL cache for dashboard stats — avoids full table scan on every screen focus
+let _dashCache = null;
+let _dashCacheTime = 0;
+const DASH_CACHE_TTL = 8000; // 8 seconds
+
+export function invalidateDashboardCache() {
+  _dashCache = null;
+  _dashCacheTime = 0;
+}
+
 export async function getDashboardStats() {
-  const now = new Date();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy = String(now.getFullYear());
+  const now = Date.now();
+  if (_dashCache && (now - _dashCacheTime) < DASH_CACHE_TTL) {
+    return _dashCache;
+  }
+  const today = new Date();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(today.getFullYear());
   const monthStart = `${yyyy}-${mm}-01`;
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
 
   const allInvoices = await getAll(stores.invoices, i => !i.deleted_at);
   const allExpenses = await getAll(stores.expenses, e => !e.deleted_at);
@@ -397,7 +416,10 @@ export async function getDashboardStats() {
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 
-  return { sales, expenses, receivables, payables, topCustomers, collected };
+  const result = { sales, expenses, receivables, payables, topCustomers, collected };
+  _dashCache = result;
+  _dashCacheTime = Date.now();
+  return result;
 }
 
 export async function getReportData(from, to) {
@@ -685,10 +707,13 @@ export async function globalSearch(query, limit = 10) {
   const searchTerm = query.trim().toLowerCase();
 
   try {
-    const allInvoices = await getAll(stores.invoices, i => !i.deleted_at);
-    const allQuotations = await getAll(stores.quotations, q => !q.deleted_at);
-    const allParties = await getAll(stores.parties, p => !p.deleted_at);
-    const allItems = await getAll(stores.items, i => !i.deleted_at);
+    // Run all 4 store reads in parallel for faster search
+    const [allInvoices, allQuotations, allParties, allItems] = await Promise.all([
+      getAll(stores.invoices, i => !i.deleted_at),
+      getAll(stores.quotations, q => !q.deleted_at),
+      getAll(stores.parties, p => !p.deleted_at),
+      getAll(stores.items, i => !i.deleted_at),
+    ]);
 
     const invoices = allInvoices
       .filter(i =>

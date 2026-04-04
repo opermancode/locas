@@ -164,6 +164,10 @@ export default function QuotationListScreen({ navigation }) {
         renderItem={renderQuotation}
         keyExtractor={item => String(item.id)}
         contentContainerStyle={styles.list}
+        windowSize={5}
+        maxToRenderPerBatch={10}
+        initialNumToRender={12}
+        removeClippedSubviews={true}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }

@@ -50,7 +50,10 @@ export default function DashboardScreen({ navigation }) {
   const searchTimer = useRef(null);
   const fadeAnim   = useRef(new Animated.Value(0)).current;
 
+  const loadingRef = React.useRef(false);
   const load = async () => {
+    if (loadingRef.current) return; // Prevent concurrent loads
+    loadingRef.current = true;
     try {
       const [data, prof, license] = await Promise.all([
         DB.getDashboardStats(),
@@ -78,6 +81,7 @@ export default function DashboardScreen({ navigation }) {
     } finally {
       setRefreshing(false);
       setLoading(false);
+      loadingRef.current = false;
     }
   };
 

@@ -1,5 +1,5 @@
 import Icon from '../../utils/Icon';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, RefreshControl, StatusBar, ScrollView,
@@ -96,9 +96,18 @@ export default function InvoiceListScreen({ navigation }) {
     setFiltered(out);
   };
 
+  // Debounce search to avoid re-filtering on every single keystroke
+  const searchTimer = React.useRef(null);
   const handleSearch = (q) => {
     setSearch(q);
-    applyFilters(invoices, q, statusFilter, sortKey, sortAsc);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!q.trim()) {
+      applyFilters(invoices, q, statusFilter, sortKey, sortAsc);
+      return;
+    }
+    searchTimer.current = setTimeout(() => {
+      applyFilters(invoices, q, statusFilter, sortKey, sortAsc);
+    }, 200);
   };
   const handleFilter = (f) => {
     setStatusFilter(f);
