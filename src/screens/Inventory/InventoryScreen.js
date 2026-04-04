@@ -60,7 +60,21 @@ function parseItemsCSV(text) {
   const results = [];
   for (let i = 1; i < lines.length; i++) {
     // Handle quoted commas
-    const cols = lines[i].match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || lines[i].split(',').map(c => c.trim());
+    // Simple CSV split - handles quoted fields, no lookbehind needed
+    const cols = (() => {
+      const row = lines[i], result = [];
+      let cur = '', inQ = false;
+      for (let ci = 0; ci < row.length; ci++) {
+        const ch = row[ci];
+        if (ch === '"' && !inQ) { inQ = true; }
+        else if (ch === '"' && inQ && row[ci+1] === '"') { cur += '"'; ci++; }
+        else if (ch === '"' && inQ) { inQ = false; }
+        else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
+      }
+      result.push(cur.trim());
+      return result;
+    })();
     const name = nameIdx !== -1 ? cols[nameIdx] : '';
     if (!name) continue;
     const type = typeIdx !== -1 ? (cols[typeIdx]?.toLowerCase() || 'product') : 'product';
@@ -755,8 +769,7 @@ export default function InventoryScreen({ navigation, route }) {
                 <Text style={s.doneTitle}>Import Complete!</Text>
                 <Text style={s.doneSub}>
                   {bulkDone.added} items added successfully
-                  {bulkDone.failed > 0 ? `
-${bulkDone.failed} failed` : ''}
+                  {bulkDone.failed > 0 ? ('\n' + bulkDone.failed + ' failed') : ''}
                 </Text>
                 <TouchableOpacity style={s.doneBtn} onPress={() => { setBulkModal(false); setBulkDone(null); }}>
                   <Text style={s.doneBtnTxt}>Done</Text>
