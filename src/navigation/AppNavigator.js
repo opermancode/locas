@@ -24,6 +24,7 @@ import QuotationDetailScreen from '../screens/Quotation/QuotationDetailScreen';
 import POListScreen     from '../screens/PurchaseOrder/POListScreen';
 import CreatePOScreen   from '../screens/PurchaseOrder/CreatePOScreen';
 import PODetailScreen   from '../screens/PurchaseOrder/PODetailScreen';
+import HelpSupportScreen from '../screens/Support/HelpSupportScreen';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -75,6 +76,7 @@ function MoreStack() {
       <Stack.Screen name="PurchaseOrders"  component={POListScreen} />
       <Stack.Screen name="CreatePO"        component={CreatePOScreen} />
       <Stack.Screen name="PODetail"        component={PODetailScreen} />
+      <Stack.Screen name="HelpSupport"     component={HelpSupportScreen} />
     </Stack.Navigator>
   );
 }
@@ -151,6 +153,7 @@ const SIDEBAR_ITEMS = [
   { name: 'Reports',       label: 'Reports',    icon: 'bar-chart-2', tab: 'More',          screen: 'Reports'  },
   { name: 'PurchaseOrders',label: 'PO Orders',   icon: 'clipboard',   tab: 'More',          screen: 'PurchaseOrders' },
   { name: 'Settings',      label: 'Settings',   icon: 'settings',    tab: 'More',          screen: 'Settings' },
+  { name: 'HelpSupport',   label: 'Help & Support', icon: 'help-circle', tab: 'More',     screen: 'HelpSupport' },
 ];
 
 // ── Mobile bottom tab bar ─────────────────────────────────────────
