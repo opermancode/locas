@@ -396,6 +396,7 @@ export default function SettingsScreen({ navigation }) {
       </View>
 
       <ScrollView
+        style={{flex:1}}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={s.scroll}

@@ -153,8 +153,10 @@ const SIDEBAR_ITEMS = [
   { name: 'PurchaseOrders',label: 'PO Orders',  icon: 'shopping-bag',tab: 'More',          screen: 'PurchaseOrders' },
   { name: 'QuotationsTab', label: 'Quotations', icon: 'clipboard',   tab: 'QuotationsTab', screen: null       },
   { name: 'Settings',      label: 'Settings',   icon: 'settings',    tab: 'More',          screen: 'Settings' },
-  { name: 'HelpSupport',   label: 'Help & Support', icon: 'help-circle', tab: 'More',     screen: 'HelpSupport' },
 ];
+
+// Separate footer item — always pinned to bottom of sidebar
+const SIDEBAR_FOOTER = { name: 'HelpSupport', label: 'Help & Support', icon: 'help-circle', tab: 'More', screen: 'HelpSupport' };
 
 // ── Mobile bottom tab bar ─────────────────────────────────────────
 // FIX: replaced all direct <Feather> with <NavIcon>
@@ -345,6 +347,43 @@ function DesktopSidebar({ state, navigation, onWidthChange }) {
             </div>
           );
         })}
+      </div>
+
+      {/* ── Footer: Help & Support always pinned at bottom ── */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 6px' }}>
+        {(() => {
+          const item = SIDEBAR_FOOTER;
+          const active = isActive(item);
+          return (
+            <div
+              onClick={() => go(item)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '9px 12px', borderRadius: 6, cursor: 'pointer', position: 'relative',
+                backgroundColor: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                transition: 'background-color 0.15s',
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = active ? 'rgba(255,255,255,0.08)' : 'transparent'; }}
+            >
+              {active && (
+                <div style={{ position: 'absolute', left: 0, top: 6, bottom: 6, width: 3, borderRadius: 2, backgroundColor: '#FF6B00' }} />
+              )}
+              <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <SvgIcon name={item.icon} size={16} color={active ? '#fff' : 'rgba(255,255,255,0.4)'} strokeWidth={active ? 2 : 1.5} />
+              </div>
+              <span style={{
+                fontSize: 13, fontWeight: active ? 600 : 400,
+                color: active ? '#fff' : 'rgba(255,255,255,0.45)',
+                whiteSpace: 'nowrap', overflow: 'hidden',
+                opacity: expanded ? 1 : 0,
+                transition: 'opacity 0.15s ease',
+              }}>
+                {item.label}
+              </span>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
