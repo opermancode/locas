@@ -2,7 +2,7 @@ import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity,
   TextInput, Modal, ScrollView, Alert, RefreshControl, StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,13 +11,18 @@ import { getItems, saveItem, deleteItem } from '../../db';
 import { GST_RATES, formatINR } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 
-const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'metre', 'box', 'bag', 'dozen', 'set'];
+// Units now dynamic — see PRODUCT_UNITS / SERVICE_UNITS above
 
 const EMPTY_FORM = {
   name: '', code: '', unit: 'pcs', hsn: '',
   sale_price: '', purchase_price: '',
   gst_rate: 18, stock: '', min_stock: '',
+  item_type: 'product', // 'product' | 'service'
+  description: '',      // for services
 };
+
+const SERVICE_UNITS = ['hrs', 'days', 'visit', 'job', 'month', 'year', 'fixed'];
+const PRODUCT_UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'metre', 'box', 'bag', 'dozen', 'set'];
 
 export default function InventoryScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -36,7 +41,7 @@ export default function InventoryScreen({ navigation, route }) {
     try {
       const data = await getItems();
       setItems(data);
-      apply(data, search, lowStockOnly);
+      apply(data, search, lowStockOnly, typeFilter);
     } catch (e) {
       console.error(e);
     } finally {
@@ -54,24 +59,27 @@ export default function InventoryScreen({ navigation, route }) {
     }
   }, []));
 
-  const apply = (data, q, lowOnly) => {
+  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'product' | 'service'
+
+  const apply = (data, q, lowOnly, tFilter) => {
     let out = data;
     if (q.trim()) {
       const lq = q.toLowerCase();
       out = out.filter(i =>
         i.name.toLowerCase().includes(lq) ||
+        (i.description || '').toLowerCase().includes(lq) ||
         (i.code || '').toLowerCase().includes(lq) ||
         (i.hsn  || '').includes(lq)
       );
     }
-    if (lowOnly) {
-      out = out.filter(i => i.min_stock > 0 && i.stock <= i.min_stock);
-    }
+    if (lowOnly) out = out.filter(i => i.min_stock > 0 && i.stock <= i.min_stock && i.item_type !== 'service');
+    if (tFilter && tFilter !== 'all') out = out.filter(i => (i.item_type || 'product') === tFilter);
     setFiltered(out);
   };
 
-  const handleSearch = (q) => { setSearch(q); apply(items, q, lowStockOnly); };
-  const toggleLow    = ()  => { const n = !lowStockOnly; setLowStockOnly(n); apply(items, search, n); };
+  const handleSearch = (q) => { setSearch(q); apply(items, q, lowStockOnly, typeFilter); };
+  const toggleLow    = ()  => { const n = !lowStockOnly; setLowStockOnly(n); apply(items, search, n, typeFilter); };
+  const handleTypeFilter = (t) => { setTypeFilter(t); apply(items, search, lowStockOnly, t); };
   const onRefresh    = ()  => { setRefreshing(true); load(); };
 
   const openAdd  = () => { setForm(EMPTY_FORM); setModal(true); };
@@ -87,21 +95,26 @@ export default function InventoryScreen({ navigation, route }) {
       gst_rate:       item.gst_rate || 18,
       stock:          String(item.stock     || ''),
       min_stock:      String(item.min_stock || ''),
+      item_type:      item.item_type || 'product',
+      description:    item.description || '',
     });
     setModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim())                          { Alert.alert('Error', 'Item name is required'); return; }
+    if (!form.name.trim()) { Alert.alert('Error', 'Item name is required'); return; }
     if (!form.sale_price || parseFloat(form.sale_price) < 0) { Alert.alert('Error', 'Enter a valid sale price'); return; }
+    const isService = form.item_type === 'service';
     setSaving(true);
     try {
       await saveItem({
         ...form,
         sale_price:     parseFloat(form.sale_price)     || 0,
         purchase_price: parseFloat(form.purchase_price) || 0,
-        stock:          parseFloat(form.stock)           || 0,
-        min_stock:      parseFloat(form.min_stock)       || 0,
+        stock:          isService ? 0 : (parseFloat(form.stock) || 0),
+        min_stock:      isService ? 0 : (parseFloat(form.min_stock) || 0),
+        item_type:      form.item_type || 'product',
+        description:    form.description || '',
       });
       setModal(false);
       load();
@@ -225,216 +238,446 @@ export default function InventoryScreen({ navigation, route }) {
   };
 
   // ── Stats ──────────────────────────────────────────────────────
+  const products      = items.filter(i => i.item_type !== 'service');
+  const services      = items.filter(i => i.item_type === 'service');
   const totalItems    = items.length;
-  const lowStockCount = items.filter(i => i.min_stock > 0 && i.stock <= i.min_stock).length;
-  const totalValue    = items.reduce((s, i) => s + (i.stock * i.sale_price), 0);
+  const lowStockCount = products.filter(i => i.min_stock > 0 && i.stock <= i.min_stock).length;
+  const totalValue    = products.reduce((s, i) => s + (i.stock * i.sale_price), 0);
+
+  // ── Sort state ─────────────────────────────────────────────────
+  const [sortKey, setSortKey] = React.useState('name');
+  const [sortAsc, setSortAsc] = React.useState(true);
+
+  const handleSort = (key) => {
+    if (sortKey === key) { setSortAsc(a => !a); }
+    else { setSortKey(key); setSortAsc(true); }
+  };
+
+  const sorted = React.useMemo(() => {
+    const out = [...filtered];
+    out.sort((a, b) => {
+      let va, vb;
+      switch (sortKey) {
+        case 'name':           va = a.name || '';          vb = b.name || '';          break;
+        case 'item_type':      va = a.item_type || '';     vb = b.item_type || '';     break;
+        case 'hsn':            va = a.hsn || '';           vb = b.hsn || '';           break;
+        case 'unit':           va = a.unit || '';          vb = b.unit || '';          break;
+        case 'sale_price':     va = a.sale_price || 0;     vb = b.sale_price || 0;     break;
+        case 'purchase_price': va = a.purchase_price || 0; vb = b.purchase_price || 0; break;
+        case 'gst_rate':       va = a.gst_rate || 0;       vb = b.gst_rate || 0;       break;
+        case 'stock':          va = a.stock || 0;          vb = b.stock || 0;          break;
+        case 'min_stock':      va = a.min_stock || 0;      vb = b.min_stock || 0;      break;
+        case 'stock_value':    va = (a.stock||0)*(a.sale_price||0); vb = (b.stock||0)*(b.sale_price||0); break;
+        default:               va = a.name || '';          vb = b.name || '';
+      }
+      if (typeof va === 'number') return sortAsc ? va - vb : vb - va;
+      return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+    });
+    return out;
+  }, [filtered, sortKey, sortAsc]);
 
   // ── Render item ───────────────────────────────────────────────
   const renderItem = ({ item }) => {
     const isLow = item.min_stock > 0 && item.stock <= item.min_stock;
     return (
-      <View style={styles.itemCard}>
-        <View style={styles.cardMain}>
+      <View style={s.itemCard}>
+        <View style={s.cardMain}>
           {/* Left */}
           <View style={{ flex: 1 }}>
-            <View style={styles.nameRow}>
-              <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-              {isLow && <View style={styles.lowBadge}><Text style={styles.lowText}>Low</Text></View>}
+            <View style={s.nameRow}>
+              <Text style={s.itemName} numberOfLines={1}>{item.name}</Text>
+              {item.item_type === 'service'
+                ? <View style={s.serviceBadge}><Text style={s.serviceBadgeText}>Service</Text></View>
+                : isLow ? <View style={s.lowBadge}><Text style={s.lowText}>Low Stock</Text></View> : null}
             </View>
-            {item.code ? <Text style={styles.itemSub}>Code: {item.code}</Text> : null}
-            {item.hsn  ? <Text style={styles.itemSub}>HSN: {item.hsn}</Text>   : null}
-            <Text style={styles.itemSub}>GST {item.gst_rate}%  ·  {item.unit}</Text>
+            {item.description ? <Text style={s.itemSub} numberOfLines={1}>{item.description}</Text> : null}
+            {item.code ? <Text style={s.itemSub}>Code: {item.code}</Text> : null}
+            {item.hsn  ? <Text style={s.itemSub}>HSN: {item.hsn}</Text>   : null}
+            <Text style={s.itemSub}>GST {item.gst_rate}%  ·  {item.unit}</Text>
           </View>
 
           {/* Right */}
-          <View style={styles.cardRight}>
-            <Text style={styles.salePrice}>{formatINR(item.sale_price)}</Text>
+          <View style={s.cardRight}>
+            <Text style={s.salePrice}>{formatINR(item.sale_price)}</Text>
             {item.purchase_price > 0 && (
-              <Text style={styles.purchasePrice}>Cost: {formatINR(item.purchase_price)}</Text>
+              <Text style={s.purchasePrice}>Cost: {formatINR(item.purchase_price)}</Text>
             )}
-            <View style={styles.cardActions}>
-              <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
+            <View style={s.cardActions}>
+              <TouchableOpacity style={s.editBtn} onPress={() => openEdit(item)}>
                 <Icon name="edit-2" size={14} color={COLORS.textSub} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(item)}>
+              <TouchableOpacity style={s.delBtn} onPress={() => handleDelete(item)}>
                 <Icon name="trash-2" size={14} color={COLORS.danger} />
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
-        {/* Stock bar */}
-        <View style={styles.stockRow}>
-          <Text style={[styles.stockLabel, isLow && { color: COLORS.danger }]}>
-            Stock: {item.stock} {item.unit}
-          </Text>
-          {item.min_stock > 0 && (
-            <Text style={styles.minStock}>Min: {item.min_stock}</Text>
-          )}
-          <Text style={styles.stockValue}>{formatINR(item.stock * item.sale_price)}</Text>
-        </View>
+        {/* Stock bar — hidden for services */}
+        {item.item_type !== 'service' && (
+          <View style={s.stockRow}>
+            <Text style={[s.stockLabel, isLow && { color: COLORS.danger }]}>
+              Stock: {item.stock} {item.unit}
+            </Text>
+            {item.min_stock > 0 && (
+              <Text style={s.minStock}>Min: {item.min_stock}</Text>
+            )}
+            <Text style={s.stockValue}>{formatINR(item.stock * item.sale_price)}</Text>
+          </View>
+        )}
       </View>
     );
   };
 
   // ─────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+    <View style={[s.container, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.card} />
 
-      {/* Header */}
-      <View style={styles.header}>
+      {/* ── Header ── */}
+      <View style={s.header}>
         <View>
-          <Text style={styles.headerTitle}>Inventory</Text>
-          <Text style={styles.headerSub}>{items.length} item{items.length !== 1 ? 's' : ''} in stock</Text>
+          <Text style={s.headerTitle}>Inventory</Text>
+          <Text style={s.headerSub}>{items.length} item{items.length !== 1 ? 's' : ''}</Text>
         </View>
-        <View style={styles.headerBtns}>
-          <TouchableOpacity style={styles.exportBtn} onPress={exportStockInventory}>
-            <Icon name="download" size={14} color="#0EA5E9" />
-            <Text style={styles.exportBtnText}>Export CSV</Text>
+        <View style={s.headerBtns}>
+          {/* Excel-style export icon button */}
+          <TouchableOpacity style={s.excelBtn} onPress={exportStockInventory}>
+            <ExcelIcon />
+            <Text style={s.excelBtnTxt}>Export</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
+          <TouchableOpacity style={s.addBtn} onPress={openAdd}>
             <Icon name="plus" size={14} color="#fff" />
-            <Text style={styles.addBtnText}>Add Item</Text>
+            <Text style={s.addBtnTxt}>Add Item</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Stats strip */}
-      <View style={styles.statsStrip}>
-        <StatChip label="Total Items"  value={String(totalItems)}    color={COLORS.secondary} />
-        <View style={styles.div} />
-        <StatChip label="Low Stock"    value={String(lowStockCount)} color={lowStockCount > 0 ? COLORS.danger : COLORS.textMute} />
-        <View style={styles.div} />
-        <StatChip label="Stock Value"  value={formatINR(totalValue)} color={COLORS.primary} />
+      {/* ── KPI strip ── */}
+      <View style={s.kpiStrip}>
+        <KPI label="Products"    value={String(products.length)} color={COLORS.primary} />
+        <View style={s.kpiDiv} />
+        <KPI label="Services"    value={String(services.length)} color="#0EA5E9" />
+        <View style={s.kpiDiv} />
+        <KPI label="Low Stock"   value={String(lowStockCount)}  color={lowStockCount > 0 ? COLORS.danger : COLORS.textMute} />
+        <View style={s.kpiDiv} />
+        <KPI label="Stock Value" value={formatINR(totalValue)}  color={COLORS.primary} />
       </View>
 
-      {/* Search + filter */}
-      <View style={styles.searchBox}>
-        <Icon name="search" size={17} color={COLORS.textMute} style={{marginRight:8}} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search name, code, HSN..."
-          placeholderTextColor={COLORS.textMute}
-          value={search}
-          onChangeText={handleSearch}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => handleSearch('')}>
-            <Icon name="x" size={14} color={COLORS.textMute} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {lowStockCount > 0 && (
-        <View style={styles.filterRow}>
-          <TouchableOpacity
-            style={[styles.lowFilter, lowStockOnly && styles.lowFilterActive]}
-            onPress={toggleLow}
-          >
-            <Text style={[styles.lowFilterText, lowStockOnly && styles.lowFilterTextActive]}>
-              Low Stock ({lowStockCount})
-            </Text>
-          </TouchableOpacity>
+      {/* ── Toolbar ── */}
+      <View style={s.toolbar}>
+        <View style={s.searchBox}>
+          <Icon name="search" size={15} color={COLORS.textMute} />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search name, code, HSN..."
+            placeholderTextColor={COLORS.textMute}
+            value={search}
+            onChangeText={handleSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => handleSearch('')}>
+              <Icon name="x" size={14} color={COLORS.textMute} />
+            </TouchableOpacity>
+          )}
         </View>
-      )}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll} contentContainerStyle={s.chipRow}>
+          {[
+            { key: 'all',     label: `All (${items.length})` },
+            { key: 'product', label: `Products (${products.length})` },
+            { key: 'service', label: `Services (${services.length})` },
+          ].map(f => (
+            <TouchableOpacity
+              key={f.key}
+              style={[s.chip, typeFilter === f.key && s.chipActive]}
+              onPress={() => handleTypeFilter(f.key)}
+            >
+              <Text style={[s.chipTxt, typeFilter === f.key && s.chipTxtActive]}>{f.label}</Text>
+            </TouchableOpacity>
+          ))}
+          {lowStockCount > 0 && (
+            <TouchableOpacity
+              style={[s.chip, lowStockOnly && s.chipDanger]}
+              onPress={toggleLow}
+            >
+              <Text style={[s.chipTxt, lowStockOnly && s.chipTxtDanger]}>
+                ⚠ Low Stock ({lowStockCount})
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
 
-      {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={i => String(i.id)}
-        renderItem={renderItem}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
-        }
-        contentContainerStyle={styles.list}
-        windowSize={5}
-        maxToRenderPerBatch={10}
-        initialNumToRender={12}
-        removeClippedSubviews={true}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Icon name="package" size={32} color={COLORS.primary} />
-            <Text style={styles.emptyTitle}>{search ? 'No items found' : 'No items yet'}</Text>
-            <Text style={styles.emptySub}>{search ? 'Try a different search' : 'Add products & services'}</Text>
-            {!search && (
-              <TouchableOpacity style={styles.emptyBtn} onPress={openAdd}>
-                <Text style={styles.emptyBtnText}>Add Item</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        }
-      />
+      {/* ── Table ── */}
+      <View style={s.tableWrap}>
+        {/* Sticky column header */}
+        <View style={s.thead}>
+          <SortHeader label="#"           colKey="idx"            width={36}  align="center" sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Item / Service" colKey="name"        flex={2.2}  align="left"   sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Type"        colKey="item_type"      width={72}  align="center" sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="HSN/SAC"     colKey="hsn"            width={78}  align="left"   sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Unit"        colKey="unit"           width={54}  align="center" sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Sale ₹"      colKey="sale_price"     flex={1}    align="right"  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Cost ₹"      colKey="purchase_price" flex={1}    align="right"  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="GST%"        colKey="gst_rate"       width={52}  align="center" sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Stock"       colKey="stock"          flex={0.9}  align="right"  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Min"         colKey="min_stock"      width={50}  align="center" sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <SortHeader label="Value ₹"     colKey="stock_value"    flex={1.1}  align="right"  sortKey={sortKey} sortAsc={sortAsc} onSort={handleSort} />
+          <View style={{ width: 68 }} />
+        </View>
+
+        <ScrollView
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {sorted.length === 0 ? (
+            <View style={s.empty}>
+              <View style={s.emptyIcon}>
+                <Icon name="package" size={28} color={COLORS.primary} />
+              </View>
+              <Text style={s.emptyTitle}>
+                {search || typeFilter !== 'all' || lowStockOnly ? 'No items match' : 'No items yet'}
+              </Text>
+              <Text style={s.emptySub}>
+                {search || typeFilter !== 'all' ? 'Try a different search or filter' : 'Add products and services to your inventory'}
+              </Text>
+              {!search && typeFilter === 'all' && !lowStockOnly && (
+                <TouchableOpacity style={s.emptyBtn} onPress={openAdd}>
+                  <Text style={s.emptyBtnTxt}>+ Add First Item</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            sorted.map((item, idx) => {
+              const isService  = item.item_type === 'service';
+              const isLow      = !isService && item.min_stock > 0 && item.stock <= item.min_stock;
+              const isNeg      = !isService && item.stock < 0;
+              const stockValue = isService ? null : item.stock * item.sale_price;
+              const rowBg      = idx % 2 === 0 ? COLORS.card : '#FAFBFF';
+
+              return (
+                <View key={item.id} style={[s.trow, { backgroundColor: rowBg },
+                  isLow && s.trowLow,
+                  isNeg && s.trowNeg,
+                ]}>
+                  {/* # */}
+                  <Text style={[s.td, { width: 36, textAlign: 'center', color: COLORS.textMute, fontSize: 11 }]}>
+                    {idx + 1}
+                  </Text>
+
+                  {/* Name */}
+                  <View style={[s.tdCol, { flex: 2.2 }]}>
+                    <Text style={s.tdName} numberOfLines={1}>{item.name}</Text>
+                    {item.code ? <Text style={s.tdSub} numberOfLines={1}>#{item.code}</Text> : null}
+                  </View>
+
+                  {/* Type badge */}
+                  <View style={{ width: 72, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={[s.typePill, isService ? s.typePillSvc : s.typePillProd]}>
+                      <Text style={[s.typePillTxt, isService ? s.typePillSvcTxt : s.typePillProdTxt]}>
+                        {isService ? 'Service' : 'Product'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* HSN/SAC */}
+                  <Text style={[s.td, { width: 78 }]} numberOfLines={1}>
+                    {item.hsn || '—'}
+                  </Text>
+
+                  {/* Unit */}
+                  <Text style={[s.td, { width: 54, textAlign: 'center' }]}>{item.unit}</Text>
+
+                  {/* Sale price */}
+                  <Text style={[s.td, { flex: 1, textAlign: 'right', fontWeight: FONTS.bold }]}>
+                    {formatINR(item.sale_price)}
+                  </Text>
+
+                  {/* Cost price */}
+                  <Text style={[s.td, { flex: 1, textAlign: 'right', color: COLORS.textSub }]}>
+                    {item.purchase_price > 0 ? formatINR(item.purchase_price) : '—'}
+                  </Text>
+
+                  {/* GST */}
+                  <Text style={[s.td, { width: 52, textAlign: 'center' }]}>{item.gst_rate}%</Text>
+
+                  {/* Stock */}
+                  <View style={{ flex: 0.9, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 8 }}>
+                    {isService
+                      ? <Text style={[s.td, { color: COLORS.textMute }]}>—</Text>
+                      : <Text style={[s.td, { fontWeight: FONTS.semibold },
+                          isNeg && { color: COLORS.danger },
+                          isLow && { color: COLORS.warning },
+                        ]}>
+                          {item.stock}
+                        </Text>
+                    }
+                    {isLow && <Text style={s.lowHint}>Low</Text>}
+                    {isNeg && <Text style={s.negHint}>Neg</Text>}
+                  </View>
+
+                  {/* Min stock */}
+                  <Text style={[s.td, { width: 50, textAlign: 'center', color: COLORS.textMute }]}>
+                    {isService ? '—' : (item.min_stock || '—')}
+                  </Text>
+
+                  {/* Stock value */}
+                  <Text style={[s.td, { flex: 1.1, textAlign: 'right' },
+                    isNeg && { color: COLORS.danger },
+                  ]}>
+                    {isService ? '—' : formatINR(stockValue)}
+                  </Text>
+
+                  {/* Actions */}
+                  <View style={s.tdActions}>
+                    <TouchableOpacity style={s.editBtn} onPress={() => openEdit(item)}>
+                      <Icon name="edit-2" size={13} color={COLORS.textSub} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.delBtn} onPress={() => handleDelete(item)}>
+                      <Icon name="trash-2" size={13} color={COLORS.danger} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
 
       {/* ── Add / Edit Modal ───────────────────────────────── */}
       <Modal visible={modal} animationType="slide" presentationStyle="pageSheet">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
+        <View style={s.modalContainer}>
+          {/* Modal header */}
+          <View style={s.modalHeader}>
             <TouchableOpacity onPress={() => setModal(false)}>
-              <Text style={styles.modalCancel}>Cancel</Text>
+              <Text style={s.modalCancel}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>{form.id ? 'Edit Item' : 'Add Item'}</Text>
+            <Text style={s.modalTitle}>{form.id ? 'Edit Item' : 'New Item'}</Text>
             <TouchableOpacity onPress={handleSave} disabled={saving}>
-              <Text style={[styles.modalSave, saving && { opacity: 0.4 }]}>Save</Text>
+              <Text style={[s.modalSave, saving && { opacity: 0.4 }]}>
+                {saving ? 'Saving...' : 'Save'}
+              </Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
+          {/* Product / Service toggle */}
+          <View style={s.typeToggleBar}>
+            <TouchableOpacity
+              style={[s.typeBtn, form.item_type === 'product' && s.typeBtnActive]}
+              onPress={() => setForm(f => ({ ...f, item_type: 'product', unit: 'pcs' }))}
+            >
+              <Icon name="package" size={15} color={form.item_type === 'product' ? '#fff' : COLORS.textSub} />
+              <Text style={[s.typeBtnTxt, form.item_type === 'product' && s.typeBtnTxtActive]}>
+                Product
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.typeBtn, form.item_type === 'service' && s.typeBtnServiceActive]}
+              onPress={() => setForm(f => ({ ...f, item_type: 'service', unit: 'hrs', stock: '0', min_stock: '0' }))}
+            >
+              <Icon name="tool" size={15} color={form.item_type === 'service' ? '#fff' : COLORS.textSub} />
+              <Text style={[s.typeBtnTxt, form.item_type === 'service' && s.typeBtnTxtActive]}>
+                Service
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-            <FieldLabel>Item Name *</FieldLabel>
+          {/* Hint */}
+          <View style={[s.typeHint,
+            form.item_type === 'service' ? s.typeHintService : s.typeHintProduct
+          ]}>
+            <Icon
+              name={form.item_type === 'service' ? 'tool' : 'package'}
+              size={12}
+              color={form.item_type === 'service' ? '#0EA5E9' : COLORS.primary}
+            />
+            <Text style={[s.typeHintTxt,
+              form.item_type === 'service' ? { color: '#0369A1' } : { color: COLORS.primary }
+            ]}>
+              {form.item_type === 'service'
+                ? 'Services have no stock tracking — ideal for labour, consulting, repairs, delivery etc.'
+                : 'Products track stock levels and trigger low-stock alerts.'}
+            </Text>
+          </View>
+
+          <ScrollView style={s.modalScroll} keyboardShouldPersistTaps="handled">
+
+            {/* Name */}
+            <FieldLabel>
+              {form.item_type === 'service' ? 'Service Name *' : 'Product Name *'}
+            </FieldLabel>
             <TextInput
-              style={styles.input}
+              style={s.input}
               value={form.name}
               onChangeText={v => setForm(f => ({ ...f, name: v }))}
-              placeholder="e.g. Rice Bag 25kg"
+              placeholder={form.item_type === 'service' ? 'e.g. Installation Charges' : 'e.g. Rice Bag 25kg'}
               placeholderTextColor={COLORS.textMute}
             />
 
-            <View style={styles.row}>
+            {/* Description — services only */}
+            {form.item_type === 'service' && (
+              <>
+                <FieldLabel>Description (optional)</FieldLabel>
+                <TextInput
+                  style={[s.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                  value={form.description}
+                  onChangeText={v => setForm(f => ({ ...f, description: v }))}
+                  placeholder="Brief description of the service..."
+                  placeholderTextColor={COLORS.textMute}
+                  multiline
+                />
+              </>
+            )}
+
+            {/* Code + HSN/SAC */}
+            <View style={s.row}>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Item Code</FieldLabel>
                 <TextInput
-                  style={styles.input}
+                  style={s.input}
                   value={form.code}
                   onChangeText={v => setForm(f => ({ ...f, code: v }))}
-                  placeholder="SKU / barcode"
+                  placeholder="SKU / code"
                   placeholderTextColor={COLORS.textMute}
                 />
               </View>
               <View style={{ width: 12 }} />
               <View style={{ flex: 1 }}>
-                <FieldLabel>HSN/SAC</FieldLabel>
+                <FieldLabel>{form.item_type === 'service' ? 'SAC Code' : 'HSN Code'}</FieldLabel>
                 <TextInput
-                  style={styles.input}
+                  style={s.input}
                   value={form.hsn}
                   onChangeText={v => setForm(f => ({ ...f, hsn: v }))}
-                  placeholder="e.g. 1006"
+                  placeholder={form.item_type === 'service' ? 'e.g. 9987' : 'e.g. 1006'}
                   placeholderTextColor={COLORS.textMute}
                   keyboardType="numeric"
                 />
               </View>
             </View>
 
+            {/* Unit */}
             <FieldLabel>Unit</FieldLabel>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                {UNITS.map(u => (
+                {(form.item_type === 'service' ? SERVICE_UNITS : PRODUCT_UNITS).map(u => (
                   <TouchableOpacity
                     key={u}
-                    style={[styles.chip, form.unit === u && styles.chipActive]}
+                    style={[s.chip, form.unit === u && s.chipActive]}
                     onPress={() => setForm(f => ({ ...f, unit: u }))}
                   >
-                    <Text style={[styles.chipText, form.unit === u && styles.chipTextActive]}>{u}</Text>
+                    <Text style={[s.chipText, form.unit === u && s.chipTextActive]}>{u}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </ScrollView>
 
-            <View style={styles.row}>
+            {/* Pricing */}
+            <View style={s.row}>
               <View style={{ flex: 1 }}>
-                <FieldLabel>Sale Price (₹) *</FieldLabel>
+                <FieldLabel>{form.item_type === 'service' ? 'Charge (₹) *' : 'Sale Price (₹) *'}</FieldLabel>
                 <TextInput
-                  style={styles.input}
+                  style={s.input}
                   value={form.sale_price}
                   onChangeText={v => setForm(f => ({ ...f, sale_price: v }))}
                   placeholder="0.00"
@@ -444,9 +687,9 @@ export default function InventoryScreen({ navigation, route }) {
               </View>
               <View style={{ width: 12 }} />
               <View style={{ flex: 1 }}>
-                <FieldLabel>Purchase Price (₹)</FieldLabel>
+                <FieldLabel>{form.item_type === 'service' ? 'Cost / Expense (₹)' : 'Purchase Price (₹)'}</FieldLabel>
                 <TextInput
-                  style={styles.input}
+                  style={s.input}
                   value={form.purchase_price}
                   onChangeText={v => setForm(f => ({ ...f, purchase_price: v }))}
                   placeholder="0.00"
@@ -456,46 +699,50 @@ export default function InventoryScreen({ navigation, route }) {
               </View>
             </View>
 
+            {/* GST Rate */}
             <FieldLabel>GST Rate</FieldLabel>
-            <View style={styles.gstRow}>
+            <View style={s.gstRow}>
               {GST_RATES.map(r => (
                 <TouchableOpacity
                   key={r}
-                  style={[styles.gstChip, form.gst_rate === r && styles.gstChipActive]}
+                  style={[s.gstChip, form.gst_rate === r && s.gstChipActive]}
                   onPress={() => setForm(f => ({ ...f, gst_rate: r }))}
                 >
-                  <Text style={[styles.gstChipText, form.gst_rate === r && styles.gstChipTextActive]}>
+                  <Text style={[s.gstChipText, form.gst_rate === r && s.gstChipTextActive]}>
                     {r}%
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <FieldLabel>Opening Stock</FieldLabel>
-                <TextInput
-                  style={styles.input}
-                  value={form.stock}
-                  onChangeText={v => setForm(f => ({ ...f, stock: v }))}
-                  placeholder="0"
-                  placeholderTextColor={COLORS.textMute}
-                  keyboardType="decimal-pad"
-                />
+            {/* Stock fields — PRODUCTS ONLY */}
+            {form.item_type === 'product' && (
+              <View style={s.row}>
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Opening Stock</FieldLabel>
+                  <TextInput
+                    style={s.input}
+                    value={form.stock}
+                    onChangeText={v => setForm(f => ({ ...f, stock: v }))}
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMute}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ width: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Min Stock Alert</FieldLabel>
+                  <TextInput
+                    style={s.input}
+                    value={form.min_stock}
+                    onChangeText={v => setForm(f => ({ ...f, min_stock: v }))}
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMute}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
               </View>
-              <View style={{ width: 12 }} />
-              <View style={{ flex: 1 }}>
-                <FieldLabel>Min Stock Alert</FieldLabel>
-                <TextInput
-                  style={styles.input}
-                  value={form.min_stock}
-                  onChangeText={v => setForm(f => ({ ...f, min_stock: v }))}
-                  placeholder="0"
-                  placeholderTextColor={COLORS.textMute}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
+            )}
 
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -507,397 +754,183 @@ export default function InventoryScreen({ navigation, route }) {
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-function StatChip({ label, value, color }) {
+function KPI({ label, value, color }) {
   return (
-    <View style={styles.statChip}>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={s.kpiChip}>
+      <Text style={[s.kpiVal, { color }]}>{value}</Text>
+      <Text style={s.kpiLbl}>{label}</Text>
+    </View>
+  );
+}
+
+function SortHeader({ label, colKey, flex, width, align, sortKey, sortAsc, onSort }) {
+  const active = sortKey === colKey;
+  const baseStyle = { paddingHorizontal: 8, paddingVertical: 9 };
+  const sizeStyle = flex ? { flex } : { width };
+  return (
+    <TouchableOpacity
+      style={[baseStyle, sizeStyle]}
+      onPress={() => onSort(colKey)}
+      activeOpacity={0.7}
+    >
+      <Text style={[s.thTxt, { textAlign: align }, active && s.thTxtActive]} numberOfLines={1}>
+        {label}{active ? (sortAsc ? ' ↑' : ' ↓') : ''}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// Excel-style export icon (green with grid lines)
+function ExcelIcon() {
+  return (
+    <View style={s.excelIcon}>
+      <View style={s.excelGrid}>
+        <View style={s.excelRow}>
+          <View style={[s.excelCell, s.excelCellHeader]} />
+          <View style={[s.excelCell, s.excelCellHeader]} />
+          <View style={[s.excelCell, s.excelCellHeader, { borderRightWidth: 0 }]} />
+        </View>
+        <View style={s.excelRow}>
+          <View style={[s.excelCell, { borderBottomWidth: 0 }]} />
+          <View style={[s.excelCell, { borderBottomWidth: 0 }]} />
+          <View style={[s.excelCell, { borderBottomWidth: 0, borderRightWidth: 0 }]} />
+        </View>
+      </View>
     </View>
   );
 }
 
 function FieldLabel({ children }) {
-  return <Text style={styles.fieldLabel}>{children}</Text>;
+  return <Text style={s.fieldLabel}>{children}</Text>;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────
-
-
-
-const styles = StyleSheet.create({
-  // Layout
+const s = StyleSheet.create({
   container:  { flex: 1, backgroundColor: COLORS.bg },
-  center:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll:     { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
 
-  // Page header — white bar with title + action
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: COLORS.card,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  headerLeft:  { flex: 1 },
-  headerTitle: { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text, letterSpacing: -0.3 },
-  headerSub:   { fontSize: 12, color: COLORS.textMute, marginTop: 2 },
-  headerBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16, paddingVertical: 9,
-    borderRadius: RADIUS.md, flexDirection: 'row',
-    alignItems: 'center', gap: 6,
-  },
-  headerBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  addBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  addBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  newBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  newBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  backBtn:     { marginRight: 12, padding: 4 },
-  saveBtn:     { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  saveBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  // Header
+  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  headerTitle:{ fontSize: 20, fontWeight: FONTS.black, color: COLORS.text },
+  headerSub:  { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
-  // Metric strip — 3 KPIs in a white bar below header
-  metricsBar:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  statsStrip:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  metricCell:  { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  statChip:    { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  metricVal:   { fontSize: 16, fontWeight: FONTS.black },
-  statValue:   { fontSize: 16, fontWeight: FONTS.black },
-  metricLbl:   { fontSize: 10, color: COLORS.textMute, marginTop: 2, fontWeight: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.4 },
-  statLabel:   { fontSize: 10, color: COLORS.textMute, marginTop: 2, fontWeight: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.4 },
-  metricSep:   { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
-  div:         { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
+  // Excel export button
+  excelBtn:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.md, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#86EFAC' },
+  excelBtnTxt:{ fontSize: 12, fontWeight: FONTS.bold, color: '#16A34A' },
+  excelIcon:  { width: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
+  excelGrid:  { width: 14, height: 14, borderWidth: 1, borderColor: '#16A34A', borderRadius: 2, overflow: 'hidden' },
+  excelRow:   { flex: 1, flexDirection: 'row' },
+  excelCell:  { flex: 1, borderRightWidth: 1, borderRightColor: '#16A34A', borderBottomWidth: 1, borderBottomColor: '#16A34A' },
+  excelCellHeader: { backgroundColor: '#16A34A' },
 
-  // Search bar
-  searchWrap:  { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 0 },
-  searchBox: {
-    flexDirection: 'row', alignItems: 'center',
-    margin: 16, marginBottom: 0,
-    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
-    paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.border,
-    height: 44,
-  },
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center',
-    margin: 16, marginBottom: 0,
-    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
-    paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.border,
-    height: 44,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 0 },
-  clearBtn:    { padding: 4 },
+  // Add button
+  addBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md },
+  addBtnTxt:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
 
-  // Filter chips
-  filterRow:       { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip:            { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  chipOn:          { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  chipText:        { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  chipTextOn:      { color: '#fff', fontWeight: FONTS.bold },
-  filterChip:      { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  filterChipActive:{ backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  filterText:      { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  filterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
-  catChip:         { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  catChipActive:   { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  catChipText:     { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  catChipTextActive:{ color: '#fff', fontWeight: FONTS.bold },
+  // KPI strip
+  kpiStrip:   { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  kpiChip:    { flex: 1, alignItems: 'center', paddingVertical: 11 },
+  kpiDiv:     { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
+  kpiVal:     { fontSize: 15, fontWeight: FONTS.black, marginBottom: 2 },
+  kpiLbl:     { fontSize: 9, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4 },
 
-  // List
-  list: { padding: 16, paddingBottom: 100 },
+  // Toolbar
+  toolbar:    { backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingTop: 10 },
+  searchBox:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 12, height: 38, backgroundColor: COLORS.bg, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border },
+  searchInput:{ flex: 1, fontSize: 13, color: COLORS.text, paddingVertical: 0 },
+  chipScroll: { flexGrow: 0 },
+  chipRow:    { paddingHorizontal: 12, paddingBottom: 10, gap: 7 },
+  chip:       { paddingHorizontal: 12, paddingVertical: 5, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
+  chipActive: { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
+  chipTxt:    { fontSize: 11, color: COLORS.textSub, fontWeight: FONTS.medium },
+  chipTxtActive:{ color: '#fff', fontWeight: FONTS.bold },
+  chipDanger: { backgroundColor: COLORS.dangerLight, borderColor: COLORS.danger },
+  chipTxtDanger:{ color: COLORS.danger, fontWeight: FONTS.bold },
 
-  // Cards
-  card: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  partyCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  itemCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  expCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  invoiceCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, overflow: 'hidden',
-    borderWidth: 1, borderColor: COLORS.border,
-    borderLeftWidth: 4,
-  },
-  cardMain:   { padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardBody:   { padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardRow:    { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  cardLeft:   { flex: 1, marginRight: 12 },
-  cardRight:  { alignItems: 'flex-end', gap: 4 },
-  cardInfo:   { flex: 1 },
+  // Table
+  tableWrap:  { flex: 1 },
+  thead:      { flexDirection: 'row', backgroundColor: '#F1F5F9', borderBottomWidth: 2, borderBottomColor: COLORS.border },
+  thTxt:      { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4 },
+  thTxtActive:{ color: COLORS.primary },
 
-  // Card content
-  cardName:  { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  itemName:  { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3, flex: 1 },
-  partyName: { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  cardSub:   { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  itemSub:   { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  partySub:  { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  cardMeta:  { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
-  nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  subRow:    { flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 4 },
+  trow:       { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.border, minHeight: 44 },
+  trowLow:    { borderLeftWidth: 3, borderLeftColor: COLORS.warning },
+  trowNeg:    { borderLeftWidth: 3, borderLeftColor: COLORS.danger },
 
-  // Invoice specific
-  invoiceNo:   { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  invoiceDate: { fontSize: 12, color: COLORS.textMute },
-  total:       { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
-  salePrice:   { fontSize: 16, fontWeight: FONTS.black, color: COLORS.text },
-  purchasePrice:{ fontSize: 11, color: COLORS.textMute },
-  party:       { fontSize: 13, color: COLORS.textSub, marginBottom: 4 },
-  date:        { fontSize: 11, color: COLORS.textMute },
-  due:         { fontSize: 11, color: COLORS.warning, fontWeight: FONTS.medium },
-  dueRed:      { color: COLORS.danger },
-  badge:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  badgeText:   { fontSize: 10, fontWeight: FONTS.bold, letterSpacing: 0.3 },
-  bal:         { fontSize: 12, fontWeight: FONTS.bold },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  statusText:  { fontSize: 10, fontWeight: FONTS.bold, letterSpacing: 0.3 },
+  td:         { fontSize: 12, color: COLORS.text, paddingHorizontal: 8 },
+  tdCol:      { justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 6 },
+  tdName:     { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
+  tdSub:      { fontSize: 10, color: COLORS.textMute, marginTop: 1 },
 
-  // Parties specific
-  avatar:     { width: 44, height: 44, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { fontSize: 18, fontWeight: FONTS.black, color: '#fff' },
-  typeBadge:  { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm, backgroundColor: COLORS.primaryLight },
-  typeBadgeSupplier: { backgroundColor: COLORS.infoLight },
-  typeText:   { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.primary },
-  typeTextSupplier: { color: COLORS.info },
-  balance:    { fontSize: 13, fontWeight: FONTS.heavy, color: COLORS.success },
+  // Type pill
+  typePill:    { paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.full },
+  typePillProd:{ backgroundColor: COLORS.primaryLight },
+  typePillSvc: { backgroundColor: '#E0F2FE' },
+  typePillTxt: { fontSize: 9, fontWeight: FONTS.black, letterSpacing: 0.2 },
+  typePillProdTxt:{ color: COLORS.primary },
+  typePillSvcTxt: { color: '#0369A1' },
 
-  // Inventory specific
-  lowBadge:   { backgroundColor: COLORS.dangerLight, paddingHorizontal: 7, paddingVertical: 2, borderRadius: RADIUS.sm },
-  lowText:    { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.danger },
-  stockRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 12, gap: 10 },
-  stockLabel: { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium, flex: 1 },
-  minStock:   { fontSize: 11, color: COLORS.textMute },
-  stockValue: { fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textSub },
+  // Stock hints
+  lowHint:    { fontSize: 8, fontWeight: FONTS.bold, color: COLORS.warning, textTransform: 'uppercase' },
+  negHint:    { fontSize: 8, fontWeight: FONTS.bold, color: COLORS.danger, textTransform: 'uppercase' },
 
-  // Expenses specific
-  expAmount:  { fontSize: 16, fontWeight: FONTS.black, color: COLORS.danger },
-  expMeta:    { fontSize: 11, color: COLORS.textMute, marginTop: 3 },
-  catIcon:    { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  catLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 3 },
-
-  // Action buttons on cards
-  cardActions:{ flexDirection: 'row', gap: 6, marginTop: 6 },
-  editBtn:    { padding: 7, borderRadius: RADIUS.sm, backgroundColor: COLORS.bgDeep },
-  delBtn:     { padding: 7, borderRadius: RADIUS.sm, backgroundColor: COLORS.dangerLight },
-
-  // Modal — bottom sheet
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: COLORS.card,
-    borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl,
-    maxHeight: '92%',
-  },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.borderDark, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  modalTitle:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
-  modalBody:   { padding: 20 },
-  modalSave: { color: COLORS.primary, fontWeight: FONTS.bold, fontSize: 15 },
-  modalSaveText: { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-
-  // Form fields
-  fieldLabel: {
-    fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub,
-    textTransform: 'uppercase', letterSpacing: 0.6,
-    marginBottom: 7, marginTop: 18,
-  },
-  fieldInput: {
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, color: COLORS.text,
-  },
-  input: {
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, color: COLORS.text,
-  },
-  textarea: { minHeight: 80, textAlignVertical: 'top' },
-  row:      { flexDirection: 'row', gap: 12 },
-  pickerRow:{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  pickerChip:       { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg },
-  pickerChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  pickerChipText:   { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  pickerChipTextActive: { color: '#fff', fontWeight: FONTS.bold },
-  stateArrow:  { fontSize: 14, color: COLORS.textMute },
-  statePickerBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-  },
-  statePickerText: { fontSize: 14, color: COLORS.text },
-
-  // Reports
-  presetRow:        { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  presetChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  presetChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  presetText:       { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  presetTextActive: { color: '#fff', fontWeight: FONTS.bold },
-  reportSection: { marginBottom: 20 },
-  sectionHeading: { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 10, marginTop: 4 },
-  reportCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, marginBottom: 2 },
-  reportRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  reportRowLast: { borderBottomWidth: 0 },
-  reportLabel:{ fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  reportValue:{ fontSize: 14, fontWeight: FONTS.heavy, color: COLORS.text },
-  plCard:     { backgroundColor: COLORS.secondary, borderRadius: RADIUS.xl, padding: 20, marginBottom: 16 },
-  plTitle:    { fontSize: 11, fontWeight: FONTS.bold, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 14 },
-  plRow:      { flexDirection: 'row' },
-  plItem:     { flex: 1, alignItems: 'center' },
-  plValue:    { fontSize: 16, fontWeight: FONTS.black, marginBottom: 4 },
-  plLabel:    { fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
-  gstRow:     { flexDirection: 'row', gap: 10, marginBottom: 2 },
-  gstBox:     { flex: 1, backgroundColor: COLORS.card, borderRadius: RADIUS.lg, padding: 14, alignItems: 'center', borderTopWidth: 3, borderWidth: 1, borderColor: COLORS.border },
-  gstVal:     { fontSize: 15, fontWeight: FONTS.black, marginBottom: 4 },
-  gstLbl:     { fontSize: 10, color: COLORS.textMute, textAlign: 'center' },
-  exportBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 14, borderRadius: RADIUS.lg, marginTop: 8 },
-  exportBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-
-  // Settings
-  sectionHeader:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
-  sectionTitle: { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7 },
-  settingsCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginHorizontal: 16, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  settingsRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  settingsRowLast: { borderBottomWidth: 0 },
-  settingsRowLabel: { flex: 1, fontSize: 14, fontWeight: FONTS.medium, color: COLORS.text },
-  settingsRowValue: { fontSize: 13, color: COLORS.textMute },
-  settingsInput:    { flex: 1, fontSize: 14, color: COLORS.text, textAlign: 'right' },
-  card:     { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginHorizontal: 16, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', padding: 16 },
-  infoRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  infoLabel:{ fontSize: 13, color: COLORS.textSub },
-  infoValue:{ fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
-  dangerBtn:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.dangerLight, paddingVertical: 13, borderRadius: RADIUS.lg, marginHorizontal: 16, marginTop: 4 },
-  dangerBtnText: { color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 14 },
-  infoBox:    { backgroundColor: COLORS.infoLight, borderRadius: RADIUS.md, padding: 12, marginTop: 8 },
-  infoBoxText:{ fontSize: 12, color: COLORS.info, lineHeight: 18 },
-  hintWarn:   { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.warningBg, borderRadius: RADIUS.sm, padding: 10, marginTop: 6 },
-  hintWarnText:{ fontSize: 12, color: COLORS.warning, flex: 1 },
-  hintOk:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.successBg, borderRadius: RADIUS.sm, padding: 10, marginTop: 6 },
-  hintOkText: { fontSize: 12, color: COLORS.success, flex: 1 },
-  upiOk:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  upiWarn:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  upiWarnText:{ fontSize: 12, color: COLORS.textMute },
-  driveRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: COLORS.successBg, borderRadius: RADIUS.md, marginTop: 8 },
-  driveEmail: { flex: 1, fontSize: 13, color: COLORS.success, fontWeight: FONTS.semibold },
-  backupTime: { fontSize: 13, color: COLORS.textSub },
-  backupBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 8 },
-  backupBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.card, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 6, borderWidth: 1, borderColor: COLORS.border },
-  restoreBtnText: { fontWeight: FONTS.bold, fontSize: 13, color: COLORS.text },
-  connectBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 8 },
-  connectBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.dangerLight, paddingVertical: 13, borderRadius: RADIUS.lg, marginHorizontal: 16, marginVertical: 8 },
-  signOutText:{ color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 14 },
-  pickerArrow:{ fontSize: 14, color: COLORS.textMute },
-
-  // State picker modal
-  stateOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
-  stateSheet:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '75%' },
-  stateHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateTitle:   { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
-  stateSearchBox:{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateSearchInput:{ backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: COLORS.text },
-  stateItem:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateName:    { fontSize: 14, color: COLORS.text, fontWeight: FONTS.medium },
-  stateCode:    { fontSize: 12, color: COLORS.textMute, backgroundColor: COLORS.bgDeep, paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  stateClose:   { fontSize: 20, color: COLORS.textMute },
-
-  // Party detail
-  heroDetail:   { backgroundColor: COLORS.secondary, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24 },
-  detailAvatar: { width: 56, height: 56, borderRadius: RADIUS.full, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  detailAvatarText: { fontSize: 24, fontWeight: FONTS.black, color: '#fff' },
-  detailName:   { fontSize: 20, fontWeight: FONTS.black, color: '#fff', marginBottom: 4 },
-  detailSub:    { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
-  kpiStrip:     { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  kpiChip:      { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  kpiValue:     { fontSize: 15, fontWeight: FONTS.black, marginBottom: 2 },
-  kpiLabel:     { fontSize: 10, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4 },
-  kpiDivider:   { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
-  invRow:       { backgroundColor: COLORS.card, marginHorizontal: 16, marginBottom: 10, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  invRowTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 14 },
-  invNum:       { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  invDate:      { fontSize: 11, color: COLORS.textMute },
-  invTotal:     { fontSize: 16, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 5 },
-  balRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: COLORS.dangerBg, borderTopWidth: 1, borderTopColor: COLORS.dangerLight },
-  balLabel:     { fontSize: 11, color: COLORS.danger, fontWeight: FONTS.semibold },
-  balValue:     { fontSize: 12, fontWeight: FONTS.heavy, color: COLORS.danger },
+  // Action buttons
+  tdActions:  { width: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6 },
+  editBtn:    { padding: 6, borderRadius: RADIUS.sm, backgroundColor: COLORS.bgDeep },
+  delBtn:     { padding: 6, borderRadius: RADIUS.sm, backgroundColor: COLORS.dangerLight },
 
   // Empty state
-  empty:        { alignItems: 'center', paddingTop: 70, paddingHorizontal: 32 },
-  emptyIconWrap:{ width: 80, height: 80, borderRadius: RADIUS.full, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyIcon:    { fontSize: 36 },
-  emptyTitle:   { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 8, textAlign: 'center' },
-  emptySub:     { fontSize: 13, color: COLORS.textMute, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  emptyBtn:     { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS.lg },
-  emptyBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 14 },
+  empty:      { alignItems: 'center', paddingTop: 70, paddingHorizontal: 32 },
+  emptyIcon:  { width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  emptyTitle: { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 6, textAlign: 'center' },
+  emptySub:   { fontSize: 13, color: COLORS.textMute, textAlign: 'center', lineHeight: 19, marginBottom: 20 },
+  emptyBtn:   { backgroundColor: COLORS.primary, paddingHorizontal: 22, paddingVertical: 10, borderRadius: RADIUS.lg },
+  emptyBtnTxt:{ color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
 
-  // Login
-  loginContainer: { flex: 1, backgroundColor: '#F8FAFF', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loginLogoWrap:  { alignItems: 'center', marginBottom: 40 },
-  loginLogoBox:   { width: 160, height: 60, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  loginLogoImg:   { width: 140, height: 50 },
-  loginBrand:     { fontSize: 13, color: COLORS.textMute, letterSpacing: 1 },
-  loginTagline:   { fontSize: 12, color: COLORS.textMute, marginTop: 2 },
-  loginCard:      { width: '100%', maxWidth: 420, backgroundColor: '#fff', borderRadius: RADIUS.xl, padding: 28, borderWidth: 1, borderColor: COLORS.border },
-  loginTitle:     { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 6 },
-  loginSubtitle:  { fontSize: 13, color: COLORS.textMute, marginBottom: 24 },
-  loginLabel:     { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7, marginTop: 16 },
-  loginInput:     { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, color: COLORS.text },
-  loginBtn:       { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
-  loginBtnText:   { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-  loginError:     { backgroundColor: COLORS.dangerLight, borderRadius: RADIUS.md, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  loginErrorText: { fontSize: 13, color: COLORS.danger, flex: 1 },
-  loginFooter:    { fontSize: 12, color: COLORS.textMute, marginTop: 20, textAlign: 'center' },
-
-  // Payment modal (InvoiceDetail)
-  payInvInfo:    { backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.md, padding: 14, marginBottom: 8 },
-  payInvNum:     { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.primary, marginBottom: 3 },
-  payInvParty:   { fontSize: 13, color: COLORS.text },
-  payInvBalance: { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.danger, marginTop: 4 },
-  methodRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  methodChip:    { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  methodChipActive:{ backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-  methodText:    { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  methodTextActive:{ color: COLORS.primary, fontWeight: FONTS.bold },
-  confirmBtn:    { backgroundColor: COLORS.success, borderRadius: RADIUS.lg, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
-  confirmBtnText:{ color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-
-  // Section title in screens
-  sectionLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
-  loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
-  notFound:       { fontSize: 15, color: COLORS.textMute },
-
-  headerBtns:        { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  exportBtn:         { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD' },
-  exportBtnText:     { color: '#0EA5E9', fontWeight: FONTS.bold, fontSize: 13 },
-  chipActive:        { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  chipTextActive:    { color: '#fff', fontWeight: FONTS.bold },
-  gstChip:           { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  gstChipActive:     { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  gstChipText:       { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  gstChipTextActive: { color: '#fff', fontWeight: FONTS.bold },
-  lowFilter:         { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  lowFilterActive:   { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
-  lowFilterText:     { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  lowFilterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
-  modalContainer:    { flex: 1, backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '92%', marginTop: Platform.OS === 'web' ? 60 : 0 },
+  // Modal
+  modalContainer:    { flex: 1, backgroundColor: COLORS.card, marginTop: Platform.OS === 'web' ? 60 : 0 },
+  modalHeader:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  modalTitle:        { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
+  modalCancel:       { fontSize: 14, color: COLORS.textSub },
+  modalSave:         { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.primary },
   modalScroll:       { padding: 20, paddingBottom: 40 },
-  modalCancel:       { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
 
+  // Product/Service toggle in modal
+  typeToggleBar:      { flexDirection: 'row', margin: 16, marginBottom: 0, gap: 8, backgroundColor: COLORS.bg, borderRadius: RADIUS.lg, padding: 4, borderWidth: 1, borderColor: COLORS.border },
+  typeBtn:            { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS.md },
+  typeBtnActive:      { backgroundColor: COLORS.primary },
+  typeBtnServiceActive: { backgroundColor: '#0EA5E9' },
+  typeBtnTxt:         { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.textSub },
+  typeBtnTxtActive:   { color: '#fff', fontWeight: FONTS.bold },
+  typeHint:           { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 10, padding: 10, borderRadius: RADIUS.md },
+  typeHintProduct:    { backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: COLORS.primary + '33' },
+  typeHintService:    { backgroundColor: '#E0F2FE', borderWidth: 1, borderColor: '#BAE6FD' },
+  typeHintTxt:        { flex: 1, fontSize: 11, lineHeight: 16 },
+
+  // Form fields
+  fieldLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7, marginTop: 18 },
+  input:        { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: COLORS.text },
+  row:          { flexDirection: 'row', gap: 12 },
+  gstRow:       { flexDirection: 'row', gap: 10, marginBottom: 2, flexWrap: 'wrap' },
+  gstChip:      { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
+  gstChipActive:{ backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
+  gstChipText:  { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
+  gstChipTextActive: { color: '#fff', fontWeight: FONTS.bold },
+
+  // Unit chips (in modal)
+  chipTextActive:{ color: '#fff', fontWeight: FONTS.bold },
+
+  // Service badge on card (legacy, keep for compatibility)
+  serviceBadge:    { paddingHorizontal: 7, paddingVertical: 2, borderRadius: RADIUS.sm, backgroundColor: '#E0F2FE' },
+  serviceBadgeText:{ fontSize: 9, fontWeight: FONTS.bold, color: '#0369A1' },
+
+  // Low stock filter chip (legacy)
+  lowFilter:        { paddingHorizontal: 12, paddingVertical: 5, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
+  lowFilterActive:  { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
+  lowFilterText:    { fontSize: 11, color: COLORS.textSub, fontWeight: FONTS.medium },
+  lowFilterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
+
+  // Export button (legacy duplicate — kept for modal references)
+  exportBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 14, borderRadius: RADIUS.lg, marginTop: 8 },
+  exportBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
 });

@@ -3,16 +3,16 @@ import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, StatusBar, Switch,
-  FlatList, Modal,
+  FlatList, Modal, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getProfile, saveProfile, exportAllData, importAllData } from '../../db';
+import { getProfile, saveProfile, exportAllData, importAllData, getInvoices, getQuotations, getPurchaseOrders } from '../../db';
 import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase/firebaseAuth';
-import { Platform } from 'react-native';
-import { exportDataFile, getDataStorageInfo } from '../../utils/dataFileManager';
+import { exportDataFile, getDataStorageInfo, pickDataFile, importDataFile } from '../../utils/dataFileManager';
+import { INDIAN_STATES } from '../../utils/gst';
+import { COLORS, RADIUS, FONTS } from '../../theme';
 
-// Google Drive is mobile-only — lazy load to prevent web crash
 const isNative = Platform.OS !== 'web';
 const {
   useGoogleAuth: _useGoogleAuth,
@@ -30,34 +30,68 @@ const {
   getLastBackupTime: async () => null,
 };
 function useGoogleAuth() { return _useGoogleAuth(); }
-import { INDIAN_STATES } from '../../utils/gst';
-import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
-// Use require() for app.json — named ESM imports from JSON can fail in some
-// webpack/Electron builds that don't enable JSON module assertions.
+
 const { expo: { version } } = require('../../../app.json');
+
+// Padding helpers
+const pad = (n, len = 4) => String(n).padStart(len, '0');
+
+// Build a sample invoice number from prefix + counter + padding
+function buildSampleNumber(prefix, startNum, numDigits) {
+  const p = (prefix || 'INV').toUpperCase();
+  const n = parseInt(startNum) || 1;
+  const d = parseInt(numDigits) || 4;
+  return `${p}-${pad(n, d)}`;
+}
+
+// SETTINGS TABS
+const TABS = [
+  { key: 'business',  label: 'Business',  icon: 'briefcase'   },
+  { key: 'invoice',   label: 'Invoice',   icon: 'file-text'   },
+  { key: 'gst',       label: 'GST & Tax', icon: 'percent'     },
+  { key: 'bank',      label: 'Bank / UPI',icon: 'credit-card' },
+  { key: 'data',      label: 'Data',      icon: 'database'    },
+  { key: 'backup',    label: 'Backup',    icon: 'cloud'       },
+  { key: 'about',     label: 'About',     icon: 'info'        },
+];
 
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const [form, setForm]       = useState(null);
-  const [saving, setSaving]   = useState(false);
-  const [dirty, setDirty]     = useState(false);
+  const [form, setForm]           = useState(null);
+  const [saving, setSaving]       = useState(false);
+  const [dirty, setDirty]         = useState(false);
+  const [activeTab, setActiveTab] = useState('business');
   const [stateModal, setStateModal]   = useState(false);
   const [stateSearch, setStateSearch] = useState('');
 
-  // Backup state
-  const [driveEmail, setDriveEmail]     = useState(null);
-  const [lastBackup, setLastBackup]     = useState(null);
-  const [backupTime, setBackupTimeVal]  = useState('00:00');
-  const [syncing, setSyncing]           = useState(false);
-  const [restoring, setRestoring]       = useState(false);
-  const [timeModal, setTimeModal]       = useState(false);
+  // Invoice numbering
+  const [numDigits, setNumDigits] = useState('4'); // padding digits
+
+  // Backup
+  const [driveEmail, setDriveEmail]   = useState(null);
+  const [lastBackup, setLastBackup]   = useState(null);
+  const [backupTime, setBackupTimeVal] = useState('00:00');
+  const [syncing, setSyncing]         = useState(false);
+  const [restoring, setRestoring]     = useState(false);
+  const [timeModal, setTimeModal]     = useState(false);
+
+  // Data export / delete
   const [exportingData, setExportingData] = useState(false);
+  const [importingData, setImportingData] = useState(false);
+  const [exportFrom, setExportFrom]       = useState('');
+  const [exportTo, setExportTo]           = useState('');
+  const [deleteFrom, setDeleteFrom]       = useState('');
+  const [deleteTo, setDeleteTo]           = useState('');
+  const [deletingData, setDeletingData]   = useState(false);
+
   const { request, response, promptAsync } = useGoogleAuth();
 
   const load = async () => {
     try {
       const p = await getProfile();
       setForm({ ...p, show_upi_qr: !!p.show_upi_qr });
+      // Detect current padding from existing prefix
+      setNumDigits(String(p.invoice_num_digits || 4));
       setDirty(false);
     } catch (e) { console.error(e); }
   };
@@ -73,11 +107,9 @@ export default function SettingsScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { load(); loadBackupInfo(); }, []));
 
-  // Handle Google OAuth response
   useEffect(() => {
     if (response?.type === 'success') {
       const token = response.authentication?.accessToken || response.params?.access_token;
-      // expires_in comes back as a string in implicit flow params
       const expiresIn = parseInt(response.authentication?.expiresIn || response.params?.expires_in || '3600', 10);
       if (token) {
         fetchUserEmail(token).then(async email => {
@@ -98,9 +130,9 @@ export default function SettingsScreen({ navigation }) {
     if (!form.name?.trim()) { Alert.alert('Error', 'Business name is required'); return; }
     setSaving(true);
     try {
-      await saveProfile(form);
+      await saveProfile({ ...form, invoice_num_digits: parseInt(numDigits) || 4 });
       setDirty(false);
-      Alert.alert('Saved', 'Business profile updated');
+      Alert.alert('Saved ✓', 'Settings saved successfully');
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSaving(false); }
   };
@@ -116,6 +148,7 @@ export default function SettingsScreen({ navigation }) {
     s.name.toLowerCase().includes(stateSearch.toLowerCase()) || s.code.includes(stateSearch)
   );
 
+  // ── Backup ─────────────────────────────────────────────────────
   const handleSync = async () => {
     const token = await getToken();
     if (!token) { Alert.alert('Not connected', 'Connect Google Drive first'); return; }
@@ -125,7 +158,7 @@ export default function SettingsScreen({ navigation }) {
       await uploadBackup(token, json);
       const last = await getLastBackupTime();
       setLastBackup(last);
-      Alert.alert('Backup saved', 'Your data has been backed up to Google Drive');
+      Alert.alert('Backup saved ✓', 'Your data has been backed up to Google Drive');
     } catch (e) { Alert.alert('Backup failed', e.message); }
     finally { setSyncing(false); }
   };
@@ -133,69 +166,173 @@ export default function SettingsScreen({ navigation }) {
   const handleRestore = async () => {
     const token = await getToken();
     if (!token) { Alert.alert('Not connected', 'Connect Google Drive first'); return; }
-    Alert.alert(
-      'Restore Backup',
-      'This will replace ALL current data with your Google Drive backup. This cannot be undone.',
-      [
+    const doRestore = async () => {
+      setRestoring(true);
+      try {
+        const json = await downloadBackup(token);
+        if (!json) { Alert.alert('No backup found', 'No backup file in your Google Drive'); return; }
+        await importAllData(json);
+        Alert.alert('Restored ✓', 'Your data has been restored');
+      } catch (e) { Alert.alert('Restore failed', e.message); }
+      finally { setRestoring(false); }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Restore Backup?\n\nThis will replace ALL current data with your Google Drive backup. This cannot be undone.')) {
+        doRestore();
+      }
+    } else {
+      Alert.alert('Restore Backup', 'This will replace ALL current data. Cannot be undone.', [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Restore', style: 'destructive',
-          onPress: async () => {
-            setRestoring(true);
-            try {
-              const json = await downloadBackup(token);
-              if (!json) { Alert.alert('No backup found', 'No backup file found in your Google Drive'); return; }
-              await importAllData(json);
-              Alert.alert('Restored', 'Your data has been restored successfully');
-            } catch (e) { Alert.alert('Restore failed', e.message); }
-            finally { setRestoring(false); }
-          }
-        }
-      ]
-    );
+        { text: 'Restore', style: 'destructive', onPress: doRestore },
+      ]);
+    }
   };
 
   const handleDisconnect = () => {
-    Alert.alert('Disconnect Google Drive', 'Stop backing up to Google Drive?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Disconnect', style: 'destructive', onPress: async () => {
-        await gdriveSignOut(); setDriveEmail(null); setLastBackup(null);
-      }},
-    ]);
+    const doIt = async () => { await gdriveSignOut(); setDriveEmail(null); setLastBackup(null); };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Disconnect Google Drive? Auto backup will stop.')) doIt();
+    } else {
+      Alert.alert('Disconnect?', 'Stop backing up to Google Drive?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Disconnect', style: 'destructive', onPress: doIt },
+      ]);
+    }
   };
 
+  // ── Sign out ───────────────────────────────────────────────────
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: () => firebaseSignOut() },
-    ]);
+    const doSignOut = () => firebaseSignOut();
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        'Sign Out?\n\nYou will be signed out of LOCAS. Make sure you have exported your data if needed.\n\nClick OK to sign out.'
+      );
+      if (confirmed) doSignOut();
+    } else {
+      Alert.alert(
+        'Sign Out?',
+        'You will be signed out of LOCAS. Make sure you have exported your data.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign Out', style: 'destructive', onPress: doSignOut },
+        ]
+      );
+    }
   };
 
-  const handleExportData = async () => {
+  // ── Data export with date filter ───────────────────────────────
+  const handleExportFiltered = async () => {
     setExportingData(true);
     try {
-      const result = await exportDataFile();
-      Alert.alert('Export Complete', `Data saved as "${result.filename}". Check your Downloads folder.`);
+      const allData = JSON.parse(await exportAllData());
+      let filtered = { ...allData };
+
+      if (exportFrom || exportTo) {
+        const from = exportFrom || '0000-00-00';
+        const to   = exportTo   || '9999-99-99';
+        filtered.invoices = (allData.invoices || []).filter(i => i.date >= from && i.date <= to);
+        filtered.expenses = (allData.expenses || []).filter(e => e.date >= from && e.date <= to);
+        filtered.quotations = (allData.quotations || []).filter(q => q.date >= from && q.date <= to);
+
+        // Keep only line items for filtered invoices
+        const invIds = new Set(filtered.invoices.map(i => i.id));
+        filtered.invoice_items = (allData.invoice_items || []).filter(i => invIds.has(i.invoice_id));
+        filtered.payments      = (allData.payments || []).filter(p => invIds.has(p.invoice_id));
+      }
+
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1, 2)}-${pad(now.getDate(), 2)}`;
+      const suffix  = exportFrom ? `_${exportFrom}_to_${exportTo || 'now'}` : '';
+      const filename = `LOCAS_Export${suffix}_${dateStr}.json`;
+      const content  = JSON.stringify(filtered, null, 2);
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([content], { type: 'application/json' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        window.alert(`Exported: ${filename}`);
+      } else {
+        Alert.alert('Exported', `Saved as ${filename}`);
+      }
     } catch (e) {
-      Alert.alert('Export Failed', e.message || 'Could not export data.');
+      Alert.alert('Export failed', e.message);
     } finally {
       setExportingData(false);
     }
   };
 
-  const handleShowDataLocation = () => {
-    const info = getDataStorageInfo();
-    Alert.alert(
-      'Where is my data?',
-      `Storage type: ${info.type}\n\n${info.location}\n\n${info.note}\n\nExport file name: ${info.exportName}`,
-      [{ text: 'OK' }]
-    );
-  };
+  // ── Delete data by date range ──────────────────────────────────
+  const handleDeleteByDateRange = async () => {
+    if (!deleteFrom || !deleteTo) {
+      Alert.alert('Error', 'Enter both From and To dates');
+      return;
+    }
+    if (deleteFrom > deleteTo) {
+      Alert.alert('Error', '"From" date must be before "To" date');
+      return;
+    }
 
-  const handleSaveBackupTime = async (time) => {
-    await setBackupTime(time);
-    setBackupTimeVal(time);
-    setTimeModal(false);
+    const doDelete = async () => {
+      setDeletingData(true);
+      try {
+        // Export first, then delete
+        const allData = JSON.parse(await exportAllData());
+        const from = deleteFrom, to = deleteTo;
+
+        const invToDelete   = (allData.invoices   || []).filter(i => i.date >= from && i.date <= to);
+        const expToDelete   = (allData.expenses   || []).filter(e => e.date >= from && e.date <= to);
+        const quoToDelete   = (allData.quotations || []).filter(q => q.date >= from && q.date <= to);
+        const invIds        = new Set(invToDelete.map(i => i.id));
+
+        // Import remaining data only
+        const remaining = {
+          ...allData,
+          invoices:      (allData.invoices      || []).filter(i => !(i.date >= from && i.date <= to)),
+          invoice_items: (allData.invoice_items || []).filter(i => !invIds.has(i.invoice_id)),
+          payments:      (allData.payments      || []).filter(p => !invIds.has(p.invoice_id)),
+          expenses:      (allData.expenses      || []).filter(e => !(e.date >= from && e.date <= to)),
+          quotations:    (allData.quotations    || []).filter(q => !(q.date >= from && q.date <= to)),
+        };
+
+        await importAllData(JSON.stringify(remaining));
+
+        const msg = `Deleted:\n• ${invToDelete.length} invoice(s)\n• ${expToDelete.length} expense(s)\n• ${quoToDelete.length} quotation(s)\n\nData from ${from} to ${to} has been removed.`;
+
+        if (Platform.OS === 'web') window.alert(msg);
+        else Alert.alert('Deleted ✓', msg);
+
+        setDeleteFrom('');
+        setDeleteTo('');
+      } catch (e) {
+        Alert.alert('Delete failed', e.message);
+      } finally {
+        setDeletingData(false);
+      }
+    };
+
+    // Double confirm
+    const countMsg = `Delete ALL data from ${deleteFrom} to ${deleteTo}?\n\nThis includes invoices, expenses, and quotations in that range.\n\nThis CANNOT be undone. Export first if needed.`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(countMsg)) {
+        if (window.confirm(`FINAL CONFIRM: Delete data from ${deleteFrom} to ${deleteTo}? Click OK to permanently delete.`)) {
+          doDelete();
+        }
+      }
+    } else {
+      Alert.alert('⚠️ Delete Data', countMsg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => {
+          Alert.alert('Are you sure?', 'This cannot be undone.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Yes, Delete', style: 'destructive', onPress: doDelete },
+          ]);
+        }},
+      ]);
+    }
   };
 
   const formatLastBackup = (iso) => {
@@ -207,713 +344,764 @@ export default function SettingsScreen({ navigation }) {
 
   const BACKUP_TIMES = ['00:00','06:00','08:00','10:00','12:00','18:00','20:00','22:00'];
 
-  if (!form) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  if (!form) return <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+
+  const prefix    = form.invoice_prefix || 'INV';
+  const startNum  = form.invoice_counter != null ? form.invoice_counter + 1 : 1;
+  const sampleNum = buildSampleNumber(prefix, startNum, numDigits);
+  const nextNum   = buildSampleNumber(prefix, startNum + 1, numDigits);
+  const user      = getCurrentUser();
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[s.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+      {/* ── Header ── */}
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Icon name="arrow-left" size={20} color={COLORS.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <TouchableOpacity
-          style={[styles.saveBtn, (!dirty || saving) && { opacity: 0.4 }]}
-          onPress={handleSave}
-          disabled={!dirty || saving}
-        >
-          {saving ? <ActivityIndicator size="small" color={COLORS.white} /> : <Text style={styles.saveBtnText}>Save</Text>}
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-
-        {/* ── Business Info ─────────────────────────────── */}
-        <SectionHeader icon="briefcase" title="Business Details" />
-        <View style={styles.card}>
-          <Field label="Business Name *">
-            <TextInput style={styles.input} value={form.name||''} onChangeText={v=>set('name',v)} placeholder="Your business name" placeholderTextColor={COLORS.textMute} />
-          </Field>
-          <Field label="Address">
-            <TextInput style={[styles.input,styles.textarea]} value={form.address||''} onChangeText={v=>set('address',v)} placeholder="Full business address" placeholderTextColor={COLORS.textMute} multiline numberOfLines={3} />
-          </Field>
-          <Row>
-            <Field label="Phone" flex={1}>
-              <TextInput style={styles.input} value={form.phone||''} onChangeText={v=>set('phone',v)} placeholder="Mobile / landline" placeholderTextColor={COLORS.textMute} keyboardType="phone-pad" />
-            </Field>
-            <View style={{width:12}}/>
-            <Field label="Email" flex={1}>
-              <TextInput style={styles.input} value={form.email||''} onChangeText={v=>set('email',v)} placeholder="email@business.com" placeholderTextColor={COLORS.textMute} keyboardType="email-address" autoCapitalize="none" />
-            </Field>
-          </Row>
-          <Field label="State">
-            <TouchableOpacity style={[styles.input,styles.picker]} onPress={()=>{setStateSearch('');setStateModal(true);}}>
-              <Text style={form.state?styles.pickerText:styles.pickerPlaceholder}>{form.state?`${form.state} (${form.state_code})`:'Select state...'}</Text>
-              <Icon name="chevron-down" size={16} color={COLORS.textMute} />
-            </TouchableOpacity>
-          </Field>
+        <View style={{ flex: 1 }}>
+          <Text style={s.headerTitle}>Settings</Text>
+          {user?.email && <Text style={s.headerSub}>{user.email}</Text>}
         </View>
-
-        {/* ── GST & Tax ─────────────────────────────────── */}
-        <SectionHeader icon="percent" title="GST & Tax" />
-        <View style={styles.card}>
-          <Field label="GSTIN">
-            <TextInput style={styles.input} value={form.gstin||''} onChangeText={v=>set('gstin',v.toUpperCase())} placeholder="22AAAAA0000A1Z5" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={15} />
-          </Field>
-          {form.gstin?.length>0&&form.gstin.length!==15&&(
-            <View style={styles.hintWarn}><Icon name="alert-circle" size={12} color={COLORS.warning} /><Text style={styles.hintWarnText}> GSTIN must be 15 characters ({form.gstin.length}/15)</Text></View>
-          )}
-          {form.gstin?.length===15&&(
-            <View style={styles.hintOk}><Icon name="check-circle" size={12} color={COLORS.success} /><Text style={styles.hintOkText}> GSTIN format looks good</Text></View>
-          )}
-          <Row>
-            <Field label="PAN" flex={1}>
-              <TextInput style={styles.input} value={form.pan||''} onChangeText={v=>set('pan',v.toUpperCase())} placeholder="AAAAA0000A" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={10} />
-            </Field>
-            <View style={{width:12}}/>
-            <Field label="State Code" flex={1}>
-              <TextInput style={[styles.input,{backgroundColor:COLORS.bg}]} value={form.state_code||''} editable={false} placeholder="Auto from state" placeholderTextColor={COLORS.textMute} />
-            </Field>
-          </Row>
-        </View>
-
-        {/* ── Invoice Settings ───────────────────────────── */}
-        <SectionHeader icon="file-text" title="Invoice Settings" />
-        <View style={styles.card}>
-          <Field label="Invoice Prefix">
-            <TextInput style={styles.input} value={form.invoice_prefix||'INV'} onChangeText={v=>set('invoice_prefix',v.toUpperCase())} placeholder="INV" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={6} />
-          </Field>
-          <View style={styles.previewBox}>
-            <Text style={styles.previewLabel}>Next invoice will look like</Text>
-            <Text style={styles.previewValue}>{form.invoice_prefix||'INV'}-0001, {form.invoice_prefix||'INV'}-0002…</Text>
-          </View>
-        </View>
-
-        {/* ── Bank Details ───────────────────────────────── */}
-        <SectionHeader icon="credit-card" title="Bank Details" />
-        <View style={styles.card}>
-          <Field label="Bank Name">
-            <TextInput style={styles.input} value={form.bank_name||''} onChangeText={v=>set('bank_name',v)} placeholder="e.g. State Bank of India" placeholderTextColor={COLORS.textMute} />
-          </Field>
-          <Row>
-            <Field label="Account Number" flex={1}>
-              <TextInput style={styles.input} value={form.account_no||''} onChangeText={v=>set('account_no',v)} placeholder="Account number" placeholderTextColor={COLORS.textMute} keyboardType="numeric" />
-            </Field>
-            <View style={{width:12}}/>
-            <Field label="IFSC Code" flex={1}>
-              <TextInput style={styles.input} value={form.ifsc||''} onChangeText={v=>set('ifsc',v.toUpperCase())} placeholder="SBIN0001234" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={11} />
-            </Field>
-          </Row>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoBoxText}>Bank details appear on PDF invoices for customer payments</Text>
-          </View>
-        </View>
-
-        {/* ── UPI & QR ───────────────────────────────────── */}
-        <SectionHeader icon="smartphone" title="UPI & QR Code" />
-        <View style={styles.card}>
-          <Field label="UPI ID">
-            <TextInput
-              style={styles.input}
-              value={form.upi_id||''}
-              onChangeText={v=>set('upi_id',v)}
-              placeholder="e.g. 9876543210@paytm or name@okaxis"
-              placeholderTextColor={COLORS.textMute}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </Field>
-
-          <View style={styles.toggleRow}>
-            <View style={{flex:1}}>
-              <Text style={styles.toggleLabel}>Show QR Code on Invoice</Text>
-              <Text style={styles.toggleSub}>Customers scan and pay directly from PDF</Text>
-            </View>
-            <Switch
-              value={!!form.show_upi_qr}
-              onValueChange={v=>set('show_upi_qr',v)}
-              trackColor={{false:COLORS.border,true:COLORS.primary}}
-              thumbColor={COLORS.white}
-            />
-          </View>
-
-          {form.upi_id&&form.show_upi_qr?(
-            <View style={styles.upiOk}>
-              <Icon name="check-circle" size={16} color={COLORS.success} />
-              <View style={{flex:1}}>
-                <Text style={styles.upiOkTitle}>QR will appear on invoices</Text>
-                <Text style={styles.upiOkId}>{form.upi_id}</Text>
-              </View>
-            </View>
-          ):null}
-
-          {form.show_upi_qr&&!form.upi_id?(
-            <View style={styles.upiWarn}>
-              <Text style={styles.upiWarnText}>Enter your UPI ID above to enable QR code</Text>
-            </View>
-          ):null}
-        </View>
-
-        {/* ── Backup & Restore ──────────────────────────── */}
-        <SectionHeader icon="cloud" title="Backup & Restore" />
-        <View style={styles.card}>
-          {driveEmail ? (
-            <>
-              <View style={styles.driveConnected}>
-                <Icon name="check-circle" size={16} color={COLORS.success} />
-                <View style={{flex:1}}>
-                  <Text style={styles.driveEmail}>{driveEmail}</Text>
-                  <Text style={styles.driveLastBackup}>Last backup: {formatLastBackup(lastBackup)}</Text>
-                </View>
-                <TouchableOpacity onPress={handleDisconnect}>
-                  <Text style={styles.disconnectBtn}>Disconnect</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.backupTimeRow}>
-                <View style={{flex:1}}>
-                  <Text style={styles.toggleLabel}>Daily Backup Time</Text>
-                  <Text style={styles.toggleSub}>Auto backup runs once per day</Text>
-                </View>
-                <TouchableOpacity style={styles.timeChip} onPress={()=>setTimeModal(true)}>
-                  <Text style={styles.timeChipText}>{backupTime}</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.backupActions}>
-                <TouchableOpacity
-                  style={[styles.backupBtn, syncing && {opacity:0.5}]}
-                  onPress={handleSync}
-                  disabled={syncing}
-                >
-                  {syncing
-                    ? <ActivityIndicator size="small" color={COLORS.white}/>
-                    : <><Icon name="cloud" size={14} color="#fff" /><Text style={styles.backupBtnText}> Sync Now</Text></>
-                  }
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.restoreBtn, restoring && {opacity:0.5}]}
-                  onPress={handleRestore}
-                  disabled={restoring}
-                >
-                  {restoring
-                    ? <ActivityIndicator size="small" color={COLORS.primary}/>
-                    : <><Icon name="refresh-ccw" size={14} color={COLORS.secondary} /><Text style={styles.restoreBtnText}> Restore</Text></>
-                  }
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.driveDesc}>
-                Connect Google Drive to automatically backup your data daily. Restore anytime after reinstalling the app.
-              </Text>
-              <TouchableOpacity
-                style={styles.connectBtn}
-                onPress={() => promptAsync()}
-                disabled={!request}
-              >
-                <><Icon name="link" size={14} color="#fff" /><Text style={styles.connectBtnText}> Connect Google Drive</Text></>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        {/* ── About ─────────────────────────────────────── */}
-        {/* Data & Storage */}
-        <SectionHeader icon="database" title="Data & Storage" />
-        <View style={styles.card}>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoBoxText}>
-              Your data is stored in your browser's IndexedDB (key: "locas"). It persists across sessions but is tied to this browser. Export regularly for a portable backup.
-            </Text>
-          </View>
+        {dirty && (
           <TouchableOpacity
-            style={[styles.exportDataBtn, exportingData && { opacity: 0.5 }]}
-            onPress={handleExportData}
-            disabled={exportingData}
+            style={[s.saveBtn, saving && { opacity: 0.5 }]}
+            onPress={handleSave}
+            disabled={saving}
           >
-            {exportingData
+            {saving
               ? <ActivityIndicator size="small" color="#fff" />
-              : <><Icon name="download" size={14} color="#fff" /><Text style={styles.exportDataBtnText}> Export Backup (.json)</Text></>
+              : <><Icon name="check" size={14} color="#fff" /><Text style={s.saveBtnTxt}> Save</Text></>
             }
           </TouchableOpacity>
-          <TouchableOpacity style={styles.dataLocationBtn} onPress={handleShowDataLocation}>
-            <Icon name="info" size={14} color={COLORS.info} />
-            <Text style={styles.dataLocationText}>  Where is my data stored?</Text>
-          </TouchableOpacity>
-        </View>
+        )}
+      </View>
 
-        <SectionHeader icon="info" title="About" />
-        <View style={styles.card}>
-          <InfoRow label="App"      value="Locas" />
-          <InfoRow label="Version"  value={version} />
-          <InfoRow label="GST"      value="CGST / SGST / IGST" />
-          <InfoRow label="Storage"  value="Local SQLite (offline)" />
-          <InfoRow label="Account"  value={getCurrentUser()?.email || ''} />
-        </View>
+      {/* ── Tab bar ── */}
+      <View style={s.tabBarWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabBar}>
+          {TABS.map(t => (
+            <TouchableOpacity
+              key={t.key}
+              style={[s.tab, activeTab === t.key && s.tabActive]}
+              onPress={() => setActiveTab(t.key)}
+            >
+              <Icon name={t.icon} size={13} color={activeTab === t.key ? COLORS.primary : COLORS.textMute} />
+              <Text style={[s.tabTxt, activeTab === t.key && s.tabTxtActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-        {/* Sign Out */}
-        <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-          <><Icon name="log-out" size={14} color={COLORS.danger} /><Text style={styles.signOutText}> Sign Out</Text></>
-        </TouchableOpacity>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={s.scroll}
+      >
 
-        {/* Bottom save button */}
-        {dirty&&(
-          <TouchableOpacity style={[styles.bottomSave,saving&&{opacity:.5}]} onPress={handleSave} disabled={saving}>
-            {saving?<ActivityIndicator color={COLORS.white}/>:<Text style={styles.bottomSaveText}>💾 Save Changes</Text>}
+        {/* ════ BUSINESS ════ */}
+        {activeTab === 'business' && (
+          <>
+            <SH icon="briefcase" title="Business Profile" />
+            <Card>
+              <FL label="Business Name *">
+                <TextInput style={s.input} value={form.name||''} onChangeText={v=>set('name',v)} placeholder="Your business name" placeholderTextColor={COLORS.textMute} />
+              </FL>
+              <FL label="Address">
+                <TextInput style={[s.input,{minHeight:72,textAlignVertical:'top'}]} value={form.address||''} onChangeText={v=>set('address',v)} placeholder="Full business address" placeholderTextColor={COLORS.textMute} multiline numberOfLines={3} />
+              </FL>
+              <View style={s.row}>
+                <View style={{flex:1}}>
+                  <FL label="Phone">
+                    <TextInput style={s.input} value={form.phone||''} onChangeText={v=>set('phone',v)} placeholder="Mobile / landline" placeholderTextColor={COLORS.textMute} keyboardType="phone-pad" />
+                  </FL>
+                </View>
+                <View style={{width:12}}/>
+                <View style={{flex:1}}>
+                  <FL label="Email">
+                    <TextInput style={s.input} value={form.email||''} onChangeText={v=>set('email',v)} placeholder="email@business.com" placeholderTextColor={COLORS.textMute} keyboardType="email-address" autoCapitalize="none" />
+                  </FL>
+                </View>
+              </View>
+              <FL label="State">
+                <TouchableOpacity style={[s.input,s.picker]} onPress={()=>{setStateSearch('');setStateModal(true);}}>
+                  <Text style={form.state ? s.pickerTxt : s.pickerPlaceholder}>
+                    {form.state ? `${form.state} (${form.state_code})` : 'Select state...'}
+                  </Text>
+                  <Icon name="chevron-down" size={15} color={COLORS.textMute} />
+                </TouchableOpacity>
+              </FL>
+              <FL label="Website (optional)">
+                <TextInput style={s.input} value={form.website||''} onChangeText={v=>set('website',v)} placeholder="https://yourbusiness.com" placeholderTextColor={COLORS.textMute} autoCapitalize="none" />
+              </FL>
+            </Card>
+          </>
+        )}
+
+        {/* ════ INVOICE SETTINGS ════ */}
+        {activeTab === 'invoice' && (
+          <>
+            <SH icon="file-text" title="Invoice Numbering" />
+            <Card>
+              {/* Prefix */}
+              <FL label="Invoice Prefix">
+                <TextInput
+                  style={s.input}
+                  value={form.invoice_prefix||'INV'}
+                  onChangeText={v => { set('invoice_prefix', v.toUpperCase().replace(/[^A-Z0-9]/g,'')); }}
+                  placeholder="INV"
+                  placeholderTextColor={COLORS.textMute}
+                  autoCapitalize="characters"
+                  maxLength={8}
+                />
+              </FL>
+              <Text style={s.hint}>Letters and numbers only. e.g. INV, BILL, 2025, OM</Text>
+
+              {/* Number digits (padding) */}
+              <FL label="Number of Digits">
+                <View style={s.digitRow}>
+                  {['3','4','5','6'].map(d => (
+                    <TouchableOpacity
+                      key={d}
+                      style={[s.digitChip, numDigits===d && s.digitChipActive]}
+                      onPress={() => { setNumDigits(d); setDirty(true); }}
+                    >
+                      <Text style={[s.digitChipTxt, numDigits===d && s.digitChipTxtActive]}>{d} digits</Text>
+                      <Text style={[s.digitChipEx, numDigits===d && {color:COLORS.primary}]}>
+                        ({pad(1, parseInt(d))})
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </FL>
+              <Text style={s.hint}>Controls how many zeros are padded. 4 digits = 0001, 5 digits = 00001</Text>
+
+              {/* Start number */}
+              <FL label="Start / Reset Counter From">
+                <View style={s.row}>
+                  <TextInput
+                    style={[s.input, {flex:1}]}
+                    value={String(form.invoice_counter||0)}
+                    onChangeText={v => set('invoice_counter', parseInt(v)||0)}
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMute}
+                    keyboardType="numeric"
+                  />
+                  <View style={{width:12}} />
+                  <View style={{flex:1,justifyContent:'center',alignItems:'center',backgroundColor:COLORS.dangerLight,borderRadius:RADIUS.md,padding:10}}>
+                    <Text style={{fontSize:11,color:COLORS.danger,fontWeight:FONTS.bold}}>⚠ Changes counter</Text>
+                    <Text style={{fontSize:10,color:COLORS.danger,marginTop:2}}>Save carefully</Text>
+                  </View>
+                </View>
+              </FL>
+
+              {/* Live preview */}
+              <View style={s.previewBox}>
+                <Text style={s.previewLabel}>Live Preview</Text>
+                <View style={s.previewRow}>
+                  <View style={s.previewItem}>
+                    <Text style={s.previewCaption}>Next Invoice</Text>
+                    <Text style={s.previewNum}>{sampleNum}</Text>
+                  </View>
+                  <Icon name="arrow-right" size={16} color={COLORS.textMute} />
+                  <View style={s.previewItem}>
+                    <Text style={s.previewCaption}>After that</Text>
+                    <Text style={s.previewNum}>{nextNum}</Text>
+                  </View>
+                </View>
+              </View>
+            </Card>
+
+            <SH icon="clipboard" title="Quotation Numbering" />
+            <Card>
+              <FL label="Quotation Prefix">
+                <TextInput
+                  style={s.input}
+                  value={form.quote_prefix||'QUO'}
+                  onChangeText={v => set('quote_prefix', v.toUpperCase().replace(/[^A-Z0-9]/g,''))}
+                  placeholder="QUO"
+                  placeholderTextColor={COLORS.textMute}
+                  autoCapitalize="characters"
+                  maxLength={8}
+                />
+              </FL>
+              <View style={s.previewBox}>
+                <Text style={s.previewLabel}>Preview</Text>
+                <Text style={s.previewNum}>{(form.quote_prefix||'QUO')}-{pad((form.quote_counter||0)+1, parseInt(numDigits))}</Text>
+              </View>
+            </Card>
+
+            <SH icon="settings" title="Invoice Defaults" />
+            <Card>
+              <ToggleRow
+                label="Default Due Date"
+                sub="Days after invoice date"
+                right={
+                  <View style={s.row}>
+                    <TextInput
+                      style={[s.input,{width:60,textAlign:'center',paddingVertical:8}]}
+                      value={String(form.default_due_days||30)}
+                      onChangeText={v => set('default_due_days', parseInt(v)||30)}
+                      keyboardType="numeric"
+                    />
+                    <Text style={{fontSize:12,color:COLORS.textMute,marginLeft:6,alignSelf:'center'}}>days</Text>
+                  </View>
+                }
+              />
+              <ToggleRow
+                label="Default Terms"
+                sub="Pre-fill payment terms"
+                right={null}
+              />
+              <TextInput
+                style={[s.input,{minHeight:60,textAlignVertical:'top',margin:0}]}
+                value={form.default_terms||'Payment due within 30 days.'}
+                onChangeText={v=>set('default_terms',v)}
+                multiline
+                placeholderTextColor={COLORS.textMute}
+              />
+              <View style={{height:8}}/>
+            </Card>
+          </>
+        )}
+
+        {/* ════ GST & TAX ════ */}
+        {activeTab === 'gst' && (
+          <>
+            <SH icon="percent" title="GST Details" />
+            <Card>
+              <FL label="GSTIN">
+                <TextInput
+                  style={s.input}
+                  value={form.gstin||''}
+                  onChangeText={v=>set('gstin',v.toUpperCase())}
+                  placeholder="22AAAAA0000A1Z5"
+                  placeholderTextColor={COLORS.textMute}
+                  autoCapitalize="characters"
+                  maxLength={15}
+                />
+              </FL>
+              {form.gstin?.length > 0 && form.gstin.length !== 15 && (
+                <View style={s.hintWarn}>
+                  <Icon name="alert-circle" size={12} color={COLORS.warning} />
+                  <Text style={s.hintWarnTxt}> GSTIN must be 15 characters ({form.gstin.length}/15)</Text>
+                </View>
+              )}
+              {form.gstin?.length === 15 && (
+                <View style={s.hintOk}>
+                  <Icon name="check-circle" size={12} color={COLORS.success} />
+                  <Text style={s.hintOkTxt}> GSTIN looks good</Text>
+                </View>
+              )}
+
+              <View style={s.row}>
+                <View style={{flex:1}}>
+                  <FL label="PAN Number">
+                    <TextInput style={s.input} value={form.pan||''} onChangeText={v=>set('pan',v.toUpperCase())} placeholder="AAAAA0000A" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={10} />
+                  </FL>
+                </View>
+                <View style={{width:12}}/>
+                <View style={{flex:1}}>
+                  <FL label="State Code">
+                    <TextInput style={[s.input,{backgroundColor:COLORS.bgDeep}]} value={form.state_code||''} editable={false} placeholder="Auto from state" placeholderTextColor={COLORS.textMute} />
+                  </FL>
+                </View>
+              </View>
+
+              <View style={s.infoBox}>
+                <Icon name="info" size={13} color={COLORS.info} />
+                <Text style={s.infoTxt}> GSTIN auto-detects intra/inter state supply when creating invoices. Your state code is set from the Business tab.</Text>
+              </View>
+            </Card>
+          </>
+        )}
+
+        {/* ════ BANK / UPI ════ */}
+        {activeTab === 'bank' && (
+          <>
+            <SH icon="credit-card" title="Bank Details" />
+            <Card>
+              <FL label="Bank Name">
+                <TextInput style={s.input} value={form.bank_name||''} onChangeText={v=>set('bank_name',v)} placeholder="e.g. State Bank of India" placeholderTextColor={COLORS.textMute} />
+              </FL>
+              <View style={s.row}>
+                <View style={{flex:1}}>
+                  <FL label="Account Number">
+                    <TextInput style={s.input} value={form.account_no||''} onChangeText={v=>set('account_no',v)} placeholder="Account number" placeholderTextColor={COLORS.textMute} keyboardType="numeric" />
+                  </FL>
+                </View>
+                <View style={{width:12}}/>
+                <View style={{flex:1}}>
+                  <FL label="IFSC Code">
+                    <TextInput style={s.input} value={form.ifsc||''} onChangeText={v=>set('ifsc',v.toUpperCase())} placeholder="SBIN0001234" placeholderTextColor={COLORS.textMute} autoCapitalize="characters" maxLength={11} />
+                  </FL>
+                </View>
+              </View>
+              <View style={s.infoBox}>
+                <Icon name="info" size={13} color={COLORS.info} />
+                <Text style={s.infoTxt}> Bank details appear on PDF invoices so customers can pay directly.</Text>
+              </View>
+            </Card>
+
+            <SH icon="smartphone" title="UPI & QR Code" />
+            <Card>
+              <FL label="UPI ID">
+                <TextInput
+                  style={s.input}
+                  value={form.upi_id||''}
+                  onChangeText={v=>set('upi_id',v)}
+                  placeholder="9876543210@paytm or name@okaxis"
+                  placeholderTextColor={COLORS.textMute}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              </FL>
+              <ToggleRow
+                label="Show QR Code on Invoice"
+                sub="Customers scan and pay directly from PDF"
+                right={
+                  <Switch
+                    value={!!form.show_upi_qr}
+                    onValueChange={v=>set('show_upi_qr',v)}
+                    trackColor={{false:COLORS.border,true:COLORS.primary}}
+                    thumbColor="#fff"
+                  />
+                }
+              />
+              {form.upi_id && form.show_upi_qr && (
+                <View style={s.hintOk}>
+                  <Icon name="check-circle" size={13} color={COLORS.success} />
+                  <Text style={s.hintOkTxt}> UPI QR will appear on invoices — {form.upi_id}</Text>
+                </View>
+              )}
+              {form.show_upi_qr && !form.upi_id && (
+                <View style={s.hintWarn}>
+                  <Icon name="alert-triangle" size={13} color={COLORS.warning} />
+                  <Text style={s.hintWarnTxt}> Enter your UPI ID above to enable QR code</Text>
+                </View>
+              )}
+            </Card>
+          </>
+        )}
+
+        {/* ════ DATA ════ */}
+        {activeTab === 'data' && (
+          <>
+            {/* Export with date filter */}
+            <SH icon="download" title="Export Data" />
+            <Card>
+              <Text style={s.cardDesc}>
+                Export your data as a JSON file. Use date filters to export only a specific period. Leave blank to export everything.
+              </Text>
+              <View style={s.row}>
+                <View style={{flex:1}}>
+                  <FL label="From Date (optional)">
+                    <TextInput style={s.input} value={exportFrom} onChangeText={setExportFrom} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMute} />
+                  </FL>
+                </View>
+                <View style={{width:12}}/>
+                <View style={{flex:1}}>
+                  <FL label="To Date (optional)">
+                    <TextInput style={s.input} value={exportTo} onChangeText={setExportTo} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMute} />
+                  </FL>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[s.actionBtn, s.actionBtnPrimary, exportingData && {opacity:0.5}]}
+                onPress={handleExportFiltered}
+                disabled={exportingData}
+              >
+                {exportingData
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <><Icon name="download" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Export JSON Backup</Text></>
+                }
+              </TouchableOpacity>
+              <Text style={[s.hint, {marginTop:6}]}>File downloads to your Downloads folder. Use this to backup or transfer your data.</Text>
+            </Card>
+
+            <SH icon="upload" title="Import Data from JSON" />
+            <Card>
+              <Text style={s.cardDesc}>
+                Restore data from a previously exported LOCAS JSON backup file. Use this when switching to a new device.
+              </Text>
+              <View style={s.infoBox}>
+                <Icon name="info" size={13} color={COLORS.info} />
+                <Text style={s.infoTxt}> This will replace ALL current data with the backup file contents. Export your current data first if needed.</Text>
+              </View>
+              <TouchableOpacity
+                style={[s.actionBtn, s.actionBtnSecondary, importingData && {opacity:0.5}]}
+                onPress={handleImportJSON}
+                disabled={importingData}
+              >
+                {importingData
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <><Icon name="upload" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Select JSON Backup File</Text></>
+                }
+              </TouchableOpacity>
+              <Text style={[s.hint, {marginTop:6}]}>
+                Tip: After importing on a new device, contact support to release your old device slot from the license.
+              </Text>
+            </Card>
+
+            {/* Delete data by date range */}
+            <SH icon="trash-2" title="Delete Data by Date Range" />
+            <Card>
+              <View style={s.dangerBanner}>
+                <Icon name="alert-triangle" size={15} color="#92400E" />
+                <Text style={s.dangerBannerTxt}>
+                  Permanently deletes invoices, expenses, and quotations in the date range. <Text style={{fontWeight:FONTS.bold}}>Export first!</Text>
+                </Text>
+              </View>
+              <View style={s.row}>
+                <View style={{flex:1}}>
+                  <FL label="Delete From">
+                    <TextInput style={[s.input,{borderColor:COLORS.danger}]} value={deleteFrom} onChangeText={setDeleteFrom} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMute} />
+                  </FL>
+                </View>
+                <View style={{width:12}}/>
+                <View style={{flex:1}}>
+                  <FL label="Delete To">
+                    <TextInput style={[s.input,{borderColor:COLORS.danger}]} value={deleteTo} onChangeText={setDeleteTo} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textMute} />
+                  </FL>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[s.actionBtn, s.actionBtnDanger, deletingData && {opacity:0.5}]}
+                onPress={handleDeleteByDateRange}
+                disabled={deletingData || !deleteFrom || !deleteTo}
+              >
+                {deletingData
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <><Icon name="trash-2" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Delete Data in Range</Text></>
+                }
+              </TouchableOpacity>
+            </Card>
+
+            {/* Data location info */}
+            <SH icon="database" title="Storage Info" />
+            <Card>
+              <InfoRow label="Storage"  value="Browser IndexedDB" />
+              <InfoRow label="Key"      value="locas" />
+              <InfoRow label="Platform" value={Platform.OS} />
+              <View style={s.infoBox}>
+                <Icon name="info" size={13} color={COLORS.info} />
+                <Text style={s.infoTxt}> Data is stored locally in your browser. It persists across sessions but is tied to this device/browser. Export regularly for safety.</Text>
+              </View>
+            </Card>
+          </>
+        )}
+
+        {/* ════ BACKUP ════ */}
+        {activeTab === 'backup' && (
+          <>
+            <SH icon="cloud" title="Google Drive Backup" />
+            <Card>
+              {driveEmail ? (
+                <>
+                  <View style={s.connectedRow}>
+                    <View style={s.connectedDot} />
+                    <View style={{flex:1}}>
+                      <Text style={s.connectedEmail}>{driveEmail}</Text>
+                      <Text style={s.connectedLast}>Last backup: {formatLastBackup(lastBackup)}</Text>
+                    </View>
+                    <TouchableOpacity style={s.disconnectBtn} onPress={handleDisconnect}>
+                      <Text style={s.disconnectTxt}>Disconnect</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <ToggleRow
+                    label="Daily Backup Time"
+                    sub="Auto backup runs once per day"
+                    right={
+                      <TouchableOpacity style={s.timeChip} onPress={() => setTimeModal(true)}>
+                        <Icon name="clock" size={13} color={COLORS.primary} />
+                        <Text style={s.timeChipTxt}>{backupTime}</Text>
+                      </TouchableOpacity>
+                    }
+                  />
+
+                  <View style={s.backupBtns}>
+                    <TouchableOpacity style={[s.actionBtn,s.actionBtnPrimary,{flex:1},syncing&&{opacity:0.5}]} onPress={handleSync} disabled={syncing}>
+                      {syncing ? <ActivityIndicator size="small" color="#fff" /> : <><Icon name="upload-cloud" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Backup Now</Text></>}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.actionBtn,s.actionBtnOutline,{flex:1},restoring&&{opacity:0.5}]} onPress={handleRestore} disabled={restoring}>
+                      {restoring ? <ActivityIndicator size="small" color={COLORS.primary} /> : <><Icon name="download-cloud" size={14} color={COLORS.primary} /><Text style={[s.actionBtnTxt,{color:COLORS.primary}]}> Restore</Text></>}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={s.cardDesc}>Connect Google Drive to automatically backup your data daily. Restore anytime after reinstalling.</Text>
+                  <TouchableOpacity style={[s.actionBtn,s.actionBtnSecondary]} onPress={() => promptAsync()} disabled={!request}>
+                    <Icon name="link" size={14} color="#fff" />
+                    <Text style={s.actionBtnTxt}> Connect Google Drive</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </Card>
+          </>
+        )}
+
+        {/* ════ ABOUT ════ */}
+        {activeTab === 'about' && (
+          <>
+            <SH icon="info" title="App Info" />
+            <Card>
+              <InfoRow label="App"      value="LOCAS Billing" />
+              <InfoRow label="Version"  value={version} />
+              <InfoRow label="GST"      value="CGST / SGST / IGST" />
+              <InfoRow label="Storage"  value="Local IndexedDB" />
+              <InfoRow label="Account"  value={user?.email || '—'} last />
+            </Card>
+
+            <SH icon="shield" title="Account" />
+            <Card>
+              <InfoRow label="Signed in as" value={user?.email || '—'} last />
+            </Card>
+
+            {/* Sign out */}
+            <TouchableOpacity style={s.signOutBtn} onPress={handleSignOut}>
+              <Icon name="log-out" size={16} color={COLORS.danger} />
+              <View style={{flex:1, marginLeft:12}}>
+                <Text style={s.signOutTitle}>Sign Out</Text>
+                <Text style={s.signOutSub}>You will be asked to confirm</Text>
+              </View>
+              <Icon name="chevron-right" size={16} color={COLORS.danger} />
+            </TouchableOpacity>
+          </>
+        )}
+
+        {/* Floating save button when dirty */}
+        {dirty && (
+          <TouchableOpacity
+            style={[s.floatSave, saving && {opacity:0.5}]}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            {saving
+              ? <ActivityIndicator color="#fff" />
+              : <><Icon name="save" size={16} color="#fff" /><Text style={s.floatSaveTxt}> Save Changes</Text></>
+            }
           </TouchableOpacity>
         )}
 
-        <View style={{height:80}}/>
+        <View style={{height:80}} />
       </ScrollView>
 
-      {/* Backup time picker */}
-      {timeModal && (
-        <Modal transparent animationType="slide" onRequestClose={()=>setTimeModal(false)}>
-          <View style={styles.stateOverlay}>
-            <View style={styles.stateSheet}>
-              <View style={styles.stateHeader}>
-                <Text style={styles.stateTitle}>Select Backup Time</Text>
-                <TouchableOpacity onPress={()=>setTimeModal(false)} style={{padding:4}}><Icon name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
-              </View>
-              {BACKUP_TIMES.map(t => (
-                <TouchableOpacity key={t} style={styles.stateItem} onPress={()=>handleSaveBackupTime(t)}>
-                  <Text style={[styles.stateName, backupTime===t&&{color:COLORS.primary,fontWeight:FONTS.bold}]}>{t}</Text>
-                  {backupTime===t && <Icon name="check" size={16} color={COLORS.primary} />}
-                </TouchableOpacity>
-              ))}
+      {/* State picker modal */}
+      {stateModal && (
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <View style={s.sheetHeader}>
+              <Text style={s.sheetTitle}>Select State</Text>
+              <TouchableOpacity onPress={() => setStateModal(false)} style={{padding:4}}>
+                <Icon name="x" size={18} color={COLORS.textMute} />
+              </TouchableOpacity>
             </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* State picker */}
-      {stateModal&&(
-        <View style={styles.stateOverlay}>
-          <View style={styles.stateSheet}>
-            <View style={styles.stateHeader}>
-              <Text style={styles.stateTitle}>Select State</Text>
-              <TouchableOpacity onPress={()=>setStateModal(false)} style={{padding:4}}><Icon name='x' size={18} color={COLORS.textMute} /></TouchableOpacity>
-            </View>
-            <View style={styles.stateSearchBox}>
-              <TextInput style={styles.stateSearchInput} value={stateSearch} onChangeText={setStateSearch} placeholder="Search state..." placeholderTextColor={COLORS.textMute} autoFocus />
+            <View style={s.sheetSearch}>
+              <Icon name="search" size={15} color={COLORS.textMute} />
+              <TextInput style={s.sheetSearchInput} value={stateSearch} onChangeText={setStateSearch} placeholder="Search state..." placeholderTextColor={COLORS.textMute} autoFocus />
             </View>
             <FlatList
               data={filteredStates}
-              keyExtractor={s=>s.code}
+              keyExtractor={s => s.code}
               keyboardShouldPersistTaps="handled"
-              renderItem={({item})=>(
-                <TouchableOpacity style={styles.stateItem} onPress={()=>selectState(item)}>
-                  <Text style={styles.stateName}>{item.name}</Text>
-                  <Text style={styles.stateCode}>{item.code}</Text>
+              renderItem={({item}) => (
+                <TouchableOpacity style={s.sheetItem} onPress={() => selectState(item)}>
+                  <Text style={s.sheetItemName}>{item.name}</Text>
+                  <Text style={s.sheetItemCode}>{item.code}</Text>
                 </TouchableOpacity>
               )}
             />
           </View>
         </View>
       )}
+
+      {/* Backup time modal */}
+      {timeModal && (
+        <Modal transparent animationType="slide" onRequestClose={() => setTimeModal(false)}>
+          <View style={s.overlay}>
+            <View style={s.sheet}>
+              <View style={s.sheetHeader}>
+                <Text style={s.sheetTitle}>Daily Backup Time</Text>
+                <TouchableOpacity onPress={() => setTimeModal(false)} style={{padding:4}}>
+                  <Icon name="x" size={18} color={COLORS.textMute} />
+                </TouchableOpacity>
+              </View>
+              {BACKUP_TIMES.map(t => (
+                <TouchableOpacity key={t} style={s.sheetItem} onPress={async () => {
+                  await setBackupTime(t);
+                  setBackupTimeVal(t);
+                  setTimeModal(false);
+                }}>
+                  <Text style={[s.sheetItemName, backupTime===t&&{color:COLORS.primary,fontWeight:FONTS.bold}]}>{t}</Text>
+                  {backupTime===t && <Icon name="check" size={15} color={COLORS.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
 
-function SectionHeader({icon,title}){return(<View style={styles.sectionHeader}><Icon name={icon} size={14} color={COLORS.textSub} style={{marginRight:6}} /><Text style={styles.sectionTitle}>{title}</Text></View>);}
-function Field({label,children,flex,style}){return(<View style={[{flex},style]}><Text style={styles.fieldLabel}>{label}</Text>{children}</View>);}
-function Row({children}){return<View style={styles.row}>{children}</View>;}
-function InfoRow({label,value}){return(<View style={styles.infoRow}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>);}
+// ── Sub-components ─────────────────────────────────────────────────
+function SH({ icon, title }) {
+  return (
+    <View style={s.sectionHead}>
+      <View style={s.sectionIcon}><Icon name={icon} size={14} color={COLORS.primary} /></View>
+      <Text style={s.sectionTitle}>{title}</Text>
+    </View>
+  );
+}
+function Card({ children }) {
+  return <View style={s.card}>{children}</View>;
+}
+function FL({ label, children }) {
+  return (
+    <View style={s.fieldWrap}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+function ToggleRow({ label, sub, right }) {
+  return (
+    <View style={s.toggleRow}>
+      <View style={{flex:1}}>
+        <Text style={s.toggleLabel}>{label}</Text>
+        {sub && <Text style={s.toggleSub}>{sub}</Text>}
+      </View>
+      {right}
+    </View>
+  );
+}
+function InfoRow({ label, value, last }) {
+  return (
+    <View style={[s.infoRow, !last && s.infoRowBorder]}>
+      <Text style={s.infoLabel}>{label}</Text>
+      <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
 
-
-
-const styles = StyleSheet.create({
-  // Layout
+// ── Styles ─────────────────────────────────────────────────────────
+const s = StyleSheet.create({
   container:  { flex: 1, backgroundColor: COLORS.bg },
   center:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll:     { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
+  scroll:     { padding: 14, paddingBottom: 40 },
 
-  // Page header — white bar with title + action
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: COLORS.card,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  headerLeft:  { flex: 1 },
-  headerTitle: { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text, letterSpacing: -0.3 },
-  headerSub:   { fontSize: 12, color: COLORS.textMute, marginTop: 2 },
-  headerBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16, paddingVertical: 9,
-    borderRadius: RADIUS.md, flexDirection: 'row',
-    alignItems: 'center', gap: 6,
-  },
-  headerBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  addBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  addBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  newBtn:      { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  newBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  backBtn:     { marginRight: 12, padding: 4 },
-  saveBtn:     { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
-  saveBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  // Header
+  header:      { flexDirection:'row', alignItems:'center', paddingHorizontal:14, paddingVertical:13, backgroundColor:COLORS.card, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  backBtn:     { padding:4, marginRight:10 },
+  headerTitle: { fontSize:19, fontWeight:FONTS.black, color:COLORS.text },
+  headerSub:   { fontSize:10, color:COLORS.textMute, marginTop:1 },
+  saveBtn:     { flexDirection:'row', alignItems:'center', backgroundColor:COLORS.primary, paddingHorizontal:14, paddingVertical:9, borderRadius:RADIUS.md },
+  saveBtnTxt:  { color:'#fff', fontWeight:FONTS.bold, fontSize:13 },
 
-  // Metric strip — 3 KPIs in a white bar below header
-  metricsBar:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  statsStrip:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  metricCell:  { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  statChip:    { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  metricVal:   { fontSize: 16, fontWeight: FONTS.black },
-  statValue:   { fontSize: 16, fontWeight: FONTS.black },
-  metricLbl:   { fontSize: 10, color: COLORS.textMute, marginTop: 2, fontWeight: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.4 },
-  statLabel:   { fontSize: 10, color: COLORS.textMute, marginTop: 2, fontWeight: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.4 },
-  metricSep:   { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
-  div:         { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
+  // Tab bar
+  tabBarWrap:  { backgroundColor:COLORS.card, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  tabBar:      { paddingHorizontal:12, paddingVertical:0, gap:0 },
+  tab:         { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:14, paddingVertical:11, borderBottomWidth:2.5, borderBottomColor:'transparent' },
+  tabActive:   { borderBottomColor:COLORS.primary },
+  tabTxt:      { fontSize:12, fontWeight:FONTS.medium, color:COLORS.textMute },
+  tabTxtActive:{ color:COLORS.primary, fontWeight:FONTS.bold },
 
-  // Search bar
-  searchWrap:  { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 0 },
-  searchBox: {
-    flexDirection: 'row', alignItems: 'center',
-    margin: 16, marginBottom: 0,
-    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
-    paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.border,
-    height: 44,
-  },
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center',
-    margin: 16, marginBottom: 0,
-    backgroundColor: COLORS.card, borderRadius: RADIUS.md,
-    paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.border,
-    height: 44,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 0 },
-  clearBtn:    { padding: 4 },
+  // Section head
+  sectionHead:  { flexDirection:'row', alignItems:'center', gap:8, marginTop:18, marginBottom:8 },
+  sectionIcon:  { width:26, height:26, borderRadius:8, backgroundColor:COLORS.primaryLight, alignItems:'center', justifyContent:'center' },
+  sectionTitle: { fontSize:13, fontWeight:FONTS.bold, color:COLORS.text, textTransform:'uppercase', letterSpacing:0.5 },
 
-  // Filter chips
-  filterRow:       { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip:            { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  chipOn:          { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  chipText:        { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  chipTextOn:      { color: '#fff', fontWeight: FONTS.bold },
-  filterChip:      { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  filterChipActive:{ backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
-  filterText:      { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  filterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
-  catChip:         { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  catChipActive:   { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  catChipText:     { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  catChipTextActive:{ color: '#fff', fontWeight: FONTS.bold },
+  // Card
+  card: { backgroundColor:COLORS.card, borderRadius:RADIUS.lg, borderWidth:1, borderColor:COLORS.border, padding:16, marginBottom:8 },
+  cardDesc: { fontSize:13, color:COLORS.textSub, lineHeight:19, marginBottom:12 },
 
-  // List
-  list: { padding: 16, paddingBottom: 100 },
+  // Fields
+  fieldWrap:  { marginBottom:12 },
+  fieldLabel: { fontSize:11, fontWeight:FONTS.bold, color:COLORS.textSub, textTransform:'uppercase', letterSpacing:0.5, marginBottom:6 },
+  input:      { backgroundColor:COLORS.bg, borderWidth:1, borderColor:COLORS.border, borderRadius:RADIUS.md, paddingHorizontal:12, paddingVertical:11, fontSize:14, color:COLORS.text },
+  picker:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between' },
+  pickerTxt:  { fontSize:14, color:COLORS.text, flex:1 },
+  pickerPlaceholder: { fontSize:14, color:COLORS.textMute, flex:1 },
+  row:        { flexDirection:'row', alignItems:'flex-start' },
+  hint:       { fontSize:11, color:COLORS.textMute, marginTop:4, lineHeight:16 },
 
-  // Cards
-  card: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  partyCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  itemCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  expCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  invoiceCard: {
-    backgroundColor: COLORS.card, borderRadius: RADIUS.lg,
-    marginBottom: 10, overflow: 'hidden',
-    borderWidth: 1, borderColor: COLORS.border,
-    borderLeftWidth: 4,
-  },
-  cardMain:   { padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardBody:   { padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardRow:    { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  cardLeft:   { flex: 1, marginRight: 12 },
-  cardRight:  { alignItems: 'flex-end', gap: 4 },
-  cardInfo:   { flex: 1 },
+  // Invoice digits
+  digitRow:      { flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:4 },
+  digitChip:     { paddingHorizontal:14, paddingVertical:9, borderRadius:RADIUS.md, backgroundColor:COLORS.bg, borderWidth:1, borderColor:COLORS.border, alignItems:'center' },
+  digitChipActive:{ backgroundColor:COLORS.primaryLight, borderColor:COLORS.primary },
+  digitChipTxt:  { fontSize:12, fontWeight:FONTS.semibold, color:COLORS.textSub },
+  digitChipTxtActive: { color:COLORS.primary, fontWeight:FONTS.bold },
+  digitChipEx:   { fontSize:10, color:COLORS.textMute, marginTop:2 },
 
-  // Card content
-  cardName:  { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  itemName:  { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3, flex: 1 },
-  partyName: { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  cardSub:   { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  itemSub:   { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  partySub:  { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  cardMeta:  { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
-  nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  subRow:    { flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 4 },
+  // Invoice preview
+  previewBox:    { backgroundColor:'#F8FAFF', borderRadius:RADIUS.md, padding:14, borderWidth:1, borderColor:COLORS.primaryLight, marginTop:4 },
+  previewLabel:  { fontSize:10, fontWeight:FONTS.bold, color:COLORS.textSub, textTransform:'uppercase', letterSpacing:0.5, marginBottom:8 },
+  previewRow:    { flexDirection:'row', alignItems:'center', gap:12 },
+  previewItem:   { flex:1, alignItems:'center' },
+  previewCaption:{ fontSize:10, color:COLORS.textMute, marginBottom:4 },
+  previewNum:    { fontSize:18, fontWeight:FONTS.black, color:COLORS.primary },
 
-  // Invoice specific
-  invoiceNo:   { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  invoiceDate: { fontSize: 12, color: COLORS.textMute },
-  total:       { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
-  salePrice:   { fontSize: 16, fontWeight: FONTS.black, color: COLORS.text },
-  purchasePrice:{ fontSize: 11, color: COLORS.textMute },
-  party:       { fontSize: 13, color: COLORS.textSub, marginBottom: 4 },
-  date:        { fontSize: 11, color: COLORS.textMute },
-  due:         { fontSize: 11, color: COLORS.warning, fontWeight: FONTS.medium },
-  dueRed:      { color: COLORS.danger },
-  badge:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  badgeText:   { fontSize: 10, fontWeight: FONTS.bold, letterSpacing: 0.3 },
-  bal:         { fontSize: 12, fontWeight: FONTS.bold },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  statusText:  { fontSize: 10, fontWeight: FONTS.bold, letterSpacing: 0.3 },
+  // Toggle row
+  toggleRow:    { flexDirection:'row', alignItems:'center', gap:10, paddingVertical:12, borderTopWidth:1, borderTopColor:COLORS.border, marginTop:4 },
+  toggleLabel:  { fontSize:14, fontWeight:FONTS.medium, color:COLORS.text },
+  toggleSub:    { fontSize:11, color:COLORS.textMute, marginTop:1 },
 
-  // Parties specific
-  avatar:     { width: 44, height: 44, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { fontSize: 18, fontWeight: FONTS.black, color: '#fff' },
-  typeBadge:  { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm, backgroundColor: COLORS.primaryLight },
-  typeBadgeSupplier: { backgroundColor: COLORS.infoLight },
-  typeText:   { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.primary },
-  typeTextSupplier: { color: COLORS.info },
-  balance:    { fontSize: 13, fontWeight: FONTS.heavy, color: COLORS.success },
+  // Info / hint boxes
+  infoBox:     { flexDirection:'row', alignItems:'flex-start', gap:6, backgroundColor:COLORS.infoLight, borderRadius:RADIUS.sm, padding:10, marginTop:8 },
+  infoTxt:     { flex:1, fontSize:12, color:COLORS.info, lineHeight:17 },
+  hintWarn:    { flexDirection:'row', alignItems:'center', gap:6, backgroundColor:COLORS.warningBg, borderRadius:RADIUS.sm, padding:8, marginTop:6 },
+  hintWarnTxt: { fontSize:12, color:COLORS.warning, flex:1 },
+  hintOk:      { flexDirection:'row', alignItems:'center', gap:6, backgroundColor:COLORS.successBg, borderRadius:RADIUS.sm, padding:8, marginTop:6 },
+  hintOkTxt:   { fontSize:12, color:COLORS.success, flex:1 },
+  dangerBanner:{ flexDirection:'row', alignItems:'flex-start', gap:8, backgroundColor:'#FEF3C7', borderRadius:RADIUS.sm, padding:10, marginBottom:12, borderWidth:1, borderColor:'#FDE68A' },
+  dangerBannerTxt: { flex:1, fontSize:12, color:'#92400E', lineHeight:17 },
 
-  // Inventory specific
-  lowBadge:   { backgroundColor: COLORS.dangerLight, paddingHorizontal: 7, paddingVertical: 2, borderRadius: RADIUS.sm },
-  lowText:    { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.danger },
-  stockRow:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 12, gap: 10 },
-  stockLabel: { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium, flex: 1 },
-  minStock:   { fontSize: 11, color: COLORS.textMute },
-  stockValue: { fontSize: 12, fontWeight: FONTS.bold, color: COLORS.textSub },
+  // Info rows
+  infoRow:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingVertical:11 },
+  infoRowBorder:{ borderBottomWidth:1, borderBottomColor:COLORS.border },
+  infoLabel:   { fontSize:13, color:COLORS.textSub },
+  infoValue:   { fontSize:13, fontWeight:FONTS.semibold, color:COLORS.text, maxWidth:'60%', textAlign:'right' },
 
-  // Expenses specific
-  expAmount:  { fontSize: 16, fontWeight: FONTS.black, color: COLORS.danger },
-  expMeta:    { fontSize: 11, color: COLORS.textMute, marginTop: 3 },
-  catIcon:    { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  catLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 3 },
+  // Action buttons
+  actionBtn:       { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:7, paddingVertical:13, borderRadius:RADIUS.md, marginTop:10 },
+  actionBtnPrimary:{ backgroundColor:COLORS.primary },
+  actionBtnDanger: { backgroundColor:COLORS.danger },
+  actionBtnSecondary: { backgroundColor:COLORS.secondary },
+  actionBtnOutline:{ borderWidth:1.5, borderColor:COLORS.primary, backgroundColor:'transparent' },
+  actionBtnTxt:    { color:'#fff', fontWeight:FONTS.bold, fontSize:13 },
 
-  // Action buttons on cards
-  cardActions:{ flexDirection: 'row', gap: 6, marginTop: 6 },
-  editBtn:    { padding: 7, borderRadius: RADIUS.sm, backgroundColor: COLORS.bgDeep },
-  delBtn:     { padding: 7, borderRadius: RADIUS.sm, backgroundColor: COLORS.dangerLight },
+  // Backup
+  connectedRow:  { flexDirection:'row', alignItems:'center', gap:10, backgroundColor:COLORS.successLight, borderRadius:RADIUS.md, padding:12, marginBottom:4 },
+  connectedDot:  { width:8, height:8, borderRadius:4, backgroundColor:COLORS.success, flexShrink:0 },
+  connectedEmail:{ fontSize:13, fontWeight:FONTS.semibold, color:COLORS.success },
+  connectedLast: { fontSize:11, color:COLORS.success, opacity:0.7, marginTop:1 },
+  disconnectBtn: { paddingHorizontal:10, paddingVertical:5, borderRadius:RADIUS.sm, backgroundColor:'rgba(220,38,38,0.1)' },
+  disconnectTxt: { fontSize:11, fontWeight:FONTS.bold, color:COLORS.danger },
+  timeChip:      { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:12, paddingVertical:7, borderRadius:RADIUS.md, backgroundColor:COLORS.primaryLight, borderWidth:1, borderColor:COLORS.primary },
+  timeChipTxt:   { fontSize:13, fontWeight:FONTS.bold, color:COLORS.primary },
+  backupBtns:    { flexDirection:'row', gap:10, marginTop:4 },
 
-  // Modal — bottom sheet
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: COLORS.card,
-    borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl,
-    maxHeight: '92%',
-  },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.borderDark, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  modalTitle:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
-  modalBody:   { padding: 20 },
-  modalSave: {
-    backgroundColor: COLORS.primary, paddingVertical: 15,
-    borderRadius: RADIUS.lg, alignItems: 'center',
-    marginHorizontal: 20, marginBottom: 20, marginTop: 8,
-  },
-  modalSaveText: { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
+  // Sign out
+  signOutBtn:  { flexDirection:'row', alignItems:'center', backgroundColor:COLORS.dangerLight, borderRadius:RADIUS.lg, padding:16, marginTop:8, borderWidth:1, borderColor:'#FECACA' },
+  signOutTitle:{ fontSize:15, fontWeight:FONTS.bold, color:COLORS.danger },
+  signOutSub:  { fontSize:11, color:COLORS.danger, opacity:0.7, marginTop:1 },
 
-  // Form fields
-  fieldLabel: {
-    fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub,
-    textTransform: 'uppercase', letterSpacing: 0.6,
-    marginBottom: 7, marginTop: 18,
-  },
-  fieldInput: {
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, color: COLORS.text,
-  },
-  input: {
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, color: COLORS.text,
-  },
-  textarea: { minHeight: 80, textAlignVertical: 'top' },
-  row:      { flexDirection: 'row', gap: 12 },
-  pickerRow:{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  pickerChip:       { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg },
-  pickerChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  pickerChipText:   { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  pickerChipTextActive: { color: '#fff', fontWeight: FONTS.bold },
-  stateArrow:  { fontSize: 14, color: COLORS.textMute },
-  statePickerBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 12,
-  },
-  statePickerText: { fontSize: 14, color: COLORS.text },
+  // Floating save
+  floatSave:   { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, backgroundColor:COLORS.primary, paddingVertical:14, borderRadius:RADIUS.lg, marginTop:16 },
+  floatSaveTxt:{ color:'#fff', fontWeight:FONTS.black, fontSize:15 },
 
-  // Reports
-  presetRow:        { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  presetChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  presetChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  presetText:       { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
-  presetTextActive: { color: '#fff', fontWeight: FONTS.bold },
-  reportSection: { marginBottom: 20 },
-  sectionHeading: { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 10, marginTop: 4 },
-  reportCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, marginBottom: 2 },
-  reportRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  reportRowLast: { borderBottomWidth: 0 },
-  reportLabel:{ fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  reportValue:{ fontSize: 14, fontWeight: FONTS.heavy, color: COLORS.text },
-  plCard:     { backgroundColor: COLORS.secondary, borderRadius: RADIUS.xl, padding: 20, marginBottom: 16 },
-  plTitle:    { fontSize: 11, fontWeight: FONTS.bold, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 14 },
-  plRow:      { flexDirection: 'row' },
-  plItem:     { flex: 1, alignItems: 'center' },
-  plValue:    { fontSize: 16, fontWeight: FONTS.black, marginBottom: 4 },
-  plLabel:    { fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
-  gstRow:     { flexDirection: 'row', gap: 10, marginBottom: 2 },
-  gstBox:     { flex: 1, backgroundColor: COLORS.card, borderRadius: RADIUS.lg, padding: 14, alignItems: 'center', borderTopWidth: 3, borderWidth: 1, borderColor: COLORS.border },
-  gstVal:     { fontSize: 15, fontWeight: FONTS.black, marginBottom: 4 },
-  gstLbl:     { fontSize: 10, color: COLORS.textMute, textAlign: 'center' },
-  exportBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 14, borderRadius: RADIUS.lg, marginTop: 8 },
-  exportBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-
-  // Settings
-  sectionHeader:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 },
-  sectionTitle: { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7 },
-  settingsCard: { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginHorizontal: 16, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  settingsRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  settingsRowLast: { borderBottomWidth: 0 },
-  settingsRowLabel: { flex: 1, fontSize: 14, fontWeight: FONTS.medium, color: COLORS.text },
-  settingsRowValue: { fontSize: 13, color: COLORS.textMute },
-  settingsInput:    { flex: 1, fontSize: 14, color: COLORS.text, textAlign: 'right' },
-  card:     { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginHorizontal: 16, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', padding: 16 },
-  infoRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  infoLabel:{ fontSize: 13, color: COLORS.textSub },
-  infoValue:{ fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
-  dangerBtn:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.dangerLight, paddingVertical: 13, borderRadius: RADIUS.lg, marginHorizontal: 16, marginTop: 4 },
-  dangerBtnText: { color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 14 },
-  infoBox:    { backgroundColor: COLORS.infoLight, borderRadius: RADIUS.md, padding: 12, marginTop: 8 },
-  infoBoxText:{ fontSize: 12, color: COLORS.info, lineHeight: 18 },
-  hintWarn:   { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.warningBg, borderRadius: RADIUS.sm, padding: 10, marginTop: 6 },
-  hintWarnText:{ fontSize: 12, color: COLORS.warning, flex: 1 },
-  hintOk:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.successBg, borderRadius: RADIUS.sm, padding: 10, marginTop: 6 },
-  hintOkText: { fontSize: 12, color: COLORS.success, flex: 1 },
-  upiOk:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  upiWarn:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  upiWarnText:{ fontSize: 12, color: COLORS.textMute },
-  driveRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: COLORS.successBg, borderRadius: RADIUS.md, marginTop: 8 },
-  driveEmail: { flex: 1, fontSize: 13, color: COLORS.success, fontWeight: FONTS.semibold },
-  backupTime: { fontSize: 13, color: COLORS.textSub },
-  backupBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 8 },
-  backupBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.card, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 6, borderWidth: 1, borderColor: COLORS.border },
-  restoreBtnText: { fontWeight: FONTS.bold, fontSize: 13, color: COLORS.text },
-  connectBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 12, borderRadius: RADIUS.md, marginTop: 8 },
-  connectBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.dangerLight, paddingVertical: 13, borderRadius: RADIUS.lg, marginHorizontal: 16, marginVertical: 8 },
-  signOutText:{ color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 14 },
-  pickerArrow:{ fontSize: 14, color: COLORS.textMute },
-
-  // State picker modal
-  stateOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
-  stateSheet:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '75%' },
-  stateHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateTitle:   { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
-  stateSearchBox:{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateSearchInput:{ backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: COLORS.text },
-  stateItem:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  stateName:    { fontSize: 14, color: COLORS.text, fontWeight: FONTS.medium },
-  stateCode:    { fontSize: 12, color: COLORS.textMute, backgroundColor: COLORS.bgDeep, paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.sm },
-  stateClose:   { fontSize: 20, color: COLORS.textMute },
-
-  // Party detail
-  heroDetail:   { backgroundColor: COLORS.secondary, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24 },
-  detailAvatar: { width: 56, height: 56, borderRadius: RADIUS.full, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  detailAvatarText: { fontSize: 24, fontWeight: FONTS.black, color: '#fff' },
-  detailName:   { fontSize: 20, fontWeight: FONTS.black, color: '#fff', marginBottom: 4 },
-  detailSub:    { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
-  kpiStrip:     { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  kpiChip:      { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  kpiValue:     { fontSize: 15, fontWeight: FONTS.black, marginBottom: 2 },
-  kpiLabel:     { fontSize: 10, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4 },
-  kpiDivider:   { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
-  invRow:       { backgroundColor: COLORS.card, marginHorizontal: 16, marginBottom: 10, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  invRowTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 14 },
-  invNum:       { fontSize: 14, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 3 },
-  invDate:      { fontSize: 11, color: COLORS.textMute },
-  invTotal:     { fontSize: 16, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 5 },
-  balRow:       { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: COLORS.dangerBg, borderTopWidth: 1, borderTopColor: COLORS.dangerLight },
-  balLabel:     { fontSize: 11, color: COLORS.danger, fontWeight: FONTS.semibold },
-  balValue:     { fontSize: 12, fontWeight: FONTS.heavy, color: COLORS.danger },
-
-  // Empty state
-  empty:        { alignItems: 'center', paddingTop: 70, paddingHorizontal: 32 },
-  emptyIconWrap:{ width: 80, height: 80, borderRadius: RADIUS.full, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyIcon:    { fontSize: 36 },
-  emptyTitle:   { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 8, textAlign: 'center' },
-  emptySub:     { fontSize: 13, color: COLORS.textMute, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  emptyBtn:     { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS.lg },
-  emptyBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 14 },
-
-  // Login
-  loginContainer: { flex: 1, backgroundColor: '#F8FAFF', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loginLogoWrap:  { alignItems: 'center', marginBottom: 40 },
-  loginLogoBox:   { width: 160, height: 60, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  loginLogoImg:   { width: 140, height: 50 },
-  loginBrand:     { fontSize: 13, color: COLORS.textMute, letterSpacing: 1 },
-  loginTagline:   { fontSize: 12, color: COLORS.textMute, marginTop: 2 },
-  loginCard:      { width: '100%', maxWidth: 420, backgroundColor: '#fff', borderRadius: RADIUS.xl, padding: 28, borderWidth: 1, borderColor: COLORS.border },
-  loginTitle:     { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text, marginBottom: 6 },
-  loginSubtitle:  { fontSize: 13, color: COLORS.textMute, marginBottom: 24 },
-  loginLabel:     { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7, marginTop: 16 },
-  loginInput:     { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, color: COLORS.text },
-  loginBtn:       { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
-  loginBtnText:   { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-  loginError:     { backgroundColor: COLORS.dangerLight, borderRadius: RADIUS.md, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  loginErrorText: { fontSize: 13, color: COLORS.danger, flex: 1 },
-  loginFooter:    { fontSize: 12, color: COLORS.textMute, marginTop: 20, textAlign: 'center' },
-
-  // Payment modal (InvoiceDetail)
-  payInvInfo:    { backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.md, padding: 14, marginBottom: 8 },
-  payInvNum:     { fontSize: 16, fontWeight: FONTS.bold, color: COLORS.primary, marginBottom: 3 },
-  payInvParty:   { fontSize: 13, color: COLORS.text },
-  payInvBalance: { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.danger, marginTop: 4 },
-  methodRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  methodChip:    { paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  methodChipActive:{ backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-  methodText:    { fontSize: 13, color: COLORS.textSub, fontWeight: FONTS.medium },
-  methodTextActive:{ color: COLORS.primary, fontWeight: FONTS.bold },
-  confirmBtn:    { backgroundColor: COLORS.success, borderRadius: RADIUS.lg, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
-  confirmBtnText:{ color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-
-  // Section title in screens
-  sectionLabel:   { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
-  loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
-  notFound:       { fontSize: 15, color: COLORS.textMute },
-
-  toggleRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  toggleLabel:     { flex: 1, fontSize: 14, fontWeight: FONTS.medium, color: COLORS.text },
-  toggleSub:       { fontSize: 11, color: COLORS.textMute, marginTop: 1 },
-  picker:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
-  pickerText:      { fontSize: 14, color: COLORS.text },
-  pickerPlaceholder:{ fontSize: 14, color: COLORS.textMute },
-  previewBox:      { backgroundColor: COLORS.bg, borderRadius: RADIUS.md, padding: 12, marginTop: 8 },
-  previewLabel:    { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.4 },
-  previewValue:    { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.primary, marginTop: 4 },
-  timeChip:        { paddingHorizontal: 16, paddingVertical: 10, borderRadius: RADIUS.md, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
-  timeChipText:    { fontSize: 14, color: COLORS.text, fontWeight: FONTS.medium },
-  driveConnected:  { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.successLight, borderRadius: RADIUS.md, padding: 12, marginTop: 8 },
-  driveDesc:       { flex: 1, fontSize: 13, color: COLORS.success, fontWeight: FONTS.medium },
-  driveLastBackup: { fontSize: 11, color: COLORS.success, marginTop: 2, opacity: 0.7 },
-  disconnectBtn:   { paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm, backgroundColor: 'rgba(220,38,38,0.1)' },
-  backupTimeRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
-  backupActions:   { flexDirection: 'row', gap: 8, marginTop: 8 },
-  bottomSave:      { backgroundColor: COLORS.primary, paddingVertical: 15, borderRadius: RADIUS.lg, alignItems: 'center', marginHorizontal: 16, marginTop: 8, marginBottom: 16 },
-  bottomSaveText:  { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-  upiOkTitle:      { fontSize: 13, fontWeight: FONTS.bold, color: COLORS.success },
-  upiOkId:         { fontSize: 12, color: COLORS.success, marginTop: 1 },
-
-  // Data & Storage section
-  exportDataBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 13, borderRadius: RADIUS.md, marginTop: 12 },
-  exportDataBtnText: { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
-  dataLocationBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, marginTop: 8, gap: 4 },
-  dataLocationText:  { fontSize: 13, color: COLORS.info, fontWeight: FONTS.medium },
-
+  // Bottom sheet overlay
+  overlay:       { position:'absolute', top:0, left:0, right:0, bottom:0, backgroundColor:'rgba(15,23,42,0.6)', justifyContent:'flex-end' },
+  sheet:         { backgroundColor:COLORS.card, borderTopLeftRadius:RADIUS.xxl, borderTopRightRadius:RADIUS.xxl, maxHeight:'75%' },
+  sheetHeader:   { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:20, paddingVertical:16, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  sheetTitle:    { fontSize:17, fontWeight:FONTS.black, color:COLORS.text },
+  sheetSearch:   { flexDirection:'row', alignItems:'center', gap:8, margin:12, paddingHorizontal:12, height:42, backgroundColor:COLORS.bg, borderRadius:RADIUS.md, borderWidth:1, borderColor:COLORS.border },
+  sheetSearchInput: { flex:1, fontSize:14, color:COLORS.text },
+  sheetItem:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:20, paddingVertical:14, borderBottomWidth:1, borderBottomColor:COLORS.border },
+  sheetItemName: { fontSize:14, color:COLORS.text, fontWeight:FONTS.medium },
+  sheetItemCode: { fontSize:12, color:COLORS.textMute, backgroundColor:COLORS.bgDeep, paddingHorizontal:8, paddingVertical:3, borderRadius:RADIUS.sm },
 });

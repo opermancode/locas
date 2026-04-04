@@ -43,17 +43,36 @@ const WebView = Platform.OS === 'web'
 // ── Print / Sharing polyfills ────────────────────────────────────
 const Print = Platform.OS === 'web'
   ? {
-      printAsync: async ({ html }) => {
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;';
-        document.body.appendChild(iframe);
-        iframe.contentDocument.open();
-        iframe.contentDocument.write(html);
-        iframe.contentDocument.close();
-        await new Promise(r => setTimeout(r, 600));
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        setTimeout(() => document.body.removeChild(iframe), 2000);
+      printAsync: async ({ html, invoiceNumber, date }) => {
+        // Build filename: "Invoice_INV-0007_04-04-2026"
+        const safeName = `Tax_Invoice_${(invoiceNumber || '').replace(/[^a-zA-Z0-9-_]/g, '_')}_${(date || '').replace(/-/g, '_')}`;
+
+        // Inject print title into HTML so browser uses it as PDF filename
+        const htmlWithTitle = html.replace(
+          '<head>',
+          `<head><title>${safeName}</title><script>window.onload=function(){window.focus();window.print();window.onafterprint=function(){window.close();};};<\/script>`
+        );
+
+        // Open in a new window — cleaner than hidden iframe, 
+        // gives user a proper print dialog with correct filename
+        const printWindow = window.open('', '_blank', 'width=900,height=700');
+        if (!printWindow) {
+          // Popup blocked — fall back to hidden iframe method
+          const iframe = document.createElement('iframe');
+          iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;';
+          document.body.appendChild(iframe);
+          iframe.contentDocument.open();
+          iframe.contentDocument.write(html);
+          iframe.contentDocument.close();
+          await new Promise(r => setTimeout(r, 800));
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => document.body.removeChild(iframe), 3000);
+          return;
+        }
+        printWindow.document.open();
+        printWindow.document.write(htmlWithTitle);
+        printWindow.document.close();
       },
     }
   : require('expo-print');
@@ -239,7 +258,7 @@ export default function InvoiceDetail({ navigation, route }) {
     try {
       const html = buildHTML(selectedTpl, invoice, profile, accentColor);
       if (Platform.OS === 'web') {
-        await Print.printAsync({ html });
+        await Print.printAsync({ html, invoiceNumber: invoice.invoice_number, date: invoice.date });
       } else {
         const { uri } = await require('expo-print').printToFileAsync({ html, base64: false });
         await Sharing.shareAsync(uri, {
