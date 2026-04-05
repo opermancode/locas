@@ -226,6 +226,13 @@ export default function CreateInvoice({ navigation, route }) {
   };
 
   const removeItem = (idx) => {
+    // Alert.alert buttons are no-op on web/Electron — use window.confirm instead
+    if (Platform.OS === 'web') {
+      if (window.confirm('Remove this item from the invoice?')) {
+        setLineItems(prev => prev.filter((_, i) => i !== idx));
+      }
+      return;
+    }
     Alert.alert('Remove Item', 'Remove this item?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () =>
@@ -437,6 +444,36 @@ export default function CreateInvoice({ navigation, route }) {
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={COLORS.textMute}
                 />
+                {/* Quick preset buttons for due date */}
+                <View style={{ flexDirection: 'row', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Today',   days: 0  },
+                    { label: '7 days',  days: 7  },
+                    { label: '15 days', days: 15 },
+                    { label: '30 days', days: 30 },
+                    { label: '45 days', days: 45 },
+                    { label: '60 days', days: 60 },
+                  ].map(({ label, days }) => {
+                    const preset = addDays(invoiceDate, days);
+                    const isActive = dueDate === preset;
+                    return (
+                      <TouchableOpacity
+                        key={label}
+                        onPress={() => setDueDate(preset)}
+                        style={{
+                          paddingHorizontal: 8, paddingVertical: 3,
+                          borderRadius: 12, borderWidth: 1,
+                          borderColor: isActive ? COLORS.primary : COLORS.border,
+                          backgroundColor: isActive ? COLORS.primaryLight : COLORS.bg,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: isActive ? FONTS.bold : FONTS.medium, color: isActive ? COLORS.primary : COLORS.textSub }}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
             </View>
           </View>
