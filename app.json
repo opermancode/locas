@@ -3,7 +3,7 @@
     "name": "Locas",
     "slug": "locas",
     "scheme": "locas",
-    "version": "1.10.14",
+    "version": "1.10.16",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
