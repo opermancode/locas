@@ -88,15 +88,29 @@ function showWinNotification(version, notes) {
 // ── Silent NSIS install + quit ────────────────────────────────────
 function doInstall(installerPath) {
   console.log('[update] launching installer:', installerPath);
-  // Verify file still exists before launching
+
   if (!fs.existsSync(installerPath)) {
-    console.log('[update] installer file missing at path:', installerPath);
-    toRenderer('update-install-error', 'Installer file not found. Please restart the app to re-download.');
+    console.log('[update] installer file missing:', installerPath);
+    pendingInstaller = null;
+    dialog.showErrorBox('Update Error', 'Installer file not found. Please restart the app to re-download.');
     return;
   }
-  const { spawn } = require('child_process');
-  spawn(installerPath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
-  app.quit();
+
+  try {
+    // execFile handles paths with spaces on Windows correctly
+    // shell:true would cause spawn UNKNOWN on some Windows configs, keep false
+    const { execFile } = require('child_process');
+    const child = execFile(installerPath, ['/S'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false,
+    });
+    child.unref();
+    app.quit();
+  } catch (e) {
+    console.log('[update] launch failed:', e.message);
+    dialog.showErrorBox('Update Error', `Could not launch installer: ${e.message}`);
+  }
 }
 
 // ── Main check + download flow ────────────────────────────────────
