@@ -36,12 +36,13 @@ const { expo: { version } } = require('../../../app.json');
 // Padding helpers
 const pad = (n, len = 4) => String(n).padStart(len, '0');
 
-// Build a sample invoice number from prefix + counter + padding
-function buildSampleNumber(prefix, startNum, numDigits) {
-  const p = (prefix || 'INV').toUpperCase();
-  const n = parseInt(startNum) || 1;
-  const d = parseInt(numDigits) || 4;
-  return `${p}-${pad(n, d)}`;
+// Build a sample invoice number from prefix + separator + counter + padding
+function buildSampleNumber(prefix, startNum, numDigits, separator) {
+  const p   = (prefix || 'INV').toUpperCase();
+  const n   = parseInt(startNum) || 1;
+  const d   = parseInt(numDigits) || 4;
+  const sep = separator !== undefined ? separator : '-';
+  return `${p}${sep}${pad(n, d)}`;
 }
 
 // SETTINGS TABS
@@ -65,7 +66,8 @@ export default function SettingsScreen({ navigation }) {
   const [stateSearch, setStateSearch] = useState('');
 
   // Invoice numbering
-  const [numDigits, setNumDigits] = useState('4'); // padding digits
+  const [numDigits, setNumDigits]           = useState('4');
+  const [invoiceSeparator, setInvoiceSep]   = useState('-');
 
   // Backup
   const [driveEmail, setDriveEmail]   = useState(null);
@@ -92,6 +94,7 @@ export default function SettingsScreen({ navigation }) {
       setForm({ ...p, show_upi_qr: !!p.show_upi_qr });
       // Detect current padding from existing prefix
       setNumDigits(String(p.invoice_num_digits || 4));
+      setInvoiceSep(p.invoice_separator !== undefined ? p.invoice_separator : '-');
       setDirty(false);
     } catch (e) { console.error(e); }
   };
@@ -130,7 +133,7 @@ export default function SettingsScreen({ navigation }) {
     if (!form.name?.trim()) { Alert.alert('Error', 'Business name is required'); return; }
     setSaving(true);
     try {
-      await saveProfile({ ...form, invoice_num_digits: parseInt(numDigits) || 4 });
+      await saveProfile({ ...form, invoice_num_digits: parseInt(numDigits) || 4, invoice_separator: invoiceSeparator });
       setDirty(false);
       Alert.alert('Saved ✓', 'Settings saved successfully');
     } catch (e) { Alert.alert('Error', e.message); }
@@ -394,8 +397,8 @@ export default function SettingsScreen({ navigation }) {
 
   const prefix    = form.invoice_prefix || 'INV';
   const startNum  = form.invoice_counter != null ? form.invoice_counter + 1 : 1;
-  const sampleNum = buildSampleNumber(prefix, startNum, numDigits);
-  const nextNum   = buildSampleNumber(prefix, startNum + 1, numDigits);
+  const sampleNum = buildSampleNumber(prefix, startNum, numDigits, invoiceSeparator);
+  const nextNum   = buildSampleNumber(prefix, startNum + 1, numDigits, invoiceSeparator);
   const user      = getCurrentUser();
 
   return (
@@ -504,7 +507,32 @@ export default function SettingsScreen({ navigation }) {
                   maxLength={8}
                 />
               </FL>
-              <Text style={s.hint}>Letters and numbers only. e.g. INV, BILL, 2025, OM</Text>
+              <Text style={s.hint}>Letters and numbers only. e.g. INV, BILL, 2526, OM</Text>
+              <Text style={[s.hint, {marginTop:2, color: COLORS.primary}]}>
+                💡 For financial year format use prefix like <Text style={{fontWeight:FONTS.bold}}>2526</Text> → 2526/00001
+              </Text>
+
+              {/* Separator */}
+              <FL label="Separator">
+                <View style={s.digitRow}>
+                  {[
+                    { val: '-',  label: 'Dash',    ex: 'INV-0001'  },
+                    { val: '/',  label: 'Slash',   ex: 'INV/0001'  },
+                    { val: '.',  label: 'Dot',     ex: 'INV.0001'  },
+                    { val: '_',  label: 'Underscore', ex: 'INV_0001' },
+                    { val: '',   label: 'None',    ex: 'INV0001'   },
+                  ].map(opt => (
+                    <TouchableOpacity
+                      key={opt.val + 'sep'}
+                      style={[s.digitChip, invoiceSeparator === opt.val && s.digitChipActive]}
+                      onPress={() => { setInvoiceSep(opt.val); set('invoice_separator', opt.val); }}
+                    >
+                      <Text style={[s.digitChipTxt, invoiceSeparator === opt.val && s.digitChipTxtActive]}>{opt.label}</Text>
+                      <Text style={[s.digitChipEx, invoiceSeparator === opt.val && {color:COLORS.primary}]}>{opt.ex}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </FL>
 
               {/* Number digits (padding) */}
               <FL label="Number of Digits">

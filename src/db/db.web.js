@@ -77,16 +77,22 @@ export async function setDataOwner(email) {
 
 export async function peekNextInvoiceNumber() {
   const profile = await stores.profile.getItem('1');
-  const next = (profile.invoice_counter || 0) + 1;
-  return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
+  const next   = (profile.invoice_counter  || 0) + 1;
+  const prefix = profile.invoice_prefix    || 'INV';
+  const digits = profile.invoice_num_digits || 4;
+  const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+  return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
 }
 
 async function consumeNextInvoiceNumber() {
   const result = _invoiceNumberLock.then(async () => {
     const profile = await stores.profile.getItem('1');
-    const next = (profile.invoice_counter || 0) + 1;
+    const next   = (profile.invoice_counter  || 0) + 1;
+    const prefix = profile.invoice_prefix    || 'INV';
+    const digits = profile.invoice_num_digits || 4;
+    const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
     await stores.profile.setItem('1', { ...profile, invoice_counter: next });
-    return `${profile.invoice_prefix || 'INV'}-${String(next).padStart(4, '0')}`;
+    return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
   });
   _invoiceNumberLock = result.catch(() => {});
   return result;
