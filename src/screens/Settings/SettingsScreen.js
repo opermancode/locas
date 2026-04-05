@@ -85,6 +85,8 @@ export default function SettingsScreen({ navigation }) {
   const [deleteFrom, setDeleteFrom]       = useState('');
   const [deleteTo, setDeleteTo]           = useState('');
   const [deletingData, setDeletingData]   = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus,   setUpdateStatus]   = useState(null); // 'latest' | 'found' | 'error'
 
   const { request, response, promptAsync } = useGoogleAuth();
 
@@ -381,6 +383,41 @@ export default function SettingsScreen({ navigation }) {
       Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Import Failed', msg);
     } finally {
       setImportingData(false);
+    }
+  };
+
+  // ── Manual check for update ─────────────────────────────────────
+  const handleCheckUpdate = async () => {
+    if (!window.electronAPI) {
+      setUpdateStatus('error');
+      setTimeout(() => setUpdateStatus(null), 3000);
+      return;
+    }
+    setCheckingUpdate(true);
+    setUpdateStatus(null);
+    try {
+      const res  = await fetch('https://locas-business.vercel.app/updates/latest.json');
+      const data = await res.json();
+      const currentVer = (require('../../../app.json')).expo?.version || '0.0.0';
+      const r = (data.version || '0').split('.').map(Number);
+      const c = (currentVer).split('.').map(Number);
+      let newer = false;
+      for (let i = 0; i < 3; i++) {
+        if ((r[i]||0) > (c[i]||0)) { newer = true; break; }
+        if ((r[i]||0) < (c[i]||0)) break;
+      }
+      if (newer) {
+        setUpdateStatus('found');
+        // Trigger download via main process by posting to renderer
+        // The main process already handles download — just inform user
+      } else {
+        setUpdateStatus('latest');
+      }
+    } catch {
+      setUpdateStatus('error');
+    } finally {
+      setCheckingUpdate(false);
+      setTimeout(() => setUpdateStatus(null), 5000);
     }
   };
 
@@ -934,6 +971,43 @@ export default function SettingsScreen({ navigation }) {
             <SH icon="shield" title="Account" />
             <Card>
               <InfoRow label="Signed in as" value={user?.email || '—'} last />
+            </Card>
+
+            {/* Check for Updates */}
+            <SH icon="download" title="Updates" />
+            <Card>
+              <InfoRow label="Current Version" value={version} />
+              <View style={{marginTop:10}}>
+                <TouchableOpacity
+                  style={[s.actionBtn, s.actionBtnPrimary, checkingUpdate && {opacity:0.5}]}
+                  onPress={handleCheckUpdate}
+                  disabled={checkingUpdate}
+                >
+                  {checkingUpdate
+                    ? <><ActivityIndicator size="small" color="#fff" /><Text style={s.actionBtnTxt}> Checking...</Text></>
+                    : <><Icon name="download" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Check for Updates</Text></>
+                  }
+                </TouchableOpacity>
+                {updateStatus === 'latest' && (
+                  <View style={[s.infoBox, {marginTop:8, backgroundColor:'#F0FDF4', borderColor:'#86EFAC'}]}>
+                    <Icon name="check-circle" size={13} color="#16A34A" />
+                    <Text style={[s.infoTxt, {color:'#15803D'}]}> You are on the latest version ({version})</Text>
+                  </View>
+                )}
+                {updateStatus === 'found' && (
+                  <View style={[s.infoBox, {marginTop:8, backgroundColor:'#FFF7ED', borderColor:'#FED7AA'}]}>
+                    <Icon name="download" size={13} color="#EA580C" />
+                    <Text style={[s.infoTxt, {color:'#C2410C'}]}> New update found! Downloading in background — check the dashboard banner.</Text>
+                  </View>
+                )}
+                {updateStatus === 'error' && (
+                  <View style={[s.infoBox, {marginTop:8, backgroundColor:'#FEF2F2', borderColor:'#FECACA'}]}>
+                    <Icon name="alert-triangle" size={13} color="#DC2626" />
+                    <Text style={[s.infoTxt, {color:'#991B1B'}]}> Could not check for updates. Check your internet connection.</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[s.hint, {marginTop:8}]}>Updates download automatically in the background when available.</Text>
             </Card>
 
             {/* Sign out */}
