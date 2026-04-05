@@ -335,6 +335,52 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
+  // ── Import JSON backup ─────────────────────────────────────────
+  const handleImportJSON = async () => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        'Import Backup?\n\nThis will REPLACE all current data with the backup file contents. Export your current data first if needed.\n\nContinue?'
+      );
+      if (!confirmed) return;
+    } else {
+      await new Promise((resolve) => {
+        Alert.alert(
+          'Import Backup',
+          'This will REPLACE all current data with the backup file. Export your current data first if needed.',
+          [{ text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+           { text: 'Import', style: 'destructive', onPress: () => resolve(true) }]
+        );
+      });
+    }
+    setImportingData(true);
+    try {
+      if (Platform.OS === 'web') {
+        // Web: file picker
+        const result = await pickDataFile();
+        if (!result.success) {
+          if (result.error && result.error !== 'cancelled') window.alert('Import failed: ' + result.error);
+          return;
+        }
+        await importDataFile(result.uri || result.path || '');
+        window.alert('Import successful! Data has been restored. Relaunch the app to see updated data.');
+      } else {
+        const result = await pickDataFile();
+        if (!result.success) {
+          if (result.error && result.error !== 'cancelled') Alert.alert('Error', result.error);
+          return;
+        }
+        await importDataFile(result.uri || result.path || '');
+        Alert.alert('Import Successful', 'Data has been restored. Restart the app to see updated data.');
+      }
+    } catch (e) {
+      console.error('Import error:', e);
+      const msg = e.message || 'Import failed';
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Import Failed', msg);
+    } finally {
+      setImportingData(false);
+    }
+  };
+
   const formatLastBackup = (iso) => {
     if (!iso) return 'Never';
     const d = new Date(iso);
