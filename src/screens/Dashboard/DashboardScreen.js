@@ -1,4 +1,4 @@
-  import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
   import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     Animated, Platform, Dimensions, ActivityIndicator,
@@ -58,7 +58,8 @@
 
     // Web: pure inline SVG — no CDN, no iframe, Electron safe
     const W = 400, H = 130;
-    const PAD = { l: 4, r: 4, t: 20, b: 26 };
+    // FIX: increased l/r padding so edge dots have breathing room and fill the card width
+    const PAD = { l: 20, r: 20, t: 20, b: 26 };
     const cW  = W - PAD.l - PAD.r;
     const cH  = H - PAD.t - PAD.b;
     const n   = data.length;
@@ -177,7 +178,6 @@
     const load = async () => {
       if (loadingRef.current) return;
       loadingRef.current = true;
-      // Update greeting based on current device time — runs every focus
       const h = new Date().getHours();
       setGreeting(h < 12 ? 'Good morning ☀️' : h < 17 ? 'Good afternoon 👋' : 'Good evening 🌙');
       try {
@@ -195,7 +195,6 @@
         setRecentInvoices(inv || []);
         setTopParties(parties || []);
         setOpenPOs((pos || []).slice(0, 4));
-        // Monthly trend
         const allInv = await DB.getInvoices({ type: 'sale' }).catch(() => []);
         const now = new Date();
         const trend = [];
@@ -339,7 +338,7 @@
                 </View>
               </View>
 
-              {/* Sales Trend chart card — fixed height, no flex:1 gap */}
+              {/* Sales Trend chart card — FIX: no side padding, chart bleeds to edges */}
               <View style={s.chartCard}>
                 <View style={s.chartCardHeader}>
                   <Text style={s.chartCardTitle}>Sales Trend</Text>
@@ -362,6 +361,49 @@
                   ))}
                 </View>
               </View>
+
+              {/* ── NEW: Top Parties card — fills the empty space below Quick Actions ── */}
+              {topParties.length > 0 && (
+                <View style={s.listCard}>
+                  <View style={s.listCardHeader}>
+                    <Text style={s.listCardTitle}>Top Parties</Text>
+                    <TouchableOpacity onPress={() => navigation.navigate('PartiesTab')}>
+                      <Text style={s.listCardAction}>See all →</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {topParties.map((p, i) => {
+                    const bal = p.balance || 0;
+                    const isCredit = bal > 0; // they owe you
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[s.invRow, i < topParties.length - 1 && s.invRowBorder]}
+                        onPress={() => navigation.navigate('PartiesTab', { screen:'PartyDetail', params:{ partyId:p.id } })}
+                        activeOpacity={0.75}
+                      >
+                        {/* Avatar circle with initial */}
+                        <View style={s.partyAvatar}>
+                          <Text style={s.partyAvatarTxt}>
+                            {(p.name || '?')[0].toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex:1 }}>
+                          <Text style={s.invNum} numberOfLines={1}>{p.name}</Text>
+                          <Text style={s.invParty} numberOfLines={1}>{p.phone || 'No phone'}</Text>
+                        </View>
+                        <View style={{ alignItems:'flex-end', gap:2 }}>
+                          <Text style={[s.invAmt, { color: bal === 0 ? COLORS.textMute : isCredit ? '#22C55E' : '#EF4444' }]}>
+                            {bal === 0 ? '₹0' : (isCredit ? '+' : '-') + formatINRCompact(Math.abs(bal))}
+                          </Text>
+                          <Text style={{ fontSize:8, color:COLORS.textMute }}>
+                            {bal === 0 ? 'settled' : isCredit ? 'to collect' : 'to pay'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
 
             </View>
 
@@ -590,9 +632,9 @@
     heroStatLbl: { fontSize:7, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.3 },
     heroDiv:     { width:1, backgroundColor:'rgba(255,255,255,0.08)' },
 
-    // Chart card — white bg, fixed height so no empty gap below chart
-    chartCard:       { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, borderWidth:1, borderColor:COLORS.border },
-    chartCardHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:6 },
+    // Chart card — FIX: no horizontal padding so SVG fills edge-to-edge; overflow hidden for rounded corners
+    chartCard:       { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, paddingTop:12, paddingBottom:0, borderWidth:1, borderColor:COLORS.border, overflow:'hidden' },
+    chartCardHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:6, paddingHorizontal:12 },
     chartCardTitle:  { fontSize:12, fontWeight:FONTS.bold, color:COLORS.text },
     chartCardSub:    { fontSize:9, color:COLORS.textMute },
 
@@ -622,7 +664,7 @@
     legendLabel: { flex:1, fontSize:10, color:COLORS.textSub },
     legendVal:   { fontSize:10, fontWeight:FONTS.bold, color:COLORS.text },
 
-    // Recent invoices list card
+    // Shared list card (Recent Invoices + Top Parties)
     listCard:       { flex:1, backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, borderWidth:1, borderColor:COLORS.border, overflow:'hidden' },
     listCardHeader: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:8 },
     listCardTitle:  { fontSize:11, fontWeight:FONTS.bold, color:COLORS.textSub, textTransform:'uppercase', letterSpacing:0.5 },
@@ -637,6 +679,10 @@
     emptyRow:       { flex:1, alignItems:'center', justifyContent:'center', gap:6, paddingVertical:16 },
     emptyTxt:       { fontSize:12, color:COLORS.textMute },
     emptyAction:    { fontSize:12, color:BRAND, fontWeight:FONTS.semibold },
+
+    // Top Parties avatar
+    partyAvatar:    { width:30, height:30, borderRadius:15, backgroundColor:BRAND+'18', alignItems:'center', justifyContent:'center', marginRight:8, flexShrink:0 },
+    partyAvatarTxt: { fontSize:12, fontWeight:'700', color:BRAND },
 
     // Search modal
     searchOverlay:     { flex:1, backgroundColor:'rgba(0,0,0,0.5)' },
