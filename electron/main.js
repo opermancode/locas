@@ -7,12 +7,12 @@ const path  = require('path');
 const fs    = require('fs');
 const https = require('https');
 
-const UPDATE_URL     = 'https://locas-business.vercel.app/updates/latest.json';
-const CURRENT_VER    = app.getVersion();
+const UPDATE_URL  = 'https://locas-business.vercel.app/updates/latest.json';
+const CURRENT_VER = app.getVersion();
 
 let mainWindow       = null;
 let updateCheckTimer = null;
-let pendingInstaller = null; // path to downloaded .exe
+let pendingInstaller = null;
 
 // ── Version compare ───────────────────────────────────────────────
 function isNewer(remote, current) {
@@ -86,30 +86,42 @@ function showWinNotification(version, notes) {
 }
 
 // ── Silent NSIS install + quit ────────────────────────────────────
+// FIX: spawn UNKNOWN on Windows is caused by spaces in path + spawn directly
+// Solution: write a tiny .bat that calls the installer with /S, run via cmd.exe
 function doInstall(installerPath) {
   console.log('[update] launching installer:', installerPath);
 
   if (!fs.existsSync(installerPath)) {
-    console.log('[update] installer file missing:', installerPath);
+    console.log('[update] installer file missing');
     pendingInstaller = null;
     dialog.showErrorBox('Update Error', 'Installer file not found. Please restart the app to re-download.');
     return;
   }
 
   try {
-    // execFile handles paths with spaces on Windows correctly
-    // shell:true would cause spawn UNKNOWN on some Windows configs, keep false
-    const { execFile } = require('child_process');
-    const child = execFile(installerPath, ['/S'], {
+    // Write a tiny batch file — avoids spawn UNKNOWN with spaces in path
+    const batPath = path.join(app.getPath('temp'), 'locas-update.bat');
+    // Double-quote the path in the batch file to handle spaces
+    fs.writeFileSync(batPath, `@echo off\nstart "" /wait "${installerPath}" /S\n`);
+
+    const { spawn } = require('child_process');
+    const child = spawn('cmd.exe', ['/c', batPath], {
       detached: true,
-      stdio: 'ignore',
-      windowsHide: false,
+      stdio:    'ignore',
+      windowsHide: true,
+      shell: false,
     });
     child.unref();
-    app.quit();
+
+    // Give cmd.exe time to start before quitting
+    setTimeout(() => app.quit(), 500);
+
   } catch (e) {
-    console.log('[update] launch failed:', e.message);
-    dialog.showErrorBox('Update Error', `Could not launch installer: ${e.message}`);
+    console.log('[update] bat launch failed:', e.message);
+    // Final fallback: shell.openPath just opens the installer (user sees wizard, no /S)
+    shell.openPath(installerPath).then(() => {
+      setTimeout(() => app.quit(), 1500);
+    });
   }
 }
 
@@ -133,7 +145,7 @@ async function checkForUpdate() {
     }
 
     toRenderer('update-downloading', { version: manifest.version });
-    console.log('[update] downloading', manifest.version, 'from', manifest.windows.url);
+    console.log('[update] downloading', manifest.version);
 
     await downloadInstaller(
       manifest.windows.url,
@@ -147,7 +159,7 @@ async function checkForUpdate() {
     showWinNotification(manifest.version, manifest.releaseNotes);
 
   } catch (e) {
-    console.log('[update] check failed:', e.message);
+    console.log('[update] check failed (silent):', e.message);
   }
 }
 
@@ -215,7 +227,7 @@ ipcMain.handle('install-update', () => {
   if (pendingInstaller) {
     doInstall(pendingInstaller);
   } else {
-    console.log('[update] no pendingInstaller — re-checking for update');
+    console.log('[update] no pendingInstaller — re-checking');
     checkForUpdate();
   }
 });
