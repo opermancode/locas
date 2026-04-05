@@ -67,9 +67,13 @@ export default function template1(invoice, profile, accent='#1E40AF', upiBlock='
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #111; }
 
   .page {
-    padding: 14mm 12mm 10mm 14mm;
+    padding: 14mm 12mm 0 14mm;
     border-left: 7px solid ${accent};
     position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 297mm;
+    box-sizing: border-box;
   }
 
   /* Header */
@@ -107,6 +111,9 @@ export default function template1(invoice, profile, accent='#1E40AF', upiBlock='
   thead tr { background:${accent}; color:#fff; }
   th { padding:6px 5px; font-size:9pt; font-weight:700; text-align:left; }
 
+  /* Content wrapper — grows to fill space, pushes footer to bottom */
+  .content { flex: 1; padding-bottom: 10mm; }
+
   /* Bottom layout */
   .bot { display:flex; gap:10px; }
   .notes { flex:1; min-width:0; }
@@ -132,14 +139,14 @@ export default function template1(invoice, profile, accent='#1E40AF', upiBlock='
   .seal { width:38px; height:38px; border-radius:50%; border:1.5px dashed ${accent}66; display:flex; align-items:center; justify-content:center; font-size:7pt; color:${accent}; text-align:center; font-weight:700; margin:0 auto; }
   .sline { border-top:1px solid #ccc; padding-top:3px; font-size:8pt; color:#666; text-align:center; margin-top:6px; }
 
-  /* Footer — pinned to bottom of A4 */
-  .footer { background:${accent}; color:#fff; padding:6px 12mm; display:flex; justify-content:space-between; align-items:center; font-size:9pt; font-weight:600; margin-top:auto; }
+  /* Footer — always at bottom of A4 page */
+  .footer { background:${accent}; color:#fff; padding:6px 12mm; display:flex; justify-content:space-between; align-items:center; font-size:9pt; font-weight:600; margin-top:auto; flex-shrink:0; }
   .fs { font-size:8pt; opacity:.7; margin-top:1px; }
 </style>
 </head>
 <body>
 <div class="page">
-
+<div class="content">
   <div class="top">
     <div>
       <div class="biz-name">${prof.name||'My Business'}</div>
@@ -246,6 +253,7 @@ export default function template1(invoice, profile, accent='#1E40AF', upiBlock='
     </div>
   </div>
 
+</div>
 </div>
 
 <div class="footer">
