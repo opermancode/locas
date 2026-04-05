@@ -44,20 +44,25 @@ const WebView = Platform.OS === 'web'
 const Print = Platform.OS === 'web'
   ? {
       printAsync: async ({ html, invoiceNumber, date }) => {
-        // Build filename: "Invoice_INV-0007_04-04-2026"
-        const safeName = `Tax_Invoice_${(invoiceNumber || '').replace(/[^a-zA-Z0-9-_]/g, '_')}_${(date || '').replace(/-/g, '_')}`;
+        const safeName = `Tax_Invoice_${(invoiceNumber || '').replace(/[^a-zA-Z0-9-_]/g, '_')}_${(date || '').replace(/-/g, '_')}.pdf`;
 
-        // Inject print title into HTML so browser uses it as PDF filename
+        // ── Electron: use native printToPDF via IPC ──────────────
+        if (typeof window !== 'undefined' && window.electronAPI?.savePDF) {
+          const result = await window.electronAPI.savePDF(html, safeName);
+          if (!result.success && result.reason !== 'canceled') {
+            alert('PDF save failed: ' + (result.reason || 'Unknown error'));
+          }
+          return;
+        }
+
+        // ── Browser fallback: open print dialog ──────────────────
         const htmlWithTitle = html.replace(
           '<head>',
           `<head><title>${safeName}</title><script>window.onload=function(){window.focus();window.print();window.onafterprint=function(){window.close();};};<\/script>`
         );
-
-        // Open in a new window — cleaner than hidden iframe, 
-        // gives user a proper print dialog with correct filename
         const printWindow = window.open('', '_blank', 'width=900,height=700');
         if (!printWindow) {
-          // Popup blocked — fall back to hidden iframe method
+          // Popup blocked — hidden iframe fallback
           const iframe = document.createElement('iframe');
           iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;';
           document.body.appendChild(iframe);
