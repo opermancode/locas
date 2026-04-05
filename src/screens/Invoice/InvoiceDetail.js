@@ -504,52 +504,23 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
 
-        {/* Template row */}
+        {/* Template selector — clean text pills */}
         <Text style={s.rightSecTitle}>Template</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.tplScroll}
-        >
+        <View style={s.tplPillRow}>
           {TEMPLATES.map(tpl => {
             const isSel = selectedTpl === tpl.id;
-            const c = isSel ? accentColor : tpl.accent;
             return (
               <TouchableOpacity
                 key={tpl.id}
-                style={[s.tplThumb, isSel && { borderColor: accentColor, borderWidth: 2 }]}
+                style={[s.tplPill, isSel && { backgroundColor: accentColor, borderColor: accentColor }]}
                 onPress={() => { setSelectedTpl(tpl.id); setAccentColor(tpl.accent); }}
-                activeOpacity={0.85}
+                activeOpacity={0.8}
               >
-                <View style={s.thumbPreview}>
-                  <View style={[s.thumbHeader, { backgroundColor: c }]}>
-                    <View style={[s.tl, { width: 28, backgroundColor: 'rgba(255,255,255,.9)', height: 3 }]} />
-                    <View style={[s.tl, { width: 20, backgroundColor: 'rgba(255,255,255,.7)', height: 3 }]} />
-                  </View>
-                  {[0,1,2].map(i => (
-                    <View key={i} style={[s.thumbRow, { backgroundColor: i%2===0 ? c+'10':'#fff' }]}>
-                      {[16,10,14].map((w,j) => (
-                        <View key={j} style={[s.tl, { width: w, height: 2, backgroundColor: j===2?c+'80':'#CBD5E1' }]} />
-                      ))}
-                    </View>
-                  ))}
-                  <View style={[s.thumbTotal, { backgroundColor: c }]}>
-                    <View style={[s.tl, { width: 16, backgroundColor: 'rgba(255,255,255,.7)', height: 2 }]} />
-                    <View style={[s.tl, { width: 20, backgroundColor: 'rgba(255,255,255,.9)', height: 3 }]} />
-                  </View>
-                  {isSel && (
-                    <View style={[s.thumbCheck, { backgroundColor: accentColor }]}>
-                      <Icon name="check" size={11} color="#fff" />
-                    </View>
-                  )}
-                </View>
-                <Text style={[s.thumbName, isSel && { color: accentColor }]} numberOfLines={1}>
-                  {tpl.name}
-                </Text>
+                <Text style={[s.tplPillTxt, isSel && { color: '#fff' }]}>{tpl.name}</Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
 
         {/* Color grid */}
         <Text style={s.rightSecTitle}>Color</Text>
@@ -891,14 +862,9 @@ const s = StyleSheet.create({
   rightSecTitle:      { fontSize: 10, fontWeight: FONTS.bold, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10, marginTop: 16 },
 
   // Templates
-  tplScroll:    { gap: 8, paddingBottom: 4 },
-  tplThumb:     { width: 80, backgroundColor: COLORS.bg, borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: COLORS.border, overflow: 'hidden', padding: 5 },
-  thumbPreview: { backgroundColor: '#fff', borderRadius: 2, overflow: 'hidden', marginBottom: 5, position: 'relative' },
-  thumbHeader:  { flexDirection: 'row', justifyContent: 'space-between', padding: 5 },
-  thumbRow:     { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 2 },
-  thumbTotal:   { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 3 },
-  thumbCheck:   { position: 'absolute', top: 3, left: 3, width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  thumbName:    { fontSize: 10, fontWeight: FONTS.semibold, color: COLORS.textSub, textAlign: 'center' },
+  tplPillRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 4 },
+  tplPill:      { paddingHorizontal: 13, paddingVertical: 7, borderRadius: RADIUS.full, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.card },
+  tplPillTxt:   { fontSize: 12, fontWeight: FONTS.semibold, color: COLORS.textSub },
   tl:           { borderRadius: 1, backgroundColor: '#CBD5E1' },
 
   // Colors
