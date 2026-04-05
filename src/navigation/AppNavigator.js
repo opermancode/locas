@@ -307,7 +307,7 @@
               display: 'flex', alignItems: 'center', gap: 8,
               backgroundColor: '#FF6B00', borderRadius: 6,
               padding: expanded ? '8px 12px' : '8px 0',
-              cursor: 'pointer', justifyContent: expanded ? 'flex-start' : 'center',
+              cursor: 'pointer', justifyContent: 'center',
               transition: 'padding 0.2s ease',
             }}
           >
