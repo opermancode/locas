@@ -128,7 +128,7 @@
 
     .sign { border:1px solid ${accent}22; margin-top:5px; border-radius:3px; overflow:hidden; }
     .sh { background:${accent}12; padding:4px 9px; font-size:8pt; font-weight:700; color:${accent}; text-transform:uppercase; border-bottom:1px solid ${accent}18; }
-    .sb { padding:9px; min-height:56px; display:flex; flex-direction:column; justify-content:space-between; }
+    .sb { padding:9px; min-height:90px; display:flex; flex-direction:column; justify-content:space-between; }
     .sline { border-top:1px solid #ccc; padding-top:3px; font-size:8pt; color:#666; text-align:center; margin-top:6px; }
 
   </style>
