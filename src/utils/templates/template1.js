@@ -1,6 +1,7 @@
-  /* ─ helpers ─────────────────────────────────────────────────── */
+/* ─ helpers ─────────────────────────────────────────────────── */
   function r(n){return Number(n||0).toFixed(2);}
   function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
+  function fmtDate(d){if(!d)return '';const parts=d.split('-');if(parts.length===3&&parts[0].length===4){return`${parts[2]}-${parts[1]}-${parts[0]}`;}return d;}
   function words(amount){
     const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
     const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
@@ -149,14 +150,14 @@
         <div class="inv-label">TAX INVOICE</div>
         <div class="inv-meta">
           <span class="inv-num">${inv.invoice_number}</span><br>
-          Date: ${inv.date}
+          Date: ${fmtDate(inv.date)}
         </div>
       </div>
     </div>
 
     <div class="mbar">
       <div class="mc"><div class="ml">Invoice No.</div><div class="mv">${inv.invoice_number}</div></div>
-      <div class="mc"><div class="ml">Date</div><div class="mv">${inv.date}</div></div>
+      <div class="mc"><div class="ml">Date</div><div class="mv">${fmtDate(inv.date)}</div></div>
       <div class="mc"><div class="ml">GST Type</div><div class="mv">${isInter?'IGST (Inter)':'CGST+SGST'}</div></div>
       ${inv.po_number?`<div class="mc"><div class="ml">PO Reference</div><div class="mv">${inv.po_number}</div></div>`:''}
     </div>
