@@ -270,6 +270,8 @@ export default function CreateInvoice({ navigation, route }) {
         supply_type:      supplyType,
         notes,
         terms,
+        po_number: null, // will be set in doSave if PO linked
+        po_id:     null,
       };
 
       const mappedItems = lineItems.map(it => ({
@@ -321,6 +323,16 @@ export default function CreateInvoice({ navigation, route }) {
       if (poDelivery?.poId && poDelivery?.deliveries?.length > 0) {
         try {
           await recordPODelivery(poDelivery.poId, poDelivery.deliveries);
+          // Also update invoice with linked PO number
+          const { getPurchaseOrderDetail, saveInvoice: si } = await import('../../db');
+          const po = await getPurchaseOrderDetail(poDelivery.poId);
+          if (po?.po_number) {
+            const { getInvoiceDetail } = await import('../../db');
+            const savedInv = await getInvoiceDetail(invoiceId);
+            if (savedInv) {
+              await si({ ...savedInv, po_number: po.po_number, po_id: poDelivery.poId }, savedInv.items || []);
+            }
+          }
         } catch (e) {
           console.warn('PO delivery record failed:', e.message);
         }

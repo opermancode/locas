@@ -1,123 +1,119 @@
-function r(n){return Number(n||0).toFixed(2);}
-function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
-function words(amount){const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const n=Math.floor(amount);if(n===0)return'Zero';const two=(x)=>x>=20?tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:''):ones[x];let w='';const cr=Math.floor(n/10000000),lk=Math.floor((n%10000000)/100000),th=Math.floor((n%100000)/1000),hu=Math.floor((n%1000)/100),re=n%100;if(cr)w+=two(cr)+' Crore ';if(lk)w+=two(lk)+' Lakh ';if(th)w+=two(th)+' Thousand ';if(hu)w+=ones[hu]+' Hundred ';if(re)w+=two(re);return w.trim()+' Rupees Only';}
+  function r(n){return Number(n||0).toFixed(2);}
+  function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
+  function words(amount){const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const n=Math.floor(amount);if(n===0)return'Zero';const two=(x)=>x>=20?tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:''):ones[x];let w='';const cr=Math.floor(n/10000000),lk=Math.floor((n%10000000)/100000),th=Math.floor((n%100000)/1000),hu=Math.floor((n%1000)/100),re=n%100;if(cr)w+=two(cr)+' Crore ';if(lk)w+=two(lk)+' Lakh ';if(th)w+=two(th)+' Thousand ';if(hu)w+=ones[hu]+' Hundred ';if(re)w+=two(re);return w.trim()+' Rupees Only';}
 
-export default function template6(invoice, profile, accent='#2563EB', upiBlock='') {
-  const inv=invoice, prof=profile||{};
-  const isInter=inv.supply_type==='inter';
-  const balance=(inv.total||0)-(inv.paid||0);
-  const rows=(inv.items||[]).map((item,i)=>`
-    <tr style="background:${i%2===0?'#F8FBFF':'#fff'}">
-      <td class="tc">${i+1}</td>
-      <td class="tl"><b>${item.name}</b>${item.hsn?`<br><span class="xs">HSN: ${item.hsn}</span>`:''}</td>
-      <td class="tc">${item.qty} <span class="xs">${item.unit}</span></td>
-      <td class="tr">₹${r(item.rate)}</td>
-      <td class="tr">${item.discount>0?item.discount+'%':'—'}</td>
-      <td class="tr">₹${r(item.taxable)}</td>
-      <td class="tc">${item.gst_rate}%</td>
-      <td class="tr">${isInter?'₹'+r(item.igst):'₹'+r(item.cgst)+'<br><span class="xs">₹'+r(item.sgst)+'</span>'}</td>
-      <td class="tr b">₹${r(item.total)}</td>
-    </tr>`).join('');
+  export default function template6(invoice, profile, accent='#2563EB', upiBlock='') {
+    const inv=invoice, prof=profile||{};
+    const isInter=inv.supply_type==='inter';
+    const rows=(inv.items||[]).map((item,i)=>`
+      <tr style="background:${i%2===0?'#F8FBFF':'#fff'}">
+        <td class="tc">${i+1}</td>
+        <td class="tl"><b>${item.name}</b>${item.hsn?`<br><span class="xs">HSN: ${item.hsn}</span>`:''}</td>
+        <td class="tc">${item.qty} <span class="xs">${item.unit}</span></td>
+        <td class="tr">₹${r(item.rate)}</td>
+        <td class="tr">${item.discount>0?item.discount+'%':'—'}</td>
+        <td class="tr">₹${r(item.taxable)}</td>
+        <td class="tc">${item.gst_rate}%</td>
+        <td class="tr">${isInter?'₹'+r(item.igst):'₹'+r(item.cgst)+'<br><span class="xs">₹'+r(item.sgst)+'</span>'}</td>
+        <td class="tr b">₹${r(item.total)}</td>
+      </tr>`).join('');
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>
-  @page { size: A4 portrait; margin: 0; }
-  @media print {
-    html, body { width: 210mm; height: 297mm; margin: 0 !important; padding: 0 !important;
-      -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .no-print { display: none !important; }
-  }
-  @media screen {
-    body { background: #e8eaf0; padding: 20px 0; display: flex; flex-direction: column; align-items: center; }
-    .page { width: 210mm; min-height: 297mm; box-shadow: 0 4px 24px rgba(0,0,0,0.13); }
-  }
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;font-size: 9.5pt;color:#111;position:relative}
-.page{padding:24px 26px;position:relative;overflow:hidden}
-.corner{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 72px 72px 0;border-color:transparent ${accent} transparent transparent}
-.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:14px;border-bottom:2.5px solid ${accent}}
-.bn{font-size:19px;font-weight:900;color:#111;margin-bottom:3px}
-.bd{font-size: 9.5pt;color:#555;line-height:1.8}
-.gtag{display:inline-block;background:${accent}15;color:${accent};font-size: 8pt;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:3px;border:1px solid ${accent}33}
-.il{font-size:28px;font-weight:900;color:${accent};letter-spacing:3px}
-.im{text-align:right;font-size: 9.5pt;color:#555;margin-top:5px;line-height:1.8}
-.in{font-size:13px;font-weight:800;color:#111}
-.badge{display:inline-block;padding:2px 10px;border-radius:3px;font-size: 8pt;font-weight:700}
-.paid{background:#D1FAE5;color:#065F46}.unpaid{background:#FEE2E2;color:#991B1B}.partial{background:#FEF3C7;color:#92400E}
-.mbar{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid ${accent}20;margin-bottom:12px;border-radius:4px;overflow:hidden}
-.mc{padding:6px 10px;border-right:1px solid ${accent}18}.mc:last-child{border-right:none}.mc:nth-child(odd){background:${accent}06}
-.ml{font-size: 8pt;color:#888;text-transform:uppercase;margin-bottom:2px}.mv{font-size: 9.5pt;font-weight:700;color:#111}
-.parties{display:flex;gap:10px;margin-bottom:12px}
-.pc{flex:1;border:1px solid ${accent}20;border-radius:4px;overflow:hidden}
-.ph{background:${accent};color:#fff;font-size: 8pt;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:6px 10px}
-.pb{padding:10px}.pn{font-size:13px;font-weight:800;color:#111;margin-bottom:2px}.pd{font-size: 9.5pt;color:#555;line-height:1.7}
-.stag{display:inline-block;background:${accent}12;color:${accent};font-size: 8pt;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:4px;border:1px solid ${accent}30}
-table{width:100%;border-collapse:collapse;border:1px solid ${accent}15;margin-bottom:10px}
-thead tr{background:${accent};color:#fff}
-th{padding:7px 6px;font-size: 9.5pt;font-weight:700;text-align:left}
-td{padding:7px 6px;font-size: 9.5pt;border-bottom:1px solid ${accent}10;vertical-align:middle}
-.tc{text-align:center}.tr{text-align:right}.tl{text-align:left}.b{font-weight:700}.xs{font-size: 8pt;color:#9CA3AF}
-.bot{display:flex;gap:10px;margin-bottom:10px}
-.notes{flex:1}
-.wbox{background:${accent}06;border:1px solid ${accent}20;padding:7px 10px;border-radius:4px;margin-bottom:6px}
-.wl{font-size: 8pt;font-weight:700;color:${accent};text-transform:uppercase;margin-bottom:2px}.wv{font-style:italic;color:#333;font-size: 9.5pt}
-.tcbox{background:#F9FAFB;border:1px solid #E5E7EB;padding:7px 10px;border-radius:4px;margin-bottom:6px;font-size: 9.5pt;color:#555;line-height:1.7}
-.tright{width:238px}
-.twrap{border:1px solid ${accent}20;border-radius:4px;overflow:hidden;margin-bottom:6px}
-.trow{display:flex;justify-content:space-between;padding:5px 10px;font-size: 9.5pt;border-bottom:1px solid ${accent}10}
-.tm{color:#666}.td2{color:#DC2626;font-weight:700}
-.tgrand{display:flex;justify-content:space-between;padding:9px 10px;font-size:14px;font-weight:900;background:${accent};color:#fff}
-.bank{border:1px solid ${accent}18;padding:8px 10px;margin-bottom:6px;border-radius:4px;font-size: 9.5pt;background:${accent}05}
-.blab{font-size: 8pt;font-weight:700;color:${accent};text-transform:uppercase;margin-bottom:3px}
-.sign{border:1px solid ${accent}20;border-radius:4px;overflow:hidden}
-.sh{background:${accent}10;padding:5px 10px;font-size: 8pt;font-weight:700;color:${accent};text-transform:uppercase;border-bottom:1px solid ${accent}18}
-.sb{padding:10px;min-height:62px;display:flex;flex-direction:column;justify-content:space-between}
-.seal{width:42px;height:42px;border-radius:50%;border:1.5px dashed ${accent}55;display:flex;align-items:center;justify-content:center;font-size:8px;color:${accent};text-align:center;font-weight:700;margin:0 auto}
-.sline{border-top:1px solid #E5E7EB;padding-top:3px;font-size: 8pt;color:#6B7280;text-align:center;margin-top:8px}
-.footer{background:${accent};color:#fff;padding:7px 26px;display:flex;justify-content:space-between;align-items:center;font-size: 9.5pt;font-weight:600}
-.fs{font-size: 8pt;opacity:.7}
-</style></head><body>
-<div class="page">
-<div class="corner"></div>
-<div class="header">
-  <div><div class="bn">${prof.name||'My Business'}</div><div class="bd">${prof.address?prof.address+'<br>':''}${prof.phone?'📞 '+prof.phone+(prof.email?' | '+prof.email:'')+'<br>':''}${prof.pan?'PAN: '+prof.pan:''}</div>${prof.gstin?`<span class="gtag">GSTIN: ${prof.gstin}</span>`:''}</div>
-  <div><div class="il">TAX INVOICE</div><div class="im"><span class="in">${inv.invoice_number}</span><br>Date: ${inv.date}${inv.due_date?'<br>Due: '+inv.due_date:''}<br><span class="badge ${inv.status||'unpaid'}">${(inv.status||'UNPAID').toUpperCase()}</span></div></div>
-</div>
-<div class="mbar">
-  <div class="mc"><div class="ml">Invoice No.</div><div class="mv">${inv.invoice_number}</div></div>
-  <div class="mc"><div class="ml">Date</div><div class="mv">${inv.date}</div></div>
-  ${inv.due_date?`<div class="mc"><div class="ml">Due Date</div><div class="mv">${inv.due_date}</div></div>`:`<div class="mc"><div class="ml">Due Date</div><div class="mv">On Receipt</div></div>`}
-  <div class="mc"><div class="ml">Supply</div><div class="mv">${isInter?'Inter-state':'Intra-state'}</div></div>
-</div>
-<div class="parties">
-  <div class="pc"><div class="ph">Bill To</div><div class="pb"><div class="pn">${inv.party_name||'Walk-in Customer'}</div><div class="pd">${inv.party_address?inv.party_address+'<br>':''}${inv.party_gstin?'GSTIN: '+inv.party_gstin+'<br>':''}${inv.party_state?'State: '+inv.party_state+' ('+(inv.party_state_code||'')+')':''}</div><span class="stag">${isInter?'🔀 IGST':'✅ CGST+SGST'}</span></div></div>
-  <div class="pc"><div class="ph">Seller</div><div class="pb"><div class="pn">${prof.name||'My Business'}</div><div class="pd">${prof.address?prof.address+'<br>':''}${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}${prof.state?'State: '+prof.state+' ('+(prof.state_code||'')+')':''}</div></div></div>
-</div>
-<table>
-  <thead><tr><th class="tc" style="width:4%">#</th><th style="width:24%">Item</th><th class="tc" style="width:9%">Qty</th><th class="tr" style="width:9%">Rate</th><th class="tr" style="width:7%">Disc</th><th class="tr" style="width:11%">Taxable</th><th class="tc" style="width:7%">GST%</th><th class="tr" style="width:14%">${isInter?'IGST':'CGST/SGST'}</th><th class="tr" style="width:11%">Amount</th></tr></thead>
-  <tbody>${rows}</tbody>
-</table>
-<div class="bot">
-  <div class="notes">
-    <div class="wbox"><div class="wl">Amount in Words</div><div class="wv">${words(inv.total)}</div></div>
-    ${inv.notes||inv.terms?`<div class="tcbox">${inv.terms||''}${inv.notes?'<br>'+inv.notes:''}</div>`:''}
-    ${upiBlock}
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    @page { size: A4 portrait; margin: 0; }
+    @media print {
+      html, body { width: 210mm; height: 297mm; margin: 0 !important; padding: 0 !important;
+        -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .no-print { display: none !important; }
+    }
+    @media screen {
+      body { background: #e8eaf0; padding: 20px 0; display: flex; flex-direction: column; align-items: center; }
+      .page { width: 210mm; min-height: 297mm; box-shadow: 0 4px 24px rgba(0,0,0,0.13); }
+    }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size: 9.5pt;color:#111;position:relative}
+  .page{padding:24px 26px;position:relative;overflow:hidden}
+  .corner{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 72px 72px 0;border-color:transparent ${accent} transparent transparent}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:14px;border-bottom:2.5px solid ${accent}}
+  .bn{font-size:19px;font-weight:900;color:#111;margin-bottom:3px}
+  .bd{font-size: 9.5pt;color:#555;line-height:1.8}
+  .gtag{display:inline-block;background:${accent}15;color:${accent};font-size: 8pt;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:3px;border:1px solid ${accent}33}
+  .il{font-size:28px;font-weight:900;color:${accent};letter-spacing:3px}
+  .im{text-align:right;font-size: 9.5pt;color:#555;margin-top:5px;line-height:1.8}
+  .in{font-size:13px;font-weight:800;color:#111}
+  .badge{display:inline-block;padding:2px 10px;border-radius:3px;font-size: 8pt;font-weight:700}
+
+  .mbar{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid ${accent}20;margin-bottom:12px;border-radius:4px;overflow:hidden}
+  .mc{padding:6px 10px;border-right:1px solid ${accent}18}.mc:last-child{border-right:none}.mc:nth-child(odd){background:${accent}06}
+  .ml{font-size: 8pt;color:#888;text-transform:uppercase;margin-bottom:2px}.mv{font-size: 9.5pt;font-weight:700;color:#111}
+  .parties{display:flex;gap:10px;margin-bottom:12px}
+  .pc{flex:1;border:1px solid ${accent}20;border-radius:4px;overflow:hidden}
+  .ph{background:${accent};color:#fff;font-size: 8pt;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:6px 10px}
+  .pb{padding:10px}.pn{font-size:13px;font-weight:800;color:#111;margin-bottom:2px}.pd{font-size: 9.5pt;color:#555;line-height:1.7}
+  .stag{display:inline-block;background:${accent}12;color:${accent};font-size: 8pt;font-weight:700;padding:2px 8px;border-radius:3px;margin-top:4px;border:1px solid ${accent}30}
+  table{width:100%;border-collapse:collapse;border:1px solid ${accent}15;margin-bottom:10px}
+  thead tr{background:${accent};color:#fff}
+  th{padding:7px 6px;font-size: 9.5pt;font-weight:700;text-align:left}
+  td{padding:7px 6px;font-size: 9.5pt;border-bottom:1px solid ${accent}10;vertical-align:middle}
+  .tc{text-align:center}.tr{text-align:right}.tl{text-align:left}.b{font-weight:700}.xs{font-size: 8pt;color:#9CA3AF}
+  .bot{display:flex;gap:10px;margin-bottom:10px}
+  .notes{flex:1}
+  .wbox{background:${accent}06;border:1px solid ${accent}20;padding:7px 10px;border-radius:4px;margin-bottom:6px}
+  .wl{font-size: 8pt;font-weight:700;color:${accent};text-transform:uppercase;margin-bottom:2px}.wv{font-style:italic;color:#333;font-size: 9.5pt}
+  .tcbox{background:#F9FAFB;border:1px solid #E5E7EB;padding:7px 10px;border-radius:4px;margin-bottom:6px;font-size: 9.5pt;color:#555;line-height:1.7}
+  .tright{width:238px}
+  .twrap{border:1px solid ${accent}20;border-radius:4px;overflow:hidden;margin-bottom:6px}
+  .trow{display:flex;justify-content:space-between;padding:5px 10px;font-size: 9.5pt;border-bottom:1px solid ${accent}10}
+  .tm{color:#666}.td2{color:#DC2626;font-weight:700}
+  .tgrand{display:flex;justify-content:space-between;padding:9px 10px;font-size:14px;font-weight:900;background:${accent};color:#fff}
+  .bank{border:1px solid ${accent}18;padding:8px 10px;margin-bottom:6px;border-radius:4px;font-size: 9.5pt;background:${accent}05}
+  .blab{font-size: 8pt;font-weight:700;color:${accent};text-transform:uppercase;margin-bottom:3px}
+  .sign{border:1px solid ${accent}20;border-radius:4px;overflow:hidden}
+  .sh{background:${accent}10;padding:5px 10px;font-size: 8pt;font-weight:700;color:${accent};text-transform:uppercase;border-bottom:1px solid ${accent}18}
+  .sb{padding:10px;min-height:62px;display:flex;flex-direction:column;justify-content:space-between}
+  55;display:flex;align-items:center;justify-content:center;font-size:8px;color:${accent};text-align:center;font-weight:700;margin:0 auto}
+  .sline{border-top:1px solid #E5E7EB;padding-top:3px;font-size: 8pt;color:#6B7280;text-align:center;margin-top:8px}
+  .footer{background:${accent};color:#fff;padding:7px 26px;display:flex;justify-content:space-between;align-items:center;font-size: 9.5pt;font-weight:600}
+  .fs{font-size: 8pt;opacity:.7}
+  </style></head><body>
+  <div class="page">
+  <div class="corner"></div>
+  <div class="header">
+    <div><div class="bn">${prof.name||'My Business'}</div><div class="bd">${prof.address?prof.address+'<br>':''}${prof.phone?'📞 '+prof.phone+(prof.email?' | '+prof.email:'')+'<br>':''}${prof.pan?'PAN: '+prof.pan:''}</div>${prof.gstin?`<span class="gtag">GSTIN: ${prof.gstin}</span>`:''}</div>
+    <div><div class="il">TAX INVOICE</div><div class="im"><span class="in">${inv.invoice_number}</span><br>Date: ${inv.date}</div></div>
   </div>
-  <div class="tright">
-    <div class="twrap">
-      <div class="trow"><span>Subtotal</span><span>${inr(inv.subtotal)}</span></div>
-      ${inv.discount>0?`<div class="trow tm"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`:''}
-      <div class="trow"><span>Taxable</span><span>${inr(inv.taxable)}</span></div>
-      ${isInter?`<div class="trow tm"><span>IGST</span><span>${inr(inv.igst)}</span></div>`:`<div class="trow tm"><span>CGST</span><span>${inr(inv.cgst)}</span></div><div class="trow tm"><span>SGST</span><span>${inr(inv.sgst)}</span></div>`}
-      ${inv.paid>0?`<div class="trow tm"><span>Paid</span><span>${inr(inv.paid)}</span></div>`:''}
-      ${balance>0.01?`<div class="trow td2"><span>Balance Due</span><span>${inr(balance)}</span></div>`:''}
-      <div class="tgrand"><span>Grand Total</span><span>${inr(inv.total)}</span></div>
+  <div class="mbar">
+    <div class="mc"><div class="ml">Invoice No.</div><div class="mv">${inv.invoice_number}</div></div>
+    <div class="mc"><div class="ml">Date</div><div class="mv">${inv.date}</div></div>
+    <div class="mc"><div class="ml">Supply</div><div class="mv">${isInter?'Inter-state':'Intra-state'}</div></div>
+  </div>
+  <div class="parties">
+    <div class="pc"><div class="ph">Bill To</div><div class="pb"><div class="pn">${inv.party_name||'Walk-in Customer'}</div><div class="pd">${inv.party_address?inv.party_address+'<br>':''}${inv.party_gstin?'GSTIN: '+inv.party_gstin+'<br>':''}${inv.party_state?'State: '+inv.party_state+' ('+(inv.party_state_code||'')+')':''}</div><span class="stag">${isInter?'🔀 IGST':'✅ CGST+SGST'}</span></div></div>
+    <div class="pc"><div class="ph">Seller</div><div class="pb"><div class="pn">${prof.name||'My Business'}</div><div class="pd">${prof.address?prof.address+'<br>':''}${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}${prof.state?'State: '+prof.state+' ('+(prof.state_code||'')+')':''}</div></div></div>
+  </div>
+  <table>
+    <thead><tr><th class="tc" style="width:4%">#</th><th style="width:24%">Item</th><th class="tc" style="width:9%">Qty</th><th class="tr" style="width:9%">Rate</th><th class="tr" style="width:7%">Disc</th><th class="tr" style="width:11%">Taxable</th><th class="tc" style="width:7%">GST%</th><th class="tr" style="width:14%">${isInter?'IGST':'CGST/SGST'}</th><th class="tr" style="width:11%">Amount</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="bot">
+    <div class="notes">
+      <div class="wbox"><div class="wl">Amount in Words</div><div class="wv">${words(inv.total)}</div></div>
+      ${inv.notes||inv.terms?`<div class="tcbox">${inv.terms||''}${inv.notes?'<br>'+inv.notes:''}</div>`:''}
+      ${upiBlock}
     </div>
-    ${prof.bank_name||prof.account_no?`<div class="bank"><div class="blab">Bank Details</div>${prof.bank_name?'<b>'+prof.bank_name+'</b><br>':''}${prof.account_no?'A/C: '+prof.account_no+'<br>':''}${prof.ifsc?'IFSC: '+prof.ifsc:''}</div>`:''}
-    <div class="sign"><div class="sh">For ${prof.name||'Business'}</div><div class="sb"><div class="seal">SEAL</div><div class="sline">Authorised Signatory</div></div></div>
+    <div class="tright">
+      <div class="twrap">
+        <div class="trow"><span>Subtotal</span><span>${inr(inv.subtotal)}</span></div>
+        ${inv.discount>0?`<div class="trow tm"><span>Discount (${inv.discount}%)</span><span>-${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`:''}
+        <div class="trow"><span>Taxable</span><span>${inr(inv.taxable)}</span></div>
+        ${isInter?`<div class="trow tm"><span>IGST</span><span>${inr(inv.igst)}</span></div>`:`<div class="trow tm"><span>CGST</span><span>${inr(inv.cgst)}</span></div><div class="trow tm"><span>SGST</span><span>${inr(inv.sgst)}</span></div>`}
+        <div class="tgrand"><span>Grand Total</span><span>${inr(inv.total)}</span></div>
+      </div>
+      ${prof.bank_name||prof.account_no?`<div class="bank"><div class="blab">Bank Details</div>${prof.bank_name?'<b>'+prof.bank_name+'</b><br>':''}${prof.account_no?'A/C: '+prof.account_no+'<br>':''}${prof.ifsc?'IFSC: '+prof.ifsc:''}</div>`:''}
+      <div class="sign"><div class="sh">For ${prof.name||'Business'}</div><div class="sb"><div class="sline">Authorised Signatory</div></div></div>
+    </div>
   </div>
-</div>
-</div>
-<div class="footer"><div><div>${prof.name||'My Business'}</div><div class="fs">${prof.gstin?'GSTIN: '+prof.gstin:''}</div></div><div style="text-align:right"><div>Thank you for your business!</div></div></div>
-</body></html>`;
-}
+  </div>
+  <div class="footer"><div><div>${prof.name||'My Business'}</div><div class="fs">${prof.gstin?'GSTIN: '+prof.gstin:''}</div></div><div style="text-align:right"><div>Thank you for your business!</div></div></div>
+  </body></html>`;
+  }
