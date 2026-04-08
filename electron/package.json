@@ -1,6 +1,6 @@
 {
   "name": "locas-desktop",
-  "version": "1.11.4",
+  "version": "1.11.5",
   "description": "Locas — Smart Billing for India (Desktop)",
   "main": "main.js",
   "private": true,
@@ -31,7 +31,9 @@
       "icon": "../assets/icon.png",
       "publisherName": "Locastitch",
       "verifyUpdateCodeSignature": false,
-      "signingHashAlgorithms": ["sha256"],
+      "signingHashAlgorithms": [
+        "sha256"
+      ],
       "sign": null
     },
     "nsis": {
