@@ -71,7 +71,11 @@ export default function PODetailScreen({ navigation, route }) {
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={s.headerTitle}>{po.po_number}</Text>
-          <Text style={s.headerSub}>{po.party_name} · {po.date}</Text>
+          {po.client_po_number && po.auto_po_number && po.client_po_number !== po.auto_po_number ? (
+            <Text style={s.headerSub2}>Ref: {po.auto_po_number} · {po.party_name} · {po.date}</Text>
+          ) : (
+            <Text style={s.headerSub}>{po.party_name} · {po.date}</Text>
+          )}
         </View>
         <View style={[s.statusPill, { backgroundColor: sm.bg }]}>
           <Text style={[s.statusTxt, { color: sm.text }]}>{sm.label}</Text>
@@ -127,6 +131,13 @@ export default function PODetailScreen({ navigation, route }) {
           {po.party_gstin ? <Text style={s.partySub}>GSTIN: {po.party_gstin}</Text> : null}
           {po.party_address ? <Text style={s.partySub}>{po.party_address}</Text> : null}
           <View style={s.dateRow}>
+            <View style={s.dateCell}>
+              <Text style={s.dateLbl}>PO Number</Text>
+              <Text style={s.dateVal}>{po.po_number}</Text>
+              {po.client_po_number && po.auto_po_number && po.client_po_number !== po.auto_po_number ? (
+                <Text style={s.dateValSub}>Auto: {po.auto_po_number}</Text>
+              ) : null}
+            </View>
             <View style={s.dateCell}>
               <Text style={s.dateLbl}>PO Date</Text>
               <Text style={s.dateVal}>{po.date}</Text>
@@ -227,6 +238,7 @@ const s = StyleSheet.create({
   backBtn:   { padding: 4 },
   headerTitle:{ fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
   headerSub: { fontSize: 12, color: COLORS.textMute, marginTop: 1 },
+  headerSub2:{ fontSize: 11, color: COLORS.textMute, marginTop: 1 },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full, marginRight: 6 },
   statusTxt:  { fontSize: 10, fontWeight: FONTS.black, letterSpacing: 0.5 },
   iconBtn:    { padding: 8, borderRadius: RADIUS.sm, backgroundColor: COLORS.bg, marginLeft: 6 },
@@ -249,6 +261,7 @@ const s = StyleSheet.create({
   dateCell:  { flex: 1 },
   dateLbl:   { fontSize: 10, fontWeight: FONTS.medium, color: COLORS.textMute, textTransform: 'uppercase', marginBottom: 2 },
   dateVal:   { fontSize: 13, fontWeight: FONTS.semibold, color: COLORS.text },
+  dateValSub:{ fontSize: 10, color: COLORS.textMute, marginTop: 1 },
 
   itemRow:   { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, gap: 10 },
   itemBorder:{ borderBottomWidth: 1, borderBottomColor: COLORS.border },

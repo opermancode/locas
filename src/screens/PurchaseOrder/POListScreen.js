@@ -137,6 +137,9 @@ function POCard({ po, onPress }) {
       <View style={styles.cardTop}>
         <View style={{ flex: 1 }}>
           <Text style={styles.poNum}>{po.po_number}</Text>
+          {po.client_po_number && po.auto_po_number && po.client_po_number !== po.auto_po_number ? (
+            <Text style={styles.autoPoNum}>Internal: {po.auto_po_number}</Text>
+          ) : null}
           <Text style={styles.partyName}>{po.party_name || 'Unknown Customer'}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: sm.bg }]}>
@@ -193,6 +196,7 @@ const styles = StyleSheet.create({
   },
   cardTop:   { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
   poNum:     { fontSize: 15, fontWeight: FONTS.bold, color: COLORS.text, marginBottom: 2 },
+  autoPoNum: { fontSize: 11, color: COLORS.textMute, marginBottom: 1 },
   partyName: { fontSize: 13, color: COLORS.textSub },
   statusBadge:{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: RADIUS.full },
   statusText: { fontSize: 10, fontWeight: FONTS.bold },

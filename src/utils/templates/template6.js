@@ -1,4 +1,5 @@
   function r(n){return Number(n||0).toFixed(2);}
+  function fmtDate(d){if(!d)return '';const parts=d.split('-');if(parts.length===3&&parts[0].length===4){return`${parts[2]}-${parts[1]}-${parts[0]}`;}return d;}
   function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
   function words(amount){const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const n=Math.floor(amount);if(n===0)return'Zero';const two=(x)=>x>=20?tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:''):ones[x];let w='';const cr=Math.floor(n/10000000),lk=Math.floor((n%10000000)/100000),th=Math.floor((n%100000)/1000),hu=Math.floor((n%1000)/100),re=n%100;if(cr)w+=two(cr)+' Crore ';if(lk)w+=two(lk)+' Lakh ';if(th)w+=two(th)+' Thousand ';if(hu)w+=ones[hu]+' Hundred ';if(re)w+=two(re);return w.trim()+' Rupees Only';}
 
@@ -80,16 +81,16 @@
   <div class="corner"></div>
   <div class="header">
     <div><div class="bn">${prof.name||'My Business'}</div><div class="bd">${prof.address?prof.address+'<br>':''}${prof.phone?'📞 '+prof.phone+(prof.email?' | '+prof.email:'')+'<br>':''}${prof.pan?'PAN: '+prof.pan:''}</div>${prof.gstin?`<span class="gtag">GSTIN: ${prof.gstin}</span>`:''}</div>
-    <div><div class="il">TAX INVOICE</div><div class="im"><span class="in">${inv.invoice_number}</span><br>Date: ${inv.date}</div></div>
+    <div><div class="il">TAX INVOICE</div><div class="im"><span class="in">${inv.invoice_number}</span><br>Date: ${fmtDate(inv.date)}</div></div>
   </div>
   <div class="mbar">
     <div class="mc"><div class="ml">Invoice No.</div><div class="mv">${inv.invoice_number}</div></div>
-    <div class="mc"><div class="ml">Date</div><div class="mv">${inv.date}</div></div>
+    <div class="mc"><div class="ml">Date</div><div class="mv">${fmtDate(inv.date)}</div></div>
     <div class="mc"><div class="ml">Supply</div><div class="mv">${isInter?'Inter-state':'Intra-state'}</div></div>
   </div>
   <div class="parties">
     <div class="pc"><div class="ph">Bill To</div><div class="pb"><div class="pn">${inv.party_name||'Walk-in Customer'}</div><div class="pd">${inv.party_address?inv.party_address+'<br>':''}${inv.party_gstin?'GSTIN: '+inv.party_gstin+'<br>':''}${inv.party_state?'State: '+inv.party_state+' ('+(inv.party_state_code||'')+')':''}</div><span class="stag">${isInter?'🔀 IGST':'✅ CGST+SGST'}</span></div></div>
-    <div class="pc"><div class="ph">Seller</div><div class="pb"><div class="pn">${prof.name||'My Business'}</div><div class="pd">${prof.address?prof.address+'<br>':''}${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}${prof.state?'State: '+prof.state+' ('+(prof.state_code||'')+')':''}</div></div></div>
+    <div class="pc"><div class="ph">Ship To</div><div class="pb">${(!inv.ship_to_same && inv.ship_to_name)?`<div class="pn">${inv.ship_to_name}</div><div class="pd">${inv.ship_to_address?inv.ship_to_address+'<br>':''}${inv.ship_to_gstin?'GSTIN: '+inv.ship_to_gstin:''}</div>`:`<div class="pn">${inv.party_name||'Walk-in Customer'}</div><div class="pd">${inv.party_address?inv.party_address+'<br>':''}${inv.party_gstin?'GSTIN: '+inv.party_gstin:''}</div><span style="font-size:7.5pt;color:#888;font-style:italic">Same as billing</span>`}</div></div>
   </div>
   <table>
     <thead><tr><th class="tc" style="width:4%">#</th><th style="width:24%">Item</th><th class="tc" style="width:9%">Qty</th><th class="tr" style="width:9%">Rate</th><th class="tr" style="width:7%">Disc</th><th class="tr" style="width:11%">Taxable</th><th class="tc" style="width:7%">GST%</th><th class="tr" style="width:14%">${isInter?'IGST':'CGST/SGST'}</th><th class="tr" style="width:11%">Amount</th></tr></thead>

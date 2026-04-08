@@ -174,13 +174,21 @@
         <span class="stag">${isInter?'IGST':'CGST+SGST'}</span>
       </div>
       <div class="pc">
-        <div class="ph">Seller</div>
-        <div class="pn">${prof.name||'My Business'}</div>
-        <div class="pd">
-          ${prof.address?prof.address+'<br>':''}
-          ${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}
-          ${prof.state?'State: '+prof.state+' ('+(prof.state_code||'')+')':''}
-        </div>
+        <div class="ph">Ship To</div>
+        ${(!inv.ship_to_same && inv.ship_to_name) ? `
+          <div class="pn">${inv.ship_to_name}</div>
+          <div class="pd">
+            ${inv.ship_to_address?inv.ship_to_address+'<br>':''}
+            ${inv.ship_to_gstin?'GSTIN: '+inv.ship_to_gstin:''}
+          </div>
+        ` : `
+          <div class="pn">${inv.party_name||'Walk-in Customer'}</div>
+          <div class="pd">
+            ${inv.party_address?inv.party_address+'<br>':''}
+            ${inv.party_gstin?'GSTIN: '+inv.party_gstin:''}
+          </div>
+          <span class="stag" style="background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9">Same as Billing</span>
+        `}
       </div>
     </div>
 

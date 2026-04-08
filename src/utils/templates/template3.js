@@ -1,4 +1,5 @@
   function r(n){return Number(n||0).toFixed(2);}
+  function fmtDate(d){if(!d)return '';const parts=d.split('-');if(parts.length===3&&parts[0].length===4){return`${parts[2]}-${parts[1]}-${parts[0]}`;}return d;}
   function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
   function words(amount){
     const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
@@ -158,7 +159,7 @@
         <div class="inv-meta">
           <div class="inv-num">${inv.invoice_number}</div>
           <div class="inv-date">
-            Date: ${inv.date}<br>
+            Date: ${fmtDate(inv.date)}<br>
             
           </div>
         </div>
@@ -168,7 +169,7 @@
     <!-- Meta strip -->
     <div class="meta-strip">
       <div class="meta-cell"><div class="meta-label">Invoice No.</div><div class="meta-value">${inv.invoice_number}</div></div>
-      <div class="meta-cell"><div class="meta-label">Date</div><div class="meta-value">${inv.date}</div></div>
+      <div class="meta-cell"><div class="meta-label">Date</div><div class="meta-value">${fmtDate(inv.date)}</div></div>
       <div class="meta-cell"><div class="meta-label">Supply Type</div><div class="meta-value">${isInter?'Inter-state':'Intra-state'}</div></div>
     </div>
 
@@ -187,14 +188,22 @@
         </div>
       </div>
       <div class="party-card">
-        <div class="party-head">Seller / Supplier</div>
+        <div class="party-head">Ship To</div>
         <div class="party-body">
-          <div class="party-name">${prof.name||'My Business'}</div>
-          <div class="party-detail">
-            ${prof.address?prof.address+'<br>':''}
-            ${prof.gstin?'GSTIN: '+prof.gstin+'<br>':''}
-            ${prof.state?'State: '+prof.state+(prof.state_code?' ('+prof.state_code+')':''):''}
-          </div>
+          ${(!inv.ship_to_same && inv.ship_to_name) ? `
+            <div class="party-name">${inv.ship_to_name}</div>
+            <div class="party-detail">
+              ${inv.ship_to_address?inv.ship_to_address+'<br>':''}
+              ${inv.ship_to_gstin?'GSTIN: '+inv.ship_to_gstin:''}
+            </div>
+          ` : `
+            <div class="party-name">${inv.party_name||'Walk-in Customer'}</div>
+            <div class="party-detail">
+              ${inv.party_address?inv.party_address+'<br>':''}
+              ${inv.party_gstin?'GSTIN: '+inv.party_gstin:''}
+              <span style="font-size:7.5pt;color:#888;font-style:italic">Same as billing address</span>
+            </div>
+          `}
         </div>
       </div>
     </div>

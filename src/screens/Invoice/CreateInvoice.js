@@ -45,6 +45,12 @@ export default function CreateInvoice({ navigation, route }) {
   const [profile, setProfile]   = useState(null);
   const [saving, setSaving]     = useState(false);
 
+  // ── Ship To state ─────────────────────────────────────────────
+  const [shipToSame, setShipToSame]       = useState(true);
+  const [shipToName, setShipToName]       = useState('');
+  const [shipToAddress, setShipToAddress] = useState('');
+  const [shipToGstin, setShipToGstin]     = useState('');
+
   // ── PO linking state ──────────────────────────────────────────
   const [openPOs, setOpenPOs]       = useState([]);
   const [poModal, setPOModal]       = useState(false);
@@ -98,6 +104,12 @@ export default function CreateInvoice({ navigation, route }) {
       setTerms(editInvoice.terms || 'Payment due within 30 days.');
       setInvoiceDiscount(String(editInvoice.discount || 0));
       setSupplyType(editInvoice.supply_type || 'intra');
+
+      // Restore ship-to fields
+      setShipToSame(editInvoice.ship_to_same !== false);
+      setShipToName(editInvoice.ship_to_name || '');
+      setShipToAddress(editInvoice.ship_to_address || '');
+      setShipToGstin(editInvoice.ship_to_gstin || '');
 
       // Restore party from parties list (to get full object), fallback to invoice snapshot
       const matchedParty = editInvoice.party_id
@@ -270,6 +282,10 @@ export default function CreateInvoice({ navigation, route }) {
         supply_type:      supplyType,
         notes,
         terms,
+        ship_to_same:    shipToSame,
+        ship_to_name:    shipToSame ? '' : shipToName,
+        ship_to_address: shipToSame ? '' : shipToAddress,
+        ship_to_gstin:   shipToSame ? '' : shipToGstin,
         po_number: null, // will be set in doSave if PO linked
         po_id:     null,
       };
@@ -528,6 +544,51 @@ export default function CreateInvoice({ navigation, route }) {
               </View>
             )}
           </TouchableOpacity>
+
+          {/* ── Ship To ───────────────────────────────────── */}
+          <SectionTitle title="Ship To" />
+          {/* Same as billing checkbox */}
+          <TouchableOpacity
+            style={styles.shipToSameRow}
+            onPress={() => setShipToSame(v => !v)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.checkbox, shipToSame && styles.checkboxChecked]}>
+              {shipToSame && <Icon name="check" size={11} color="#fff" />}
+            </View>
+            <Text style={styles.shipToSameLabel}>Same as Billing Address</Text>
+          </TouchableOpacity>
+
+          {!shipToSame && (
+            <View style={styles.card}>
+              <FieldLabel>Ship To Name</FieldLabel>
+              <TextInput
+                style={styles.input}
+                value={shipToName}
+                onChangeText={setShipToName}
+                placeholder="Recipient / warehouse name"
+                placeholderTextColor={COLORS.textMute}
+              />
+              <FieldLabel>Ship To Address</FieldLabel>
+              <TextInput
+                style={[styles.input, { minHeight: 72, textAlignVertical: 'top' }]}
+                value={shipToAddress}
+                onChangeText={setShipToAddress}
+                placeholder="Full shipping address"
+                placeholderTextColor={COLORS.textMute}
+                multiline
+              />
+              <FieldLabel>GSTIN (optional)</FieldLabel>
+              <TextInput
+                style={styles.input}
+                value={shipToGstin}
+                onChangeText={setShipToGstin}
+                placeholder="GSTIN at delivery location"
+                placeholderTextColor={COLORS.textMute}
+                autoCapitalize="characters"
+              />
+            </View>
+          )}
 
           {/* ── Items ─────────────────────────────────────── */}
           <View style={styles.sectionRow}>
@@ -1119,6 +1180,11 @@ const styles = StyleSheet.create({
   partySelectorHint:        { fontSize: 12, color: COLORS.textMute, marginTop: 3 },
   partyChevron:             { paddingHorizontal: 8 },
   clearPartyBtn:            { padding: 8 },
+  // Ship To
+  shipToSameRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingHorizontal: 2 },
+  shipToSameLabel:{ fontSize: 14, color: COLORS.text },
+  checkbox:       { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.card },
+  checkboxChecked:{ backgroundColor: COLORS.primary, borderColor: COLORS.primary },
 
   igstBadge:     { alignSelf: 'flex-start', backgroundColor: '#FFF3CD', borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 3, marginTop: 6 },
   igstBadgeText: { fontSize: 11, color: '#856404', fontWeight: FONTS.semibold },

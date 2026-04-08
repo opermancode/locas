@@ -80,6 +80,10 @@ async function createTables(db) {
       party_state TEXT DEFAULT '',
       party_state_code TEXT DEFAULT '',
       party_address TEXT DEFAULT '',
+      ship_to_same INTEGER DEFAULT 1,
+      ship_to_name TEXT DEFAULT '',
+      ship_to_address TEXT DEFAULT '',
+      ship_to_gstin TEXT DEFAULT '',
       date TEXT NOT NULL,
       due_date TEXT DEFAULT '',
       subtotal REAL DEFAULT 0,
@@ -221,6 +225,11 @@ async function runMigrations(db) {
     `ALTER TABLE business_profile ADD COLUMN quote_counter INTEGER DEFAULT 0`,
     `ALTER TABLE business_profile ADD COLUMN owner_email TEXT DEFAULT NULL`,
     `ALTER TABLE business_profile ADD COLUMN owner_set_at TEXT DEFAULT NULL`,
+    // Ship To fields (added for invoice shipping address feature)
+    `ALTER TABLE invoices ADD COLUMN ship_to_same INTEGER DEFAULT 1`,
+    `ALTER TABLE invoices ADD COLUMN ship_to_name TEXT DEFAULT ''`,
+    `ALTER TABLE invoices ADD COLUMN ship_to_address TEXT DEFAULT ''`,
+    `ALTER TABLE invoices ADD COLUMN ship_to_gstin TEXT DEFAULT ''`,
   ];
   for (const sql of migrations) {
     try { await db.execAsync(sql); } catch (e) { /* already exists */ }
@@ -348,10 +357,12 @@ export async function saveInvoice(invoice, lineItems) {
       );
       await db.runAsync(
         `UPDATE invoices SET party_id=?,party_name=?,party_gstin=?,party_state=?,party_state_code=?,party_address=?,
+         ship_to_same=?,ship_to_name=?,ship_to_address=?,ship_to_gstin=?,
          date=?,due_date=?,subtotal=?,discount=?,taxable=?,cgst=?,sgst=?,igst=?,total_tax=?,total=?,
          supply_type=?,notes=?,terms=?,updated_at=datetime('now') WHERE id=?`,
         [invoice.party_id||null,invoice.party_name||'',invoice.party_gstin||'',
          invoice.party_state||'',invoice.party_state_code||'',invoice.party_address||'',
+         invoice.ship_to_same!==false?1:0,invoice.ship_to_name||'',invoice.ship_to_address||'',invoice.ship_to_gstin||'',
          invoice.date,invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,
          invoice.taxable||0,invoice.cgst||0,invoice.sgst||0,invoice.igst||0,
          invoice.total_tax||0,invoice.total||0,invoice.supply_type||'intra',
@@ -386,12 +397,14 @@ export async function saveInvoice(invoice, lineItems) {
       const invoiceNumber = await consumeNextInvoiceNumber(db);
       const r = await db.runAsync(
         `INSERT INTO invoices (invoice_number,type,party_id,party_name,party_gstin,party_state,party_state_code,
-         party_address,date,due_date,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         party_address,ship_to_same,ship_to_name,ship_to_address,ship_to_gstin,
+         date,due_date,subtotal,discount,taxable,cgst,sgst,igst,total_tax,total,supply_type,notes,terms)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [invoiceNumber,invoice.type||'sale',invoice.party_id||null,
          invoice.party_name||'',invoice.party_gstin||'',invoice.party_state||'',
-         invoice.party_state_code||'',invoice.party_address||'',invoice.date,
-         invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,invoice.taxable||0,
+         invoice.party_state_code||'',invoice.party_address||'',
+         invoice.ship_to_same!==false?1:0,invoice.ship_to_name||'',invoice.ship_to_address||'',invoice.ship_to_gstin||'',
+         invoice.date,invoice.due_date||'',invoice.subtotal||0,invoice.discount||0,invoice.taxable||0,
          invoice.cgst||0,invoice.sgst||0,invoice.igst||0,invoice.total_tax||0,
          invoice.total||0,invoice.supply_type||'intra',invoice.notes||'',invoice.terms||'']
       );

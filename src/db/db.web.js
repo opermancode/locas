@@ -226,6 +226,10 @@ export async function saveInvoice(invoice, lineItems) {
       party_state: invoice.party_state || '',
       party_state_code: invoice.party_state_code || '',
       party_address: invoice.party_address || '',
+      ship_to_same:    invoice.ship_to_same !== false, // default true
+      ship_to_name:    invoice.ship_to_name || '',
+      ship_to_address: invoice.ship_to_address || '',
+      ship_to_gstin:   invoice.ship_to_gstin || '',
       date: invoice.date, due_date: invoice.due_date || '',
       subtotal: invoice.subtotal || 0, discount: invoice.discount || 0,
       taxable: invoice.taxable || 0, cgst: invoice.cgst || 0,
@@ -891,8 +895,14 @@ export async function savePurchaseOrder(po, lineItems) {
   if (po.id) {
     // Update existing
     const existing = await stores_po.purchase_orders.getItem(String(po.id));
+    // Recalculate po_number: client-provided takes priority; if cleared, fall back to auto number
+    const updatedPoNumber = (po.client_po_number && po.client_po_number.trim())
+      ? po.client_po_number.trim()
+      : (existing.auto_po_number || existing.po_number);
     await stores_po.purchase_orders.setItem(String(po.id), {
       ...existing,
+      po_number:        updatedPoNumber,
+      client_po_number: po.client_po_number ? po.client_po_number.trim() : '',
       party_id:      po.party_id || null,
       party_name:    po.party_name || '',
       party_gstin:   po.party_gstin || '',
@@ -920,10 +930,16 @@ export async function savePurchaseOrder(po, lineItems) {
       await stores.meta.setItem('po_id_seq', next);
       return next;
     })());
-    const poNumber = await nextPoNumber();
+    const autoPoNumber = await nextPoNumber();
+    // Use the client-provided PO number if given, otherwise use the auto-generated one
+    const poNumber = (po.client_po_number && po.client_po_number.trim())
+      ? po.client_po_number.trim()
+      : autoPoNumber;
     await stores_po.purchase_orders.setItem(String(poId), {
       id: poId,
-      po_number:     poNumber,
+      po_number:        poNumber,
+      auto_po_number:   autoPoNumber,  // keep auto number for internal reference
+      client_po_number: po.client_po_number ? po.client_po_number.trim() : '',
       party_id:      po.party_id || null,
       party_name:    po.party_name || '',
       party_gstin:   po.party_gstin || '',

@@ -1,5 +1,6 @@
   function r(n){return Number(n||0).toFixed(2);}
   function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
+  function fmtDate(d){if(!d)return '';const parts=d.split('-');if(parts.length===3&&parts[0].length===4){return`${parts[2]}-${parts[1]}-${parts[0]}`;}return d;}
   function words(amount){
     const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
     const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
@@ -158,7 +159,7 @@
     <div class="title">*** TAX INVOICE ***</div>
     <div class="inum">${inv.invoice_number}</div>
     <div class="imeta">
-      Date: ${inv.date}<br>
+      Date: ${fmtDate(inv.date)}<br>
       <span class="badge">${(inv.status||'UNPAID').toUpperCase()}</span>
     </div>
 
@@ -173,6 +174,21 @@
       ${inv.party_state?'State: '+inv.party_state:''}
     </div>
     <div style="font-size:8pt;margin-top:3px">Supply: ${isInter?'Inter-state (IGST)':'Intra-state (CGST+SGST)'}</div>
+
+    <div class="d"></div>
+
+    <!-- Ship To -->
+    <div class="plab">Ship To:</div>
+    ${(!inv.ship_to_same && inv.ship_to_name) ? `
+      <div class="pname">${inv.ship_to_name}</div>
+      <div class="pdet">
+        ${inv.ship_to_address?inv.ship_to_address+'<br>':''}
+        ${inv.ship_to_gstin?'GSTIN: '+inv.ship_to_gstin:''}
+      </div>
+    ` : `
+      <div class="pname">${inv.party_name||'Walk-in Customer'}</div>
+      <div class="pdet" style="font-style:italic;color:#888">Same as billing address</div>
+    `}
 
     <div class="d"></div>
 
