@@ -59,6 +59,15 @@ export default function CreateInvoice({ navigation, route }) {
   // ── Modal state ───────────────────────────────────────────────
   const [partyModal, setPartyModal] = useState(false);
   const [itemModal, setItemModal]   = useState(false);
+
+  // ── Date Picker Modal state ───────────────────────────────────
+  const [datePickerVisible, setDatePickerVisible]   = useState(false);
+  const [datePickerTarget, setDatePickerTarget]     = useState(null); // 'invoice' | 'due'
+  const [calYear, setCalYear]   = useState('');
+  const [calMonth, setCalMonth] = useState('');
+  const [calDay, setCalDay]     = useState('');
+  const [calViewYear, setCalViewYear]   = useState(new Date().getFullYear());
+  const [calViewMonth, setCalViewMonth] = useState(new Date().getMonth()); // 0-indexed
   const [editingIdx, setEditingIdx] = useState(null);
   const [draftItem, setDraftItem]   = useState(EMPTY_ITEM);
   const [itemTab, setItemTab]       = useState('inventory');
@@ -390,6 +399,68 @@ export default function CreateInvoice({ navigation, route }) {
     (it.hsn  || '').includes(itemSearch)
   );
 
+  // ── Date Picker helpers ───────────────────────────────────────
+  const MONTH_NAMES = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'];
+
+  const openDatePicker = (target) => {
+    const dateStr = target === 'invoice' ? invoiceDate : dueDate;
+    const parts   = (dateStr || '').split('-');
+    const y = parseInt(parts[0]) || new Date().getFullYear();
+    const m = parseInt(parts[1]) || new Date().getMonth() + 1;
+    const d = parseInt(parts[2]) || new Date().getDate();
+    setCalYear(String(y));
+    setCalMonth(String(m).padStart(2, '0'));
+    setCalDay(String(d).padStart(2, '0'));
+    setCalViewYear(y);
+    setCalViewMonth(m - 1);
+    setDatePickerTarget(target);
+    setDatePickerVisible(true);
+  };
+
+  const confirmDatePicker = () => {
+    const y = parseInt(calYear);
+    const m = parseInt(calMonth);
+    const d = parseInt(calDay);
+    if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2100) {
+      Alert.alert('Invalid Date', 'Please enter a valid date.');
+      return;
+    }
+    const formatted = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if (datePickerTarget === 'invoice') setInvoiceDate(formatted);
+    else setDueDate(formatted);
+    setDatePickerVisible(false);
+  };
+
+  const selectCalDay = (day) => {
+    setCalDay(String(day).padStart(2,'0'));
+    setCalYear(String(calViewYear));
+    setCalMonth(String(calViewMonth + 1).padStart(2,'0'));
+  };
+
+  const getDaysInMonth = (year, month0) => {
+    return new Date(year, month0 + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (year, month0) => {
+    return new Date(year, month0, 1).getDay(); // 0=Sun
+  };
+
+  const renderCalendarGrid = () => {
+    const daysInMonth  = getDaysInMonth(calViewYear, calViewMonth);
+    const firstDay     = getFirstDayOfMonth(calViewYear, calViewMonth);
+    const selectedDay  = parseInt(calDay);
+    const selectedMatch = parseInt(calMonth) === calViewMonth + 1 && parseInt(calYear) === calViewYear;
+    const cells = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    const rows = [];
+    for (let r = 0; r < Math.ceil(cells.length / 7); r++) {
+      rows.push(cells.slice(r * 7, r * 7 + 7));
+    }
+    return rows;
+  };
+
   // ─────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
@@ -455,23 +526,29 @@ export default function CreateInvoice({ navigation, route }) {
             <View style={styles.rowGap}>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Date</FieldLabel>
-                <TextInput
-                  style={styles.input}
-                  value={invoiceDate}
-                  onChangeText={setInvoiceDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={COLORS.textMute}
-                />
+                <TouchableOpacity
+                  style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                  onPress={() => openDatePicker('invoice')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: invoiceDate ? COLORS.text : COLORS.textMute, fontSize: 14 }}>
+                    {invoiceDate || 'YYYY-MM-DD'}
+                  </Text>
+                  <Icon name="calendar" size={15} color={COLORS.primary} />
+                </TouchableOpacity>
               </View>
               <View style={{ flex: 1 }}>
                 <FieldLabel>Due Date</FieldLabel>
-                <TextInput
-                  style={styles.input}
-                  value={dueDate}
-                  onChangeText={setDueDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={COLORS.textMute}
-                />
+                <TouchableOpacity
+                  style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                  onPress={() => openDatePicker('due')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: dueDate ? COLORS.text : COLORS.textMute, fontSize: 14 }}>
+                    {dueDate || 'YYYY-MM-DD'}
+                  </Text>
+                  <Icon name="calendar" size={15} color={COLORS.primary} />
+                </TouchableOpacity>
                 {/* Quick preset buttons for due date */}
                 <View style={{ flexDirection: 'row', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
                   {[
@@ -727,6 +804,157 @@ export default function CreateInvoice({ navigation, route }) {
           <View style={{ height: 80 }} />
         </ScrollView>
       </View>
+
+      {/* ══ Date Picker Modal ════════════════════════════════ */}
+      <Modal visible={datePickerVisible} animationType="fade" transparent presentationStyle="overFullScreen">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: COLORS.card || COLORS.white || '#fff', borderRadius: 18, width: '100%', maxWidth: 360, padding: 20, shadowColor:'#000', shadowOpacity:0.2, shadowRadius:16, elevation:10 }}>
+
+            {/* Header */}
+            <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}>
+                {datePickerTarget === 'invoice' ? 'Invoice Date' : 'Due Date'}
+              </Text>
+              <TouchableOpacity onPress={() => setDatePickerVisible(false)}>
+                <Icon name="x" size={18} color={COLORS.textMute} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Manual inputs: Day / Month / Year */}
+            <View style={{ flexDirection:'row', gap: 8, marginBottom: 16 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: COLORS.textMute, marginBottom: 4, fontWeight:'600' }}>DAY</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, color: COLORS.text, textAlign:'center', backgroundColor: COLORS.bg }}
+                  value={calDay}
+                  onChangeText={v => { setCalDay(v.replace(/[^0-9]/g,'')); }}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="DD"
+                  placeholderTextColor={COLORS.textMute}
+                />
+              </View>
+              <View style={{ flex: 2 }}>
+                <Text style={{ fontSize: 11, color: COLORS.textMute, marginBottom: 4, fontWeight:'600' }}>MONTH</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, color: COLORS.text, textAlign:'center', backgroundColor: COLORS.bg }}
+                  value={calMonth}
+                  onChangeText={v => {
+                    const val = v.replace(/[^0-9]/g,'');
+                    setCalMonth(val);
+                    const m = parseInt(val);
+                    if (m >= 1 && m <= 12) setCalViewMonth(m - 1);
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="MM"
+                  placeholderTextColor={COLORS.textMute}
+                />
+              </View>
+              <View style={{ flex: 2 }}>
+                <Text style={{ fontSize: 11, color: COLORS.textMute, marginBottom: 4, fontWeight:'600' }}>YEAR</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, color: COLORS.text, textAlign:'center', backgroundColor: COLORS.bg }}
+                  value={calYear}
+                  onChangeText={v => {
+                    const val = v.replace(/[^0-9]/g,'');
+                    setCalYear(val);
+                    const y = parseInt(val);
+                    if (y >= 1900 && y <= 2100) setCalViewYear(y);
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  placeholder="YYYY"
+                  placeholderTextColor={COLORS.textMute}
+                />
+              </View>
+            </View>
+
+            {/* Month / Year nav */}
+            <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom: 10 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  const prev = calViewMonth === 0 ? 11 : calViewMonth - 1;
+                  const prevYear = calViewMonth === 0 ? calViewYear - 1 : calViewYear;
+                  setCalViewMonth(prev);
+                  setCalViewYear(prevYear);
+                }}
+                style={{ padding: 6 }}
+              >
+                <Icon name="chevron-left" size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text }}>
+                {MONTH_NAMES[calViewMonth]} {calViewYear}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const next = calViewMonth === 11 ? 0 : calViewMonth + 1;
+                  const nextYear = calViewMonth === 11 ? calViewYear + 1 : calViewYear;
+                  setCalViewMonth(next);
+                  setCalViewYear(nextYear);
+                }}
+                style={{ padding: 6 }}
+              >
+                <Icon name="chevron-right" size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day-of-week headers */}
+            <View style={{ flexDirection:'row', marginBottom: 4 }}>
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                <Text key={d} style={{ flex:1, textAlign:'center', fontSize: 11, color: COLORS.textMute, fontWeight:'600' }}>{d}</Text>
+              ))}
+            </View>
+
+            {/* Calendar grid */}
+            {renderCalendarGrid().map((row, ri) => (
+              <View key={ri} style={{ flexDirection:'row', marginBottom: 2 }}>
+                {row.map((day, ci) => {
+                  const isSelected = day !== null
+                    && parseInt(calDay) === day
+                    && parseInt(calMonth) === calViewMonth + 1
+                    && parseInt(calYear) === calViewYear;
+                  return (
+                    <TouchableOpacity
+                      key={ci}
+                      style={{ flex: 1, alignItems:'center', justifyContent:'center', paddingVertical: 6,
+                        borderRadius: 20,
+                        backgroundColor: isSelected ? COLORS.primary : 'transparent',
+                      }}
+                      onPress={() => day && selectCalDay(day)}
+                      disabled={!day}
+                    >
+                      <Text style={{
+                        fontSize: 13,
+                        color: !day ? 'transparent' : isSelected ? '#fff' : COLORS.text,
+                        fontWeight: isSelected ? '700' : '400',
+                      }}>
+                        {day || ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+
+            {/* Action buttons */}
+            <View style={{ flexDirection:'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={() => setDatePickerVisible(false)}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems:'center' }}
+              >
+                <Text style={{ color: COLORS.textSub, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmDatePicker}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: COLORS.primary, alignItems:'center' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ══ Party Picker Modal ════════════════════════════════ */}
       <Modal visible={partyModal} animationType="slide" presentationStyle="pageSheet">
