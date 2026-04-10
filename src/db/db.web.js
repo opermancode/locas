@@ -91,6 +91,80 @@ async function getAll(store, filter = null) {
   return filter ? results.filter(filter) : results;
 }
 
+// ── IndexedDB → File migration ────────────────────────────────────
+// Users on versions before 1.12.1 stored everything in localforage/IndexedDB.
+// On first launch of the new version, we detect this and automatically migrate
+// all their data to the new JSON file system. Runs once, marks itself done.
+
+const MIGRATION_KEY = 'locas_idb_migrated_v1';
+
+export async function migrateFromIndexedDBIfNeeded() {
+  // Only relevant in Electron with the new file system
+  if (!isElectron()) return;
+
+  // Already migrated?
+  try {
+    const done = localStorage.getItem(MIGRATION_KEY);
+    if (done) return;
+  } catch {}
+
+  // Check if new file system already has data — if yes, nothing to migrate
+  try {
+    const hasNewData = await window.electronAPI.db.hasData();
+    if (hasNewData) {
+      localStorage.setItem(MIGRATION_KEY, '1');
+      return;
+    }
+  } catch { return; }
+
+  console.log('[migration] checking IndexedDB for legacy data...');
+
+  // Map of localforage storeName → target file store name
+  const STORE_MAP = [
+    { lfName: 'business_profile', fileName: 'business_profile' },
+    { lfName: 'parties',          fileName: 'parties'          },
+    { lfName: 'items',            fileName: 'items'            },
+    { lfName: 'invoices',         fileName: 'invoices'         },
+    { lfName: 'invoice_items',    fileName: 'invoice_items'    },
+    { lfName: 'payments',         fileName: 'payments'         },
+    { lfName: 'expenses',         fileName: 'expenses'         },
+    { lfName: 'quotations',       fileName: 'quotations'       },
+    { lfName: 'quotation_items',  fileName: 'quotation_items'  },
+    { lfName: 'purchase_orders',  fileName: 'purchase_orders'  },
+    { lfName: 'po_items',         fileName: 'po_items'         },
+    { lfName: 'meta',             fileName: 'meta'             },
+  ];
+
+  let totalRecords = 0;
+
+  try {
+    for (const { lfName, fileName } of STORE_MAP) {
+      const lfStore = localforage.createInstance({ name: 'locas', storeName: lfName });
+      const storeData = {};
+      await lfStore.iterate((value, key) => {
+        storeData[key] = value;
+        totalRecords++;
+      });
+      if (Object.keys(storeData).length > 0) {
+        await window.electronAPI.db.write(fileName, storeData);
+      }
+    }
+
+    if (totalRecords > 0) {
+      console.log(`[migration] moved ${totalRecords} records from IndexedDB to files`);
+    } else {
+      console.log('[migration] IndexedDB was empty, nothing to migrate');
+    }
+
+    // Mark done so this never runs again
+    localStorage.setItem(MIGRATION_KEY, '1');
+
+  } catch (e) {
+    console.error('[migration] failed:', e.message);
+    // Don't mark done — will retry next launch
+  }
+}
+
 export async function getDB() {
   const profile = await stores.profile.getItem('1');
   if (!profile) {

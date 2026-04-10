@@ -22,7 +22,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
-import { getDB, exportAllData } from './src/db';
+import { getDB, exportAllData, migrateFromIndexedDBIfNeeded } from './src/db';
 import { checkIfLoginRequired, getLicenseStatus } from './src/utils/licenseSystem';
 import { getCurrentUser, signOut } from './src/utils/firebase/firebaseAuth';
 import LoginScreen from './src/screens/Auth/LoginScreen';
@@ -85,6 +85,9 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       try {
+        // 0. Migrate legacy IndexedDB data → new JSON files (one-time, silent)
+        await migrateFromIndexedDBIfNeeded();
+
         // 1. Init DB
         await getDB();
 
@@ -273,49 +276,41 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Animated.View style={[styles.splash, { opacity: fadeOut }]}>
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
 
-        {/* Rings */}
-        <Animated.View style={[styles.ring, styles.ring1, { 
-          transform: [{ scale: ringScale }], 
-          opacity: ringOpacity 
-        }]} />
-        <Animated.View style={[styles.ring, styles.ring2, { 
-          transform: [{ scale: ringScale }], 
-          opacity: ringOpacity 
+        {/* Background grid lines — subtle depth */}
+        <View style={styles.gridOverlay} pointerEvents="none">
+          {[0,1,2,3,4].map(i => <View key={i} style={[styles.gridLine, { left: `${i * 25}%` }]} />)}
+        </View>
+
+        {/* Outer glow ring */}
+        <Animated.View style={[styles.glowRing, {
+          transform: [{ scale: ringScale }],
+          opacity: ringOpacity,
         }]} />
 
-        {/* Icon */}
-        <Animated.View style={[styles.iconWrap, { 
-          transform: [{ scale: iconScale }], 
-          opacity: iconOpacity 
+        {/* Center wordmark */}
+        <Animated.View style={[styles.centerBlock, {
+          transform: [{ scale: iconScale }],
+          opacity: iconOpacity,
         }]}>
-          <View style={styles.iconBox}>
-            <Image 
-              source={require('./assets/icon.png')} 
-              style={styles.iconImg} 
-              resizeMode="contain" 
-            />
-          </View>
-          <View style={styles.iconShadow} />
-        </Animated.View>
-
-        {/* Brand */}
-        <Animated.View style={[styles.brandWrap, { opacity: textOpacity }]}>
-          <Text style={styles.brandName}>LOCAS</Text>
-          <View style={styles.brandUnderline} />
+          {/* Locas. wordmark */}
+          <Text style={styles.wordmark}>
+            Locas<Text style={styles.wordmarkDot}>.</Text>
+          </Text>
+          {/* Thin accent bar */}
+          <View style={styles.accentBar} />
         </Animated.View>
 
         {/* Tagline */}
         <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
-          Smart Billing for India
+          Smart GST Billing for India
         </Animated.Text>
 
-        {/* Dots */}
-        <Animated.View style={[styles.bottom, { opacity: tagOpacity }]}>
-          <View style={styles.dot} />
-          <View style={[styles.dot, styles.dotMid]} />
-          <View style={styles.dot} />
+        {/* Bottom badge */}
+        <Animated.View style={[styles.bottomBadge, { opacity: tagOpacity }]}>
+          <View style={styles.badgeDot} />
+          <Text style={styles.badgeTxt}>by Neurader</Text>
         </Animated.View>
       </Animated.View>
     </GestureHandlerRootView>
@@ -323,97 +318,78 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  splash: { 
-    flex: 1, 
-    backgroundColor: LIGHT, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  splash: {
+    flex: 1,
+    backgroundColor: '#0C0C0D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  ring: { 
-    position: 'absolute', 
-    borderRadius: 999, 
-    backgroundColor: BRAND 
+
+  // subtle vertical grid lines
+  gridOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
   },
-  ring1: { 
-    width: 320, 
-    height: 320 
+  gridLine: {
+    position: 'absolute', top: 0, bottom: 0,
+    width: 1, backgroundColor: 'rgba(255,255,255,0.03)',
   },
-  ring2: { 
-    width: 220, 
-    height: 220, 
-    opacity: 0.08 
+
+  // large faint glow ring behind wordmark
+  glowRing: {
+    position: 'absolute',
+    width: 420, height: 420, borderRadius: 210,
+    backgroundColor: BRAND,
+    opacity: 0.07,
   },
-  iconWrap: { 
-    alignItems: 'center', 
-    marginBottom: 32 
+
+  // wordmark block
+  centerBlock: {
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  iconBox: { 
-    width: 100, 
-    height: 100, 
-    borderRadius: 28, 
-    backgroundColor: '#fff', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    shadowColor: BRAND, 
-    shadowOffset: { width: 0, height: 8 }, 
-    shadowOpacity: 0.25, 
-    shadowRadius: 20, 
-    elevation: 12 
+  wordmark: {
+    fontSize: 64,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -2,
   },
-  iconImg: { 
-    width: 72, 
-    height: 72 
+  wordmarkDot: {
+    color: BRAND,
   },
-  iconShadow: { 
-    position: 'absolute', 
-    bottom: -8, 
-    width: 60, 
-    height: 12, 
-    borderRadius: 30, 
-    backgroundColor: BRAND, 
-    opacity: 0.15 
+  accentBar: {
+    width: 32, height: 3, borderRadius: 2,
+    backgroundColor: BRAND,
+    marginTop: 10,
   },
-  brandWrap: { 
-    alignItems: 'center', 
-    marginBottom: 10 
+
+  tagline: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 2.5,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    marginBottom: 0,
   },
-  brandName: { 
-    fontSize: 38, 
-    fontWeight: '900', 
-    color: DARK, 
-    letterSpacing: 10 
+
+  bottomBadge: {
+    position: 'absolute', bottom: 44,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
   },
-  brandUnderline: { 
-    width: 40, 
-    height: 4, 
-    borderRadius: 2, 
-    backgroundColor: BRAND, 
-    marginTop: 6 
+  badgeDot: {
+    width: 5, height: 5, borderRadius: 3,
+    backgroundColor: BRAND, opacity: 0.7,
   },
-  tagline: { 
-    fontSize: 14, 
-    color: '#888', 
-    letterSpacing: 1.5, 
-    fontWeight: '500', 
-    marginBottom: 60 
+  badgeTxt: {
+    fontSize: 11, color: 'rgba(255,255,255,0.25)',
+    fontWeight: '500', letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
-  bottom: { 
-    position: 'absolute', 
-    bottom: 60, 
-    flexDirection: 'row', 
-    gap: 8, 
-    alignItems: 'center' 
-  },
-  dot: { 
-    width: 6, 
-    height: 6, 
-    borderRadius: 3, 
-    backgroundColor: BRAND, 
-    opacity: 0.3 
-  },
-  dotMid: { 
-    width: 10, 
-    height: 10, 
+
+  // keep dotMid for any remaining reference
+  dotMid: {
+    width: 10,
+    height: 10,
     borderRadius: 5, 
     opacity: 0.8 
   },

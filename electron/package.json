@@ -1,6 +1,6 @@
 {
   "name": "locas-desktop",
-  "version": "1.12.2",
+  "version": "1.11.9",
   "description": "Locas — Smart Billing for India (Desktop)",
   "main": "main.js",
   "private": true,
@@ -42,7 +42,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Locas",
-      "license": "license.txt"
+      "license": "license.txt",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
     }
   },
   "devDependencies": {
