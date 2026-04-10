@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { getProfile, saveProfile, exportAllData, importAllData, getInvoices, getQuotations, getPurchaseOrders } from '../../db';
 import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase/firebaseAuth';
+import { clearLicense } from '../../utils/licenseSystem';
 import { exportDataFile, getDataStorageInfo, pickDataFile, importDataFile } from '../../utils/dataFileManager';
 import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, RADIUS, FONTS } from '../../theme';
@@ -56,7 +57,8 @@ const TABS = [
   { key: 'about',     label: 'About',     icon: 'info'        },
 ];
 
-export default function SettingsScreen({ navigation }) {
+export default function SettingsScreen({ navigation, route }) {
+  const onLogout = route?.params?.onLogout;
   const insets = useSafeAreaInsets();
   const [form, setForm]           = useState(null);
   const [saving, setSaving]       = useState(false);
@@ -207,7 +209,16 @@ export default function SettingsScreen({ navigation }) {
 
   // ── Sign out ───────────────────────────────────────────────────
   const handleSignOut = () => {
-    const doSignOut = () => firebaseSignOut();
+    const doSignOut = async () => {
+      try {
+        await clearLicense();      // wipe local license + device cache
+        await firebaseSignOut();   // sign out of Firebase Auth
+      } catch (e) {
+        console.warn('Sign out error:', e.message);
+      } finally {
+        onLogout?.();              // tell App.js → setPhase('login')
+      }
+    };
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(
         'Sign Out?\n\nYou will be signed out of LOCAS. Make sure you have exported your data if needed.\n\nClick OK to sign out.'
@@ -388,37 +399,29 @@ export default function SettingsScreen({ navigation }) {
 
   // ── Manual check for update ─────────────────────────────────────
   const handleCheckUpdate = async () => {
-    if (!window.electronAPI) {
+    if (typeof window === 'undefined' || !window.electronAPI) {
       setUpdateStatus('error');
       setTimeout(() => setUpdateStatus(null), 3000);
       return;
     }
     setCheckingUpdate(true);
     setUpdateStatus(null);
-    try {
-      const res  = await fetch('https://locas-business.vercel.app/updates/latest.json');
-      const data = await res.json();
-      const currentVer = (require('../../../app.json')).expo?.version || '0.0.0';
-      const r = (data.version || '0').split('.').map(Number);
-      const c = (currentVer).split('.').map(Number);
-      let newer = false;
-      for (let i = 0; i < 3; i++) {
-        if ((r[i]||0) > (c[i]||0)) { newer = true; break; }
-        if ((r[i]||0) < (c[i]||0)) break;
-      }
-      if (newer) {
-        setUpdateStatus('found');
-        // Trigger download via main process by posting to renderer
-        // The main process already handles download — just inform user
-      } else {
-        setUpdateStatus('latest');
-      }
-    } catch {
-      setUpdateStatus('error');
-    } finally {
-      setCheckingUpdate(false);
-      setTimeout(() => setUpdateStatus(null), 5000);
-    }
+
+    // Listen for result (one-time)
+    const onLatest  = () => { setUpdateStatus('latest');  setCheckingUpdate(false); setTimeout(() => setUpdateStatus(null), 4000); };
+    const onFound   = () => { setUpdateStatus('found');   setCheckingUpdate(false); setTimeout(() => setUpdateStatus(null), 8000); };
+    const onError   = () => { setUpdateStatus('error');   setCheckingUpdate(false); setTimeout(() => setUpdateStatus(null), 4000); };
+
+    window.electronAPI.onUpdateAlreadyLatest(onLatest);
+    window.electronAPI.onUpdateDownloading(onFound);
+    window.electronAPI.onUpdateReady(onFound);
+    window.electronAPI.onUpdateError(onError);
+
+    // Tell main process to check + download
+    window.electronAPI.checkForUpdate();
+
+    // Safety timeout — if no event fires in 15s, clear spinner
+    setTimeout(() => setCheckingUpdate(false), 15000);
   };
 
   const formatLastBackup = (iso) => {

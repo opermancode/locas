@@ -216,15 +216,28 @@
     useFocusEffect(useCallback(() => { load(); }, []));
 
     useEffect(() => {
-      if (!window.electronAPI) return;
-      window.electronAPI.onUpdateDownloading(({ version }) => {
+      if (typeof window === 'undefined' || !window.electronAPI) return;
+
+      // Downloading started
+      window.electronAPI.onUpdateDownloading(({ version, notes }) => {
+        setUpdateInfo({ version, notes: notes || '' });
         setUpdateProgress(0);
       });
+
+      // Progress 0–100
       window.electronAPI.onUpdateProgress((pct) => {
         setUpdateProgress(pct);
       });
+
+      // Download complete — show persistent "Open & Install" banner
       window.electronAPI.onUpdateReady((data) => {
         setUpdateInfo(data);
+        setUpdateProgress(null); // hides progress bar, shows ready banner
+      });
+
+      // Installer file went missing (e.g. user deleted it) — reset to allow re-download
+      window.electronAPI.onUpdateInstallerMissing(() => {
+        setUpdateInfo(null);
         setUpdateProgress(null);
       });
     }, []);
@@ -319,35 +332,51 @@
             </View>
           )}
 
-          {/* Update downloading progress banner */}
-          {updateProgress !== null && (
-            <View style={s.updateProgressBanner}>
-              <Icon name="download" size={13} color="#1E40AF" />
-              <Text style={s.updateProgressTxt}>Downloading update... {updateProgress}%</Text>
-              <View style={s.updateProgressBar}>
+          {/* Update downloading — animated progress banner */}
+          {updateProgress !== null && updateInfo && (
+            <View style={s.updateDownloadBanner}>
+              <View style={s.updateDownloadTop}>
+                <View style={s.updateDownloadLeft}>
+                  <Icon name="download" size={13} color="#1D4ED8" />
+                  <Text style={s.updateDownloadTitle}>
+                    Downloading Locas {updateInfo.version}...
+                  </Text>
+                </View>
+                <Text style={s.updateDownloadPct}>{updateProgress}%</Text>
+              </View>
+              {/* Full-width animated green progress bar */}
+              <View style={s.updateProgressTrack}>
                 <View style={[s.updateProgressFill, { width: `${updateProgress}%` }]} />
               </View>
+              <Text style={s.updateDownloadSub}>
+                Saving to your Downloads folder. Do not close the app.
+              </Text>
             </View>
           )}
 
-          {/* Update ready banner */}
+          {/* Update ready — persistent green banner until user installs */}
           {updateInfo && updateProgress === null && (
             <TouchableOpacity
               style={s.updateReadyBanner}
               onPress={() => window.electronAPI?.installUpdate()}
-              activeOpacity={0.85}
+              activeOpacity={0.88}
             >
               <View style={s.updateReadyLeft}>
-                <Icon name="download" size={14} color="#fff" />
-                <View>
-                  <Text style={s.updateReadyTitle}>Locas {updateInfo.version} is ready</Text>
-                  {updateInfo.notes && (
-                    <Text style={s.updateReadyNotes} numberOfLines={1}>{updateInfo.notes}</Text>
-                  )}
+                <View style={s.updateReadyIconWrap}>
+                  <Icon name="package" size={16} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.updateReadyTitle}>
+                    Locas {updateInfo.version} — Ready to Install
+                  </Text>
+                  <Text style={s.updateReadyHint}>
+                    Tap to open the installer. Follow the steps to complete the update.
+                  </Text>
                 </View>
               </View>
               <View style={s.updateReadyBtn}>
-                <Text style={s.updateReadyBtnTxt}>Install & Restart →</Text>
+                <Icon name="arrow-right" size={13} color="#fff" />
+                <Text style={s.updateReadyBtnTxt}>Open &amp; Install</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -730,16 +759,21 @@
     partyAvatarTxt: { fontSize:12, fontWeight:'700', color:BRAND },
 
     // Update banners
-    updateProgressBanner: { flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'#EFF6FF', paddingHorizontal:14, paddingVertical:8, borderBottomWidth:1, borderBottomColor:'#BFDBFE' },
-    updateProgressTxt:    { fontSize:12, color:'#1E40AF', fontWeight:FONTS.medium, flex:1 },
-    updateProgressBar:    { width:80, height:4, backgroundColor:'#BFDBFE', borderRadius:2, overflow:'hidden' },
-    updateProgressFill:   { height:'100%', backgroundColor:'#3B82F6', borderRadius:2 },
-    updateReadyBanner:    { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:'#16A34A', paddingHorizontal:14, paddingVertical:9, borderBottomWidth:1, borderBottomColor:'#15803D' },
-    updateReadyLeft:      { flexDirection:'row', alignItems:'center', gap:8, flex:1 },
-    updateReadyTitle:     { fontSize:12, fontWeight:FONTS.bold, color:'#fff' },
-    updateReadyNotes:     { fontSize:10, color:'rgba(255,255,255,0.75)', marginTop:1 },
-    updateReadyBtn:       { backgroundColor:'rgba(0,0,0,0.2)', paddingHorizontal:10, paddingVertical:4, borderRadius:6 },
-    updateReadyBtnTxt:    { fontSize:11, fontWeight:FONTS.bold, color:'#fff' },
+    updateDownloadBanner:  { backgroundColor:'#EFF6FF', paddingHorizontal:14, paddingTop:9, paddingBottom:8, borderBottomWidth:1, borderBottomColor:'#BFDBFE' },
+    updateDownloadTop:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:6 },
+    updateDownloadLeft:    { flexDirection:'row', alignItems:'center', gap:7 },
+    updateDownloadTitle:   { fontSize:12, fontWeight:FONTS.bold, color:'#1D4ED8' },
+    updateDownloadPct:     { fontSize:12, fontWeight:FONTS.black, color:'#1D4ED8' },
+    updateProgressTrack:   { height:6, backgroundColor:'#BFDBFE', borderRadius:3, overflow:'hidden', marginBottom:5 },
+    updateProgressFill:    { height:6, backgroundColor:'#16A34A', borderRadius:3 },
+    updateDownloadSub:     { fontSize:10, color:'#3B82F6', opacity:0.8 },
+    updateReadyBanner:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:'#16A34A', paddingHorizontal:14, paddingVertical:10, borderBottomWidth:1, borderBottomColor:'#15803D', gap:10 },
+    updateReadyLeft:       { flexDirection:'row', alignItems:'center', gap:10, flex:1 },
+    updateReadyIconWrap:   { width:32, height:32, borderRadius:16, backgroundColor:'rgba(255,255,255,0.2)', alignItems:'center', justifyContent:'center' },
+    updateReadyTitle:      { fontSize:12, fontWeight:FONTS.bold, color:'#fff', marginBottom:2 },
+    updateReadyHint:       { fontSize:10, color:'rgba(255,255,255,0.8)' },
+    updateReadyBtn:        { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(0,0,0,0.22)', paddingHorizontal:12, paddingVertical:7, borderRadius:8 },
+    updateReadyBtnTxt:     { fontSize:11, fontWeight:FONTS.bold, color:'#fff' },
 
     // Search modal
     searchOverlay:     { flex:1, backgroundColor:'rgba(0,0,0,0.5)' },
