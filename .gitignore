@@ -4,7 +4,7 @@ package-lock.json
 yarn.lock
 
 # Expo local state
-.expo/
+.expo/ 
 
 # OS files
 .DS_Store
