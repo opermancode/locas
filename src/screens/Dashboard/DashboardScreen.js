@@ -1,4 +1,4 @@
-  import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
   import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     Animated, Platform, Dimensions, ActivityIndicator,
@@ -218,28 +218,43 @@
     useEffect(() => {
       if (typeof window === 'undefined' || !window.electronAPI) return;
 
-      // Downloading started
-      window.electronAPI.onUpdateDownloading(({ version, notes }) => {
+      // ── Restore state that may have fired before this component mounted ──
+      // e.g. auto-update starts 10s after app launch, but dashboard mounts after login
+      const cached = window.electronAPI.getUpdateState?.();
+      if (cached) {
+        if (cached.status === 'ready') {
+          setUpdateInfo(cached);
+          setUpdateProgress(null);
+        } else if (cached.status === 'downloading') {
+          setUpdateInfo({ version: cached.version, notes: cached.notes || '' });
+          setUpdateProgress(cached.progress ?? 0);
+        }
+      }
+
+      // ── Register live listeners and collect cleanup fns ──
+      const cleanups = [];
+
+      cleanups.push(window.electronAPI.onUpdateDownloading(({ version, notes }) => {
         setUpdateInfo({ version, notes: notes || '' });
         setUpdateProgress(0);
-      });
+      }));
 
-      // Progress 0–100
-      window.electronAPI.onUpdateProgress((pct) => {
+      cleanups.push(window.electronAPI.onUpdateProgress((pct) => {
         setUpdateProgress(pct);
-      });
+      }));
 
-      // Download complete — show persistent "Open & Install" banner
-      window.electronAPI.onUpdateReady((data) => {
+      cleanups.push(window.electronAPI.onUpdateReady((data) => {
         setUpdateInfo(data);
-        setUpdateProgress(null); // hides progress bar, shows ready banner
-      });
+        setUpdateProgress(null);
+      }));
 
-      // Installer file went missing (e.g. user deleted it) — reset to allow re-download
-      window.electronAPI.onUpdateInstallerMissing(() => {
+      cleanups.push(window.electronAPI.onUpdateInstallerMissing(() => {
         setUpdateInfo(null);
         setUpdateProgress(null);
-      });
+      }));
+
+      // ── Cleanup on unmount so listeners don't accumulate ──
+      return () => { cleanups.forEach(fn => fn && fn()); };
     }, []);
 
     const handleSearch = (q) => {
@@ -274,7 +289,7 @@
     const QUICK = [
       { label:'New Invoice',   icon:'file-plus',    color:BRAND,     bg:'#FFF0E6', go:() => navigation.navigate('InvoicesTab',   { screen:'CreateInvoice' }) },
       { label:'New Quotation', icon:'clipboard',    color:'#8B5CF6', bg:'#F5F3FF', go:() => navigation.navigate('QuotationsTab', { screen:'CreateQuotation' }) },
-      { label:'New PO',        icon:'shopping-bag', color:'#10B981', bg:'#ECFDF5', go:() => navigation.navigate('More',          { screen:'PurchaseOrders' }) },
+      { label:'New PO',        icon:'shopping-bag', color:'#10B981', bg:'#ECFDF5', go:() => navigation.navigate('More',          { screen:'CreatePO' }) },
       { label:'Add Party',     icon:'user-plus',    color:'#3B82F6', bg:'#EFF6FF', go:() => navigation.navigate('PartiesTab') },
       { label:'Add Expense',   icon:'minus-circle', color:'#EF4444', bg:'#FEF2F2', go:() => navigation.navigate('More',          { screen:'Expenses' }) },
       { label:'Inventory',     icon:'box',          color:'#6366F1', bg:'#EEF2FF', go:() => navigation.navigate('Inventory') },

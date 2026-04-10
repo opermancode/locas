@@ -10,7 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getProfile, saveProfile, exportAllData, importAllData, getInvoices, getQuotations, getPurchaseOrders } from '../../db';
 import { signOut as firebaseSignOut, getCurrentUser } from '../../utils/firebase/firebaseAuth';
 import { clearLicense } from '../../utils/licenseSystem';
-import { exportDataFile, getDataStorageInfo, pickDataFile, importDataFile } from '../../utils/dataFileManager';
+import { exportDataFile, getDataStorageInfo, pickDataFile, importDataFile, openDataFolder } from '../../utils/dataFileManager';
 import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, RADIUS, FONTS } from '../../theme';
 
@@ -84,6 +84,8 @@ export default function SettingsScreen({ navigation, route }) {
   const [importingData, setImportingData] = useState(false);
   const [exportFrom, setExportFrom]       = useState('');
   const [exportTo, setExportTo]           = useState('');
+  const [exportPassword, setExportPassword] = useState('');
+  const [importPassword, setImportPassword] = useState('');
   const [deleteFrom, setDeleteFrom]       = useState('');
   const [deleteTo, setDeleteTo]           = useState('');
   const [deletingData, setDeletingData]   = useState(false);
@@ -236,43 +238,37 @@ export default function SettingsScreen({ navigation, route }) {
     }
   };
 
-  // ── Data export with date filter ───────────────────────────────
+  // ── Data export — encrypted .lbk (Electron) or JSON (browser) ──
   const handleExportFiltered = async () => {
+    const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.db;
+
+    if (IS_ELECTRON && !exportPassword.trim()) {
+      Alert.alert('Password Required', 'Enter your account password to encrypt the backup. Only you can open it on the new device.');
+      return;
+    }
+
     setExportingData(true);
     try {
-      const allData = JSON.parse(await exportAllData());
-      let filtered = { ...allData };
+      const email = getCurrentUser()?.email || '';
+      const result = await exportDataFile({
+        email,
+        password: exportPassword.trim(),
+        fromDate: exportFrom || null,
+        toDate:   exportTo   || null,
+      });
 
-      if (exportFrom || exportTo) {
-        const from = exportFrom || '0000-00-00';
-        const to   = exportTo   || '9999-99-99';
-        filtered.invoices = (allData.invoices || []).filter(i => i.date >= from && i.date <= to);
-        filtered.expenses = (allData.expenses || []).filter(e => e.date >= from && e.date <= to);
-        filtered.quotations = (allData.quotations || []).filter(q => q.date >= from && q.date <= to);
+      if (result.success === false && result.reason === 'canceled') return;
 
-        // Keep only line items for filtered invoices
-        const invIds = new Set(filtered.invoices.map(i => i.id));
-        filtered.invoice_items = (allData.invoice_items || []).filter(i => invIds.has(i.invoice_id));
-        filtered.payments      = (allData.payments || []).filter(p => invIds.has(p.invoice_id));
-      }
-
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1, 2)}-${pad(now.getDate(), 2)}`;
-      const suffix  = exportFrom ? `_${exportFrom}_to_${exportTo || 'now'}` : '';
-      const filename = `LOCAS_Export${suffix}_${dateStr}.json`;
-      const content  = JSON.stringify(filtered, null, 2);
-
-      if (Platform.OS === 'web') {
-        const blob = new Blob([content], { type: 'application/json' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        window.alert(`Exported: ${filename}`);
+      if (result.success) {
+        if (IS_ELECTRON) {
+          Alert.alert('Backup Saved ✓',
+            `Your encrypted backup has been saved.\n\nOnly you (${email}) can restore it — it is locked with your password.`);
+          setExportPassword('');
+        } else {
+          window.alert(`Exported: ${result.filename}`);
+        }
       } else {
-        Alert.alert('Exported', `Saved as ${filename}`);
+        Alert.alert('Export Failed', result.reason || 'Unknown error');
       }
     } catch (e) {
       Alert.alert('Export failed', e.message);
@@ -351,47 +347,52 @@ export default function SettingsScreen({ navigation, route }) {
     }
   };
 
-  // ── Import JSON backup ─────────────────────────────────────────
+  // ── Import .lbk backup (Electron) or JSON (browser) ───────────
   const handleImportJSON = async () => {
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm(
-        'Import Backup?\n\nThis will REPLACE all current data with the backup file contents. Export your current data first if needed.\n\nContinue?'
-      );
-      if (!confirmed) return;
-    } else {
-      await new Promise((resolve) => {
+    const IS_ELECTRON = typeof window !== 'undefined' && !!window.electronAPI?.db;
+
+    if (IS_ELECTRON && !importPassword.trim()) {
+      Alert.alert('Password Required', 'Enter your account password to decrypt the backup file.');
+      return;
+    }
+
+    // Confirm before wiping current data
+    const confirmed = await new Promise((resolve) => {
+      if (Platform.OS === 'web') {
+        resolve(window.confirm('Import Backup?\n\nThis will REPLACE all current data. Export first if needed.\n\nContinue?'));
+      } else {
         Alert.alert(
           'Import Backup',
           'This will REPLACE all current data with the backup file. Export your current data first if needed.',
-          [{ text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-           { text: 'Import', style: 'destructive', onPress: () => resolve(true) }]
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Import', style: 'destructive', onPress: () => resolve(true) },
+          ]
         );
-      });
-    }
+      }
+    });
+    if (!confirmed) return;
+
     setImportingData(true);
     try {
-      if (Platform.OS === 'web') {
-        // Web: file picker
-        const result = await pickDataFile();
-        if (!result.success) {
-          if (result.error && result.error !== 'cancelled') window.alert('Import failed: ' + result.error);
-          return;
-        }
-        await importDataFile(result.uri || result.path || '');
-        window.alert('Import successful! Data has been restored. Relaunch the app to see updated data.');
+      const result = await importDataFile(IS_ELECTRON ? importPassword.trim() : null);
+
+      if (!result || (result.reason === 'canceled')) return;
+
+      if (result.success) {
+        setImportPassword('');
+        Alert.alert('Restored ✓',
+          `All data has been restored for ${result.ownerEmail || 'your account'}.\n\nPlease restart Locas to see your data.`);
+      } else if (result.reason === 'wrong_password') {
+        Alert.alert('Wrong Password', result.message || 'Incorrect password. This backup file belongs to a different account or the password is wrong.');
+      } else if (result.reason === 'invalid_file') {
+        Alert.alert('Invalid File', result.message || 'This is not a valid Locas backup file.');
       } else {
-        const result = await pickDataFile();
-        if (!result.success) {
-          if (result.error && result.error !== 'cancelled') Alert.alert('Error', result.error);
-          return;
-        }
-        await importDataFile(result.uri || result.path || '');
-        Alert.alert('Import Successful', 'Data has been restored. Restart the app to see updated data.');
+        Alert.alert('Import Failed', result.message || 'Unknown error occurred.');
       }
     } catch (e) {
       console.error('Import error:', e);
-      const msg = e.message || 'Import failed';
-      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Import Failed', msg);
+      Alert.alert('Import Failed', e.message);
     } finally {
       setImportingData(false);
     }
@@ -407,21 +408,31 @@ export default function SettingsScreen({ navigation, route }) {
     setCheckingUpdate(true);
     setUpdateStatus(null);
 
-    // Listen for result (one-time)
-    const onLatest  = () => { setUpdateStatus('latest');  setCheckingUpdate(false); setTimeout(() => setUpdateStatus(null), 4000); };
-    const onFound   = () => { setUpdateStatus('found');   setCheckingUpdate(false); setTimeout(() => setUpdateStatus(null), 8000); };
-    const onError   = () => { setUpdateStatus('error');   setCheckingUpdate(false); setTimeout(() => setUpdateStatus(null), 4000); };
+    // Collect cleanup fns so we can remove ALL listeners once the first result arrives.
+    // Without this, every button click stacks another set of listeners — causing
+    // duplicate events and false "check internet" errors.
+    const cleanups = [];
+    let settled = false;
 
-    window.electronAPI.onUpdateAlreadyLatest(onLatest);
-    window.electronAPI.onUpdateDownloading(onFound);
-    window.electronAPI.onUpdateReady(onFound);
-    window.electronAPI.onUpdateError(onError);
+    const done = (status) => {
+      if (settled) return; // ignore subsequent events from stale listeners
+      settled = true;
+      setUpdateStatus(status);
+      setCheckingUpdate(false);
+      setTimeout(() => setUpdateStatus(null), status === 'found' ? 8000 : 4000);
+      cleanups.forEach(fn => fn && fn()); // remove all registered listeners
+    };
+
+    cleanups.push(window.electronAPI.onUpdateAlreadyLatest(() => done('latest')));
+    cleanups.push(window.electronAPI.onUpdateDownloading(() => done('found')));
+    cleanups.push(window.electronAPI.onUpdateReady(() => done('found')));
+    cleanups.push(window.electronAPI.onUpdateError(() => done('error')));
 
     // Tell main process to check + download
     window.electronAPI.checkForUpdate();
 
-    // Safety timeout — if no event fires in 15s, clear spinner
-    setTimeout(() => setCheckingUpdate(false), 15000);
+    // Safety timeout — if no event fires in 15s, clear spinner and listeners
+    setTimeout(() => done('error'), 15000);
   };
 
   const formatLastBackup = (iso) => {
@@ -808,7 +819,7 @@ export default function SettingsScreen({ navigation, route }) {
             <SH icon="download" title="Export Data" />
             <Card>
               <Text style={s.cardDesc}>
-                Export your data as a JSON file. Use date filters to export only a specific period. Leave blank to export everything.
+                Export all your data as an encrypted backup file (.lbk). Only you can restore it — it is locked with your password. Use date filters to export a specific period only.
               </Text>
               <View style={s.row}>
                 <View style={{flex:1}}>
@@ -823,6 +834,17 @@ export default function SettingsScreen({ navigation, route }) {
                   </FL>
                 </View>
               </View>
+              <FL label="Your Account Password *">
+                <TextInput
+                  style={s.input}
+                  value={exportPassword}
+                  onChangeText={setExportPassword}
+                  placeholder="Enter your login password to encrypt the file"
+                  placeholderTextColor={COLORS.textMute}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </FL>
               <TouchableOpacity
                 style={[s.actionBtn, s.actionBtnPrimary, exportingData && {opacity:0.5}]}
                 onPress={handleExportFiltered}
@@ -830,21 +852,32 @@ export default function SettingsScreen({ navigation, route }) {
               >
                 {exportingData
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <><Icon name="download" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Export JSON Backup</Text></>
+                  : <><Icon name="download" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Export Encrypted Backup (.lbk)</Text></>
                 }
               </TouchableOpacity>
-              <Text style={[s.hint, {marginTop:6}]}>File downloads to your Downloads folder. Use this to backup or transfer your data.</Text>
+              <Text style={[s.hint, {marginTop:6}]}>Backup saves to your Downloads folder. The file is encrypted — only you can restore it with your password.</Text>
             </Card>
 
-            <SH icon="upload" title="Import Data from JSON" />
+            <SH icon="upload" title="Restore from Backup" />
             <Card>
               <Text style={s.cardDesc}>
-                Restore data from a previously exported LOCAS JSON backup file. Use this when switching to a new device.
+                Restore from a .lbk backup file. Select the file and enter the password you used when exporting. Use this when switching to a new device.
               </Text>
               <View style={s.infoBox}>
                 <Icon name="info" size={13} color={COLORS.info} />
-                <Text style={s.infoTxt}> This will replace ALL current data with the backup file contents. Export your current data first if needed.</Text>
+                <Text style={s.infoTxt}> This will replace ALL current data with the backup. Export first if needed.</Text>
               </View>
+              <FL label="Your Account Password *">
+                <TextInput
+                  style={s.input}
+                  value={importPassword}
+                  onChangeText={setImportPassword}
+                  placeholder="Password you used when exporting"
+                  placeholderTextColor={COLORS.textMute}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </FL>
               <TouchableOpacity
                 style={[s.actionBtn, s.actionBtnSecondary, importingData && {opacity:0.5}]}
                 onPress={handleImportJSON}
@@ -852,11 +885,18 @@ export default function SettingsScreen({ navigation, route }) {
               >
                 {importingData
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <><Icon name="upload" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Select JSON Backup File</Text></>
+                  : <><Icon name="upload" size={14} color={COLORS.primary} /><Text style={[s.actionBtnTxt, {color:COLORS.primary}]}> Select Backup File (.lbk)</Text></>
                 }
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.actionBtn, {backgroundColor: COLORS.bg, borderWidth:1, borderColor: COLORS.border, marginTop:8}]}
+                onPress={() => openDataFolder()}
+              >
+                <Icon name="folder" size={14} color={COLORS.textSub} />
+                <Text style={[s.actionBtnTxt, {color: COLORS.textSub}]}> Open Data Folder</Text>
+              </TouchableOpacity>
               <Text style={[s.hint, {marginTop:6}]}>
-                Tip: After importing on a new device, contact support to release your old device slot from the license.
+                Opens the .locas-data folder where your data files are stored next to Locas.exe.
               </Text>
             </Card>
 

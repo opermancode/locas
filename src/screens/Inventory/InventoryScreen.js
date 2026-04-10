@@ -106,6 +106,7 @@ export default function InventoryScreen({ navigation, route }) {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkSaving,  setBulkSaving]  = useState(false);
   const [bulkDone,    setBulkDone]    = useState(null);
+  const [conflictChoices, setConflictChoices] = useState({});
   const [typeFilter, setTypeFilter]   = useState('all');
 
   const load = async () => {
@@ -232,15 +233,85 @@ export default function InventoryScreen({ navigation, route }) {
     document.body.appendChild(input); input.click(); document.body.removeChild(input);
   };
 
+  // ── Item conflict detection ───────────────────────────────────
+  // Same name + same HSN → conflict (ask user)
+  // Same name + different HSN → NOT a conflict → add as new item directly
+  // Same name + no HSN on either side → conflict (ask user, can't distinguish)
+  // Different name → not a conflict → add directly
+  const findItemConflict = (item) => {
+    const nameNorm = (item.name || '').trim().toLowerCase();
+    const hsnNew   = (item.hsn  || '').trim();
+    return items.find(e => {
+      if ((e.name || '').trim().toLowerCase() !== nameNorm) return false;
+      const hsnExisting = (e.hsn || '').trim();
+      // Both have HSN but they differ → different item, not a conflict
+      if (hsnNew && hsnExisting && hsnNew !== hsnExisting) return false;
+      // Same name + same HSN, OR same name + at least one side has no HSN → conflict
+      return true;
+    }) || null;
+  };
+
+  // conflictChoices[i] = { action: 'update'|'add'|'skip', stockMode: 'add'|'replace' }
+  const getChoice = (i) => conflictChoices[i] || { action: 'skip', stockMode: 'add' };
+
+  const setAction    = (i, action)    => setConflictChoices(prev => ({ ...prev, [i]: { ...getChoice(i), action } }));
+  const setStockMode = (i, stockMode) => setConflictChoices(prev => ({ ...prev, [i]: { ...getChoice(i), stockMode } }));
+
   const handleBulkSave = async () => {
     if (!bulkParsed?.length) return;
     setBulkSaving(true);
-    let added = 0, failed = 0;
-    for (const item of bulkParsed) {
-      try { await saveItem(item); added++; } catch { failed++; }
+
+    let added = 0, updated = 0, skipped = 0, failed = 0;
+
+    for (let i = 0; i < bulkParsed.length; i++) {
+      const item = bulkParsed[i];
+      try {
+        const existing = findItemConflict(item);
+        if (existing) {
+          const { action, stockMode } = getChoice(i);
+          if (action === 'update') {
+            // Stock: user chooses add-to-existing or replace
+            const uploadStock = item.stock != null && item.stock !== '' ? parseFloat(item.stock) || 0 : null;
+            const newStock = uploadStock === null
+              ? existing.stock || 0                                        // no stock in upload → keep existing
+              : stockMode === 'add'
+                ? (existing.stock || 0) + uploadStock                      // add to existing
+                : uploadStock;                                              // replace
+            // All other fields: take upload value if provided, else keep existing
+            await saveItem({
+              ...existing,
+              name:          item.name          || existing.name,
+              hsn:           item.hsn           || existing.hsn,
+              code:          item.code          || existing.code,
+              unit:          item.unit          || existing.unit,
+              sale_price:    item.sale_price    != null ? item.sale_price    : existing.sale_price,
+              cost_price:    item.cost_price    != null ? item.cost_price    : existing.cost_price,
+              purchase_price:item.purchase_price!= null ? item.purchase_price: existing.purchase_price,
+              gst_rate:      item.gst_rate      != null ? item.gst_rate      : existing.gst_rate,
+              min_stock:     item.min_stock      != null ? item.min_stock     : existing.min_stock,
+              description:   item.description   || existing.description,
+              stock: newStock,
+            });
+            updated++;
+          } else if (action === 'add') {
+            // Brand new item — strip id so a new one is assigned
+            const { id: _, ...rest } = item;
+            await saveItem(rest);
+            added++;
+          } else {
+            skipped++;
+          }
+        } else {
+          // No conflict — add directly
+          await saveItem(item);
+          added++;
+        }
+      } catch { failed++; }
     }
-    setBulkDone({ added, failed });
+
+    setBulkDone({ added, updated, skipped, failed });
     setBulkParsed(null);
+    setConflictChoices({});
     setBulkSaving(false);
     load();
   };
@@ -514,25 +585,82 @@ export default function InventoryScreen({ navigation, route }) {
                 </View>
                 <View style={s.previewTable}>
                   <View style={s.previewThead}>
-                    {['Name', 'Type', 'Sale ₹', 'GST%', 'Unit', 'Stock'].map((h, i) => (
-                      <Text key={h} style={[s.previewTh, i === 0 && { flex: 2 }]}>{h}</Text>
-                    ))}
+                    <Text style={[s.previewTh,{flex:2}]}>Name</Text>
+                    <Text style={s.previewTh}>HSN</Text>
+                    <Text style={s.previewTh}>Stock</Text>
+                    <Text style={[s.previewTh,{flex:3}]}>Action</Text>
                   </View>
-                  {bulkParsed.slice(0, 8).map((item, i) => (
-                    <View key={i} style={[s.previewTrow, i % 2 === 0 && { backgroundColor: '#FAFBFF' }]}>
-                      <Text style={[s.previewTd, { flex: 2 }]} numberOfLines={1}>{item.name}</Text>
-                      <View style={[s.typePill, item.item_type === 'service' ? { backgroundColor: '#E0F2FE' } : { backgroundColor: COLORS.primaryLight }]}>
-                        <Text style={[s.typePillTxt, { color: item.item_type === 'service' ? '#0369A1' : COLORS.primary, fontSize: 8 }]}>{item.item_type === 'service' ? 'Svc' : 'Prd'}</Text>
+                  {bulkParsed.map((item, i) => {
+                    const conflict  = findItemConflict(item);
+                    const { action, stockMode } = getChoice(i);
+                    return (
+                      <View key={i}>
+                        <View style={[s.previewTrow, i%2===0&&{backgroundColor:'#FAFBFF'}, conflict&&{backgroundColor:'#FFFBEB'}]}>
+                          <View style={{flex:2,paddingHorizontal:4}}>
+                            <Text style={[s.previewTd,{paddingHorizontal:0}]} numberOfLines={1}>{item.name}</Text>
+                            {conflict
+                              ? <Text style={{fontSize:9,color:'#92400E'}}>Same item found — choose action</Text>
+                              : null
+                            }
+                          </View>
+                          <Text style={s.previewTd} numberOfLines={1}>{item.hsn||'—'}</Text>
+                          <Text style={s.previewTd} numberOfLines={1}>{item.stock != null ? item.stock : '—'}</Text>
+                          <View style={{flex:3,paddingHorizontal:4}}>
+                            {conflict ? (
+                              <View style={{flexDirection:'row',gap:4,flexWrap:'wrap'}}>
+                                {['update','add','skip'].map(opt => (
+                                  <TouchableOpacity
+                                    key={opt}
+                                    onPress={() => setAction(i, opt)}
+                                    style={{
+                                      paddingHorizontal:5,paddingVertical:3,borderRadius:4,
+                                      backgroundColor:action===opt?(opt==='update'?'#DBEAFE':opt==='add'?'#D1FAE5':'#F3F4F6'):'#F9FAFB',
+                                      borderWidth:1,
+                                      borderColor:action===opt?(opt==='update'?'#93C5FD':opt==='add'?'#6EE7B7':'#D1D5DB'):'#E5E7EB',
+                                    }}
+                                  >
+                                    <Text style={{fontSize:9,fontWeight:'700',color:action===opt?(opt==='update'?'#1E40AF':opt==='add'?'#065F46':'#6B7280'):'#9CA3AF'}}>
+                                      {opt==='update'?'Update':opt==='add'?'Add New':'Skip'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            ) : (
+                              <View style={{backgroundColor:'#D1FAE5',paddingHorizontal:6,paddingVertical:3,borderRadius:4,alignSelf:'flex-start'}}>
+                                <Text style={{fontSize:9,fontWeight:'700',color:'#065F46'}}>New</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                        {/* Stock mode row — only shown when action=update and upload has stock */}
+                        {conflict && action === 'update' && item.stock != null && item.stock !== '' && (
+                          <View style={{backgroundColor:'#EFF6FF',paddingHorizontal:10,paddingVertical:7,borderBottomWidth:1,borderBottomColor:'#BFDBFE',flexDirection:'row',alignItems:'center',gap:8}}>
+                            <Text style={{fontSize:10,color:'#1E40AF',flex:1}}>
+                              Current stock: {conflict.stock||0} · Upload: {item.stock}
+                            </Text>
+                            {['add','replace'].map(opt => (
+                              <TouchableOpacity
+                                key={opt}
+                                onPress={() => setStockMode(i, opt)}
+                                style={{
+                                  paddingHorizontal:7,paddingVertical:4,borderRadius:4,
+                                  backgroundColor:stockMode===opt?'#1E40AF':'#fff',
+                                  borderWidth:1,borderColor:stockMode===opt?'#1E40AF':'#93C5FD',
+                                }}
+                              >
+                                <Text style={{fontSize:9,fontWeight:'700',color:stockMode===opt?'#fff':'#1E40AF'}}>
+                                  {opt==='add'
+                                    ? `+ Add (= ${(conflict.stock||0) + (parseFloat(item.stock)||0)})`
+                                    : `Replace (= ${parseFloat(item.stock)||0})`
+                                  }
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
                       </View>
-                      <Text style={s.previewTd} numberOfLines={1}>₹{item.sale_price}</Text>
-                      <Text style={s.previewTd} numberOfLines={1}>{item.gst_rate}%</Text>
-                      <Text style={s.previewTd} numberOfLines={1}>{item.unit}</Text>
-                      <Text style={s.previewTd} numberOfLines={1}>{item.item_type === 'service' ? '—' : item.stock}</Text>
-                    </View>
-                  ))}
-                  {bulkParsed.length > 8 && (
-                    <View style={s.previewMore}><Text style={s.previewMoreTxt}>+{bulkParsed.length - 8} more items</Text></View>
-                  )}
+                    );
+                  })}
                 </View>
                 <TouchableOpacity style={[s.importBtn, bulkSaving && { opacity: 0.5 }]} onPress={handleBulkSave} disabled={bulkSaving}>
                   {bulkSaving
@@ -546,7 +674,12 @@ export default function InventoryScreen({ navigation, route }) {
               <View style={s.doneCard}>
                 <View style={s.doneIcon}><Icon name="check-circle" size={32} color={COLORS.success} /></View>
                 <Text style={s.doneTitle}>Import Complete!</Text>
-                <Text style={s.doneSub}>{bulkDone.added} items added successfully{bulkDone.failed > 0 ? ('\n' + bulkDone.failed + ' failed') : ''}</Text>
+                <Text style={s.doneSub}>
+                  {bulkDone.added > 0 ? `${bulkDone.added} added` : ''}
+                  {bulkDone.updated > 0 ? `${bulkDone.added > 0 ? '\n' : ''}${bulkDone.updated} updated` : ''}
+                  {bulkDone.skipped > 0 ? `\n${bulkDone.skipped} skipped` : ''}
+                  {bulkDone.failed > 0 ? `\n${bulkDone.failed} failed` : ''}
+                </Text>
                 <TouchableOpacity style={s.doneBtn} onPress={() => { setBulkModal(false); setBulkDone(null); }}>
                   <Text style={s.doneBtnTxt}>Done</Text>
                 </TouchableOpacity>
