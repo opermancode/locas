@@ -102,6 +102,8 @@ export default function PartiesScreen({ navigation }) {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkSaving,  setBulkSaving]  = useState(false);
   const [bulkDone,    setBulkDone]    = useState(null);  // { added, failed }
+  // conflict decisions: key = index in bulkParsed.results, value = 'update'|'add'
+  const [conflictChoices, setConflictChoices] = useState({});
 
   const load = async () => {
     try {
@@ -235,18 +237,65 @@ export default function PartiesScreen({ navigation }) {
     document.body.removeChild(input);
   };
 
+  // ── Find partial match for a party in existing list ─────────
+  // Partial match = name matches + at least one other non-empty field matches
+  const findConflict = (p) => {
+    const nameNorm = (p.name || '').trim().toLowerCase();
+    return parties.find(existing => {
+      if ((existing.name || '').trim().toLowerCase() !== nameNorm) return false;
+      // name matches — check if any other field also matches
+      const phoneMatch   = p.phone   && existing.phone   && p.phone.trim().replace(/\D/g,'') === existing.phone.trim().replace(/\D/g,'');
+      const addressMatch = p.address && existing.address && p.address.trim().toLowerCase() === existing.address.trim().toLowerCase();
+      const gstinMatch   = p.gstin   && existing.gstin   && p.gstin.trim().toUpperCase()    === existing.gstin.trim().toUpperCase();
+      return phoneMatch || addressMatch || gstinMatch;
+    }) || null;
+  };
+
   const handleBulkSave = async () => {
     if (!bulkParsed?.results?.length) return;
     setBulkSaving(true);
-    let added = 0, failed = 0;
-    for (const p of bulkParsed.results) {
+
+    let added = 0, updated = 0, skipped = 0, failed = 0;
+
+    for (let i = 0; i < bulkParsed.results.length; i++) {
+      const p = bulkParsed.results[i];
       try {
-        await saveParty(p);
-        added++;
+        const existing = findConflict(p);
+        if (existing) {
+          const choice = conflictChoices[i] || 'skip';
+          if (choice === 'update') {
+            // Merge: keep existing id, overwrite with new fields where non-empty
+            await saveParty({
+              ...existing,
+              name:    p.name    || existing.name,
+              phone:   p.phone   || existing.phone,
+              email:   p.email   || existing.email,
+              address: p.address || existing.address,
+              gstin:   p.gstin   || existing.gstin,
+              pan:     p.pan     || existing.pan,
+              state:   p.state   || existing.state,
+              type:    p.type    || existing.type,
+            });
+            updated++;
+          } else if (choice === 'add') {
+            // Add as brand new party (no id)
+            const { id: _, ...rest } = p;
+            await saveParty(rest);
+            added++;
+          } else {
+            // 'skip' — do nothing
+            skipped++;
+          }
+        } else {
+          await saveParty(p);
+          added++;
+        }
       } catch { failed++; }
     }
-    setBulkDone({ added, failed });
+
+    setBulkDone({ added, updated, skipped, failed });
     setBulkParsed(null);
+    setConflictChoices({});
     setBulkSaving(false);
     load();
   };
@@ -254,6 +303,7 @@ export default function PartiesScreen({ navigation }) {
   const openBulkModal = () => {
     setBulkParsed(null);
     setBulkDone(null);
+    setConflictChoices({});
     setBulkModal(true);
   };
 
@@ -652,31 +702,67 @@ export default function PartiesScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
-                {/* Preview table */}
+                {/* Preview table with conflict detection */}
                 <View style={s.previewTable}>
                   <View style={s.previewThead}>
-                    {['Name','Type','Phone','GSTIN','State'].map(h => (
-                      <Text key={h} style={[s.previewTh, h==='Name'&&{flex:2}]}>{h}</Text>
+                    {['Name','Phone','Status'].map(h => (
+                      <Text key={h} style={[s.previewTh, h==='Name'&&{flex:2}, h==='Status'&&{flex:2}]}>{h}</Text>
                     ))}
                   </View>
-                  {bulkParsed.results.slice(0,8).map((p, i) => (
-                    <View key={i} style={[s.previewTrow, i%2===0&&{backgroundColor:'#FAFBFF'}]}>
-                      <Text style={[s.previewTd, {flex:2}]} numberOfLines={1}>{p.name}</Text>
-                      <View style={[s.typePill, p.type==='customer'?s.typePillCust:s.typePillSupp, {paddingVertical:2}]}>
-                        <Text style={[s.typePillTxt, p.type==='customer'?s.typePillTxtCust:s.typePillTxtSupp, {fontSize:8}]}>
-                          {p.type}
-                        </Text>
+                  {bulkParsed.results.map((p, i) => {
+                    const conflict = findConflict(p);
+                    const choice   = conflictChoices[i] || 'skip';
+                    return (
+                      <View key={i} style={[s.previewTrow, i%2===0&&{backgroundColor:'#FAFBFF'}, conflict&&{backgroundColor:'#FFFBEB'}]}>
+                        <View style={{flex:2, paddingHorizontal:4}}>
+                          <Text style={[s.previewTd, {paddingHorizontal:0}]} numberOfLines={1}>{p.name}</Text>
+                          {conflict && <Text style={{fontSize:9, color:'#92400E'}}>Matches existing</Text>}
+                        </View>
+                        <Text style={s.previewTd} numberOfLines={1}>{p.phone||'—'}</Text>
+                        <View style={{flex:2, paddingHorizontal:4}}>
+                          {conflict ? (
+                            <View style={{flexDirection:'row', gap:4}}>
+                              {['update','add','skip'].map(opt => (
+                                <TouchableOpacity
+                                  key={opt}
+                                  onPress={() => setConflictChoices(prev => ({...prev, [i]: opt}))}
+                                  style={{
+                                    paddingHorizontal:5, paddingVertical:3, borderRadius:4,
+                                    backgroundColor: choice===opt
+                                      ? opt==='update' ? '#DBEAFE'
+                                        : opt==='add' ? '#D1FAE5'
+                                        : '#F3F4F6'
+                                      : '#F9FAFB',
+                                    borderWidth:1,
+                                    borderColor: choice===opt
+                                      ? opt==='update' ? '#93C5FD'
+                                        : opt==='add' ? '#6EE7B7'
+                                        : '#D1D5DB'
+                                      : '#E5E7EB',
+                                  }}
+                                >
+                                  <Text style={{
+                                    fontSize:9, fontWeight:'700',
+                                    color: choice===opt
+                                      ? opt==='update' ? '#1E40AF'
+                                        : opt==='add' ? '#065F46'
+                                        : '#6B7280'
+                                      : '#9CA3AF',
+                                  }}>
+                                    {opt==='update'?'Update':opt==='add'?'Add New':'Skip'}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          ) : (
+                            <View style={{backgroundColor:'#D1FAE5',paddingHorizontal:6,paddingVertical:3,borderRadius:4,alignSelf:'flex-start'}}>
+                              <Text style={{fontSize:9,fontWeight:'700',color:'#065F46'}}>New</Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
-                      <Text style={s.previewTd} numberOfLines={1}>{p.phone||'—'}</Text>
-                      <Text style={[s.previewTd,{fontSize:10}]} numberOfLines={1}>{p.gstin||'—'}</Text>
-                      <Text style={s.previewTd} numberOfLines={1}>{p.state||'—'}</Text>
-                    </View>
-                  ))}
-                  {bulkParsed.results.length > 8 && (
-                    <View style={s.previewMore}>
-                      <Text style={s.previewMoreTxt}>+{bulkParsed.results.length - 8} more parties</Text>
-                    </View>
-                  )}
+                    );
+                  })}
                 </View>
 
                 <TouchableOpacity
@@ -700,7 +786,9 @@ export default function PartiesScreen({ navigation }) {
                 </View>
                 <Text style={s.doneTitle}>Import Complete!</Text>
                 <Text style={s.doneSub}>
-                  {bulkDone.added} parties added successfully
+                  {bulkDone.added > 0 ? `${bulkDone.added} added` : ''}
+                  {bulkDone.updated > 0 ? `${bulkDone.added > 0 ? '\n' : ''}${bulkDone.updated} updated` : ''}
+                  {bulkDone.skipped > 0 ? `\n${bulkDone.skipped} skipped` : ''}
                   {bulkDone.failed > 0 ? `\n${bulkDone.failed} failed` : ''}
                 </Text>
                 <TouchableOpacity style={s.doneBtn} onPress={() => {

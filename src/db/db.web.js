@@ -5,17 +5,76 @@ import localforage from 'localforage';
 let _invoiceNumberLock = Promise.resolve();
 let _quoteNumberLock   = Promise.resolve();
 
+// ── Storage adapter ───────────────────────────────────────────────
+// Each store is a lazy proxy. isElectron() is checked at the moment
+// each method is called — not when makeStore() is called at module load.
+// This is critical because window.electronAPI is injected by the preload
+// script AFTER the module initialises.
+function isElectron() {
+  return typeof window !== 'undefined' && !!window.electronAPI?.db;
+}
+
+// localforage instance cache — created once, reused
+const _lfCache = {};
+function lf(storeName) {
+  if (!_lfCache[storeName]) {
+    _lfCache[storeName] = localforage.createInstance({ name: 'locas', storeName });
+  }
+  return _lfCache[storeName];
+}
+
+function makeStore(storeName) {
+  // Returns an object whose every method routes to Electron IPC or localforage
+  // depending on what's available at the time of the call.
+  return {
+    getItem: (key) =>
+      isElectron()
+        ? window.electronAPI.db.get(storeName, String(key))
+        : lf(storeName).getItem(String(key)),
+
+    setItem: (key, val) =>
+      isElectron()
+        ? window.electronAPI.db.set(storeName, String(key), val)
+        : lf(storeName).setItem(String(key), val),
+
+    removeItem: (key) =>
+      isElectron()
+        ? window.electronAPI.db.remove(storeName, String(key))
+        : lf(storeName).removeItem(String(key)),
+
+    clear: () =>
+      isElectron()
+        ? window.electronAPI.db.clear(storeName)
+        : lf(storeName).clear(),
+
+    keys: () =>
+      isElectron()
+        ? window.electronAPI.db.keys(storeName)
+        : lf(storeName).keys(),
+
+    iterate: async (cb) => {
+      if (isElectron()) {
+        const all = await window.electronAPI.db.read(storeName);
+        let n = 1;
+        for (const [k, v] of Object.entries(all)) cb(v, k, n++);
+      } else {
+        await lf(storeName).iterate(cb);
+      }
+    },
+  };
+}
+
 const stores = {
-  profile: localforage.createInstance({ name: 'locas', storeName: 'business_profile' }),
-  parties: localforage.createInstance({ name: 'locas', storeName: 'parties' }),
-  items: localforage.createInstance({ name: 'locas', storeName: 'items' }),
-  invoices: localforage.createInstance({ name: 'locas', storeName: 'invoices' }),
-  invoice_items: localforage.createInstance({ name: 'locas', storeName: 'invoice_items' }),
-  payments: localforage.createInstance({ name: 'locas', storeName: 'payments' }),
-  expenses: localforage.createInstance({ name: 'locas', storeName: 'expenses' }),
-  quotations: localforage.createInstance({ name: 'locas', storeName: 'quotations' }),
-  quotation_items: localforage.createInstance({ name: 'locas', storeName: 'quotation_items' }),
-  meta: localforage.createInstance({ name: 'locas', storeName: 'meta' }),
+  profile:         makeStore('business_profile'),
+  parties:         makeStore('parties'),
+  items:           makeStore('items'),
+  invoices:        makeStore('invoices'),
+  invoice_items:   makeStore('invoice_items'),
+  payments:        makeStore('payments'),
+  expenses:        makeStore('expenses'),
+  quotations:      makeStore('quotations'),
+  quotation_items: makeStore('quotation_items'),
+  meta:            makeStore('meta'),
 };
 
 async function nextId(storeName) {
@@ -888,8 +947,8 @@ export async function getLowStockProducts(limit = 5) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const stores_po = {
-  purchase_orders: localforage.createInstance({ name: 'locas', storeName: 'purchase_orders' }),
-  po_items:        localforage.createInstance({ name: 'locas', storeName: 'po_items' }),
+  purchase_orders: makeStore('purchase_orders'),
+  po_items:        makeStore('po_items'),
 };
 
 let _poNumberLock = Promise.resolve();

@@ -1,4 +1,4 @@
-  import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
   import {
     View, Text, TouchableOpacity, StyleSheet,
     Platform, Dimensions,
@@ -312,7 +312,7 @@
             }}
           >
             <SvgIcon name="plus" size={15} color="#fff" strokeWidth={2.5} />
-            <span style={{ color: '#fff', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', opacity: expanded ? 1 : 0, transition: 'opacity 0.15s', overflow: 'hidden' }}>
+            <span style={{ color: '#fff', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', opacity: expanded ? 1 : 0, maxWidth: expanded ? 120 : 0, transition: 'opacity 0.15s, max-width 0.2s', overflow: 'hidden' }}>
               New Invoice
             </span>
           </div>
