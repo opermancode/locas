@@ -1,4 +1,4 @@
-  function r(n){return Number(n||0).toFixed(2);}
+function r(n){return Number(n||0).toFixed(2);}
   function fmtDate(d){if(!d)return '';const parts=d.split('-');if(parts.length===3&&parts[0].length===4){return`${parts[2]}-${parts[1]}-${parts[0]}`;}return d;}
   function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
   function words(amount){
@@ -15,8 +15,6 @@
   export default function template3(invoice, profile, accent='#6D28D9', upiBlock='') {
     const inv=invoice, prof=profile||{};
     const isInter=inv.supply_type==='inter';
-
-    // Status color
 
     const rows=(inv.items||[]).map((item,i)=>`
       <tr class="${i%2===0?'row-alt':''}">
@@ -71,7 +69,6 @@
     .inv-meta { text-align:right; margin-top:6px; }
     .inv-num { font-size:11pt; font-weight:800; color:#1a1a2e; }
     .inv-date { font-size:8.5pt; color:#666; line-height:1.9; }
-    .status-pill { display:inline-block; padding:2px 10px; border-radius:12px; font-size:7.5pt; font-weight:800; letter-spacing:0.5px; background:${sc.bg}; color:${sc.txt}; margin-top:3px; }
 
     /* ── Meta strip ── */
     .meta-strip { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid #e8e8f0; margin:0 20px 12px; border-radius:6px; overflow:hidden; }
