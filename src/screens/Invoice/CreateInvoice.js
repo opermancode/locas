@@ -313,8 +313,9 @@ export default function CreateInvoice({ navigation, route }) {
         ship_to_name:    shipToSame ? '' : shipToName,
         ship_to_address: shipToSame ? '' : shipToAddress,
         ship_to_gstin:   shipToSame ? '' : shipToGstin,
-        po_number: null, // will be set in doSave if PO linked
-        po_id:     null,
+        po_number: preselectedPO?.po_number || null,
+        po_id:     preselectedPO?.id        || null,
+        po_date:   preselectedPO?.date      || null,
       };
 
       const mappedItems = lineItems.map(it => ({
@@ -373,7 +374,7 @@ export default function CreateInvoice({ navigation, route }) {
             const { getInvoiceDetail } = await import('../../db');
             const savedInv = await getInvoiceDetail(invoiceId);
             if (savedInv) {
-              await si({ ...savedInv, po_number: po.po_number, po_id: poDelivery.poId }, savedInv.items || []);
+              await si({ ...savedInv, po_number: po.po_number, po_id: poDelivery.poId, po_date: po.date || null }, savedInv.items || []);
             }
           }
         } catch (e) {
@@ -582,7 +583,12 @@ export default function CreateInvoice({ navigation, route }) {
                     return (
                       <TouchableOpacity
                         key={label}
-                        onPress={() => setDueDate(preset)}
+                        onPress={() => {
+                          setDueDate(preset);
+                          setTerms(days === 0
+                            ? 'Payment due immediately.'
+                            : `Payment due within ${days} days.`);
+                        }}
                         style={{
                           paddingHorizontal: 8, paddingVertical: 3,
                           borderRadius: 12, borderWidth: 1,

@@ -1,4 +1,4 @@
-  /* ─ helpers ─────────────────────────────────────────────────── */
+/* ─ helpers ─────────────────────────────────────────────────── */
     function r(n){return Number(n||0).toFixed(2);}
     function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
     function fmtDate(d){if(!d)return '';const parts=d.split('-');if(parts.length===3&&parts[0].length===4){return`${parts[2]}-${parts[1]}-${parts[0]}`;}return d;}
