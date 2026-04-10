@@ -3,7 +3,7 @@ END USER LICENSE AGREEMENT & PRIVACY POLICY
 
 Create Date: March 2026
 Developed by: Omkar Ganesh Jagtap
-Contact: https://locas-business.vercel.app/index.html#contact
+Contact: https://locasdot.vercel.app/index.html#contact
 
 By installing Locas, you agree to the following terms. Please read carefully.
 
