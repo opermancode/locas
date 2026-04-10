@@ -1,11 +1,11 @@
-LOCAS - SMART BILLING FOR INDIA
+Locasdot - SMART BILLING FOR INDIA
 END USER LICENSE AGREEMENT & PRIVACY POLICY
 
 Create Date: March 2026
 Developed by: Omkar Ganesh Jagtap
 Contact: https://locasdot.vercel.app/index.html#contact
 
-By installing Locas, you agree to the following terms. Please read carefully.
+By installing locasdot, you agree to the following terms. Please read carefully.
 
 ================================================================
 PART 1 - TERMS AND CONDITIONS
@@ -17,7 +17,7 @@ PART 1 - TERMS AND CONDITIONS
    own or control, solely for your personal or internal business purposes.
 
 2. PERMITTED USE
-   You may use Locas to:
+   You may use locasdot to:
    - Create and manage GST invoices for your business
    - Track customers, suppliers, inventory and expenses
    - Generate and export reports for accounting purposes
@@ -31,14 +31,14 @@ PART 1 - TERMS AND CONDITIONS
    - Remove or alter any proprietary notices or labels
 
 4. GST COMPLIANCE DISCLAIMER
-   Locas is a billing and record-keeping tool. It is your responsibility
+   locasdot is a billing and record-keeping tool. It is your responsibility
    to verify that all GST calculations, invoice formats and tax filings
-   comply with current Indian GST laws. Locas does not provide legal or
+   comply with current Indian GST laws. locasdot does not provide legal or
    tax advice. Consult a qualified CA for compliance guidance.
 
 5. DATA OWNERSHIP
-   All business data you enter into Locas (invoices, parties, inventory,
-   expenses) belongs entirely to you. Locas does not claim any rights
+   All business data you enter into locasdot (invoices, parties, inventory,
+   expenses) belongs entirely to you. locasdot does not claim any rights
    over your business data.
 
 6. DISCLAIMER OF WARRANTIES
@@ -54,7 +54,7 @@ PART 1 - TERMS AND CONDITIONS
    (the software is free).
 
 8. UPDATES
-   Locas may check for updates automatically. Updates are optional.
+   locasdot may check for updates automatically. Updates are optional.
    You control when to download and install new versions.
 
 9. TERMINATION
@@ -71,13 +71,13 @@ PART 2 - PRIVACY POLICY
 ================================================================
 
 1. DATA STORED LOCALLY
-   Locas stores all your business data (invoices, customers, inventory,
+   locasdot stores all your business data (invoices, customers, inventory,
    expenses, business profile) locally on your device using a SQLite
    database. This data never leaves your device unless you explicitly
    use the Google Drive backup feature.
 
 2. AUTHENTICATION
-   Locas uses Firebase Authentication to verify your identity.
+   locasdot uses Firebase Authentication to verify your identity.
    Firebase may collect your email address and login timestamps.
    Firebase is a Google service - see Google's Privacy Policy at
    https://policies.google.com/privacy for details.
@@ -85,27 +85,27 @@ PART 2 - PRIVACY POLICY
 3. GOOGLE DRIVE BACKUP (OPTIONAL)
    If you choose to connect Google Drive:
    - Your backup data is stored in your own Google Drive account
-   - Locas only accesses the specific backup file it creates
+   - locasdot only accesses the specific backup file it creates
    - You can disconnect Google Drive at any time from Settings
-   - Locas does not access any other files in your Google Drive
+   - locasdot does not access any other files in your Google Drive
 
 4. NO DATA COLLECTION
-   Locas does NOT:
+   locasdot does NOT:
    - Collect or transmit your business data to any server
    - Sell or share your data with any third party
    - Use your data for advertising or analytics
    - Track your usage behavior
 
 5. UPDATE CHECKS
-   Locas periodically checks GitHub for new versions. This request
+   locasdot periodically checks GitHub for new versions. This request
    includes no personal data - only a plain HTTP GET to a public URL.
 
 6. CRASH REPORTING
-   Locas does not automatically send crash reports. Errors are logged
+   locasdot does not automatically send crash reports. Errors are logged
    locally to your device only.
 
 7. CHILDREN'S PRIVACY
-   Locas is intended for business use by adults. We do not knowingly
+   locasdot is intended for business use by adults. We do not knowingly
    collect data from anyone under 18.
 
 8. CHANGES TO THIS POLICY
@@ -113,11 +113,11 @@ PART 2 - PRIVACY POLICY
    use after an update constitutes acceptance of the new terms.
 
 9. CONTACT
-   Issues: https://locas-business.vercel.app/support.html
+   Issues: https://locasdot.vercel.app/support.html
 
 ================================================================
 
 By clicking "I Agree" you confirm that you have read, understood and
 agree to these Terms and Conditions and Privacy Policy.
 
-Copyright (C) 2026 locastitch. locasdot, All rights reserved.
+Copyright (C) 2026 locasdottitch. locasdot, All rights reserved.
