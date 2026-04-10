@@ -7,7 +7,7 @@
   "author": "Omkar Ganesh Jagtap",
   "repository": {
     "type": "git",
-    "url": "https://github.com/opermancode/locasdot.git"
+    "url": "https://github.com/opermancode/locas.git"
   },
   "scripts": {
     "electron": "electron .",
