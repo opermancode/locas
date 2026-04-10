@@ -371,7 +371,7 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
       <View style={s.card}>
         <Text style={s.cardTitle}>Items ({invoice.items?.length || 0})</Text>
         {(invoice.items || []).map((item, i) => (
-          <View key={i} style={[s.itemRow, i < (invoice.items.length - 1) && s.itemRowBorder]}>
+          <View key={i} style={[s.itemRow, i < ((invoice.items?.length ?? 0) - 1) && s.itemRowBorder]}>
             <View style={[s.itemDot, { backgroundColor: accentColor }]} />
             <View style={{ flex: 1 }}>
               <Text style={s.itemName}>{item.name}</Text>

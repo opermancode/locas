@@ -34,6 +34,14 @@ export default function ExpensesScreen({ navigation, route }) {
   const [form, setForm]     = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  // ── Date Picker state ─────────────────────────────────────────
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [calYear, setCalYear]   = useState('');
+  const [calMonth, setCalMonth] = useState('');
+  const [calDay, setCalDay]     = useState('');
+  const [calViewYear, setCalViewYear]   = useState(new Date().getFullYear());
+  const [calViewMonth, setCalViewMonth] = useState(new Date().getMonth());
+
   const load = async () => {
     try {
       const data = await getExpenses();
@@ -162,6 +170,49 @@ export default function ExpensesScreen({ navigation, route }) {
       </View>
     </View>
   );
+
+  // ── Date Picker helpers ───────────────────────────────────────
+  const EXP_MONTH_NAMES = ['January','February','March','April','May','June',
+                           'July','August','September','October','November','December'];
+
+  const openExpDatePicker = () => {
+    const parts = (form.date || '').split('-');
+    const y = parseInt(parts[0]) || new Date().getFullYear();
+    const m = parseInt(parts[1]) || new Date().getMonth() + 1;
+    const d = parseInt(parts[2]) || new Date().getDate();
+    setCalYear(String(y));
+    setCalMonth(String(m).padStart(2, '0'));
+    setCalDay(String(d).padStart(2, '0'));
+    setCalViewYear(y);
+    setCalViewMonth(m - 1);
+    setDatePickerVisible(true);
+  };
+
+  const confirmExpDatePicker = () => {
+    const y = parseInt(calYear), m = parseInt(calMonth), d = parseInt(calDay);
+    if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2100) {
+      Alert.alert('Invalid Date', 'Please enter a valid date.');
+      return;
+    }
+    const formatted = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    setForm(f => ({ ...f, date: formatted }));
+    setDatePickerVisible(false);
+  };
+
+  const selectExpCalDay = (day) => {
+    setCalDay(String(day).padStart(2,'0'));
+    setCalYear(String(calViewYear));
+    setCalMonth(String(calViewMonth + 1).padStart(2,'0'));
+  };
+
+  const getExpCalendarGrid = () => {
+    const total = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+    const first = new Date(calViewYear, calViewMonth, 1).getDay();
+    const cells = [...Array(first).fill(null), ...Array.from({length: total}, (_, i) => i + 1)];
+    const rows = [];
+    for (let r = 0; r < Math.ceil(cells.length / 7); r++) rows.push(cells.slice(r*7, r*7+7));
+    return rows;
+  };
 
   // ─────────────────────────────────────────────────────────────
   return (
@@ -302,13 +353,16 @@ export default function ExpensesScreen({ navigation, route }) {
               <View style={{ width: 12 }} />
               <View style={{ flex: 1 }}>
                 <FieldLabel>Date *</FieldLabel>
-                <TextInput
-                  style={styles.input}
-                  value={form.date}
-                  onChangeText={v => setForm(f => ({ ...f, date: v }))}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={COLORS.textMute}
-                />
+                <TouchableOpacity
+                  style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                  onPress={openExpDatePicker}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: form.date ? COLORS.text : COLORS.textMute, fontSize: 14 }}>
+                    {form.date || 'YYYY-MM-DD'}
+                  </Text>
+                  <Icon name="calendar" size={15} color={COLORS.primary} />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -358,6 +412,97 @@ export default function ExpensesScreen({ navigation, route }) {
 
             <View style={{ height: 40 }} />
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ══ Expense Date Picker Modal ════════════════════════════ */}
+      <Modal visible={datePickerVisible} animationType="fade" transparent presentationStyle="overFullScreen">
+        <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.45)', justifyContent:'center', alignItems:'center', padding:20 }}>
+          <View style={{ backgroundColor: COLORS.card, borderRadius:18, width:'100%', maxWidth:360, padding:20, elevation:10 }}>
+
+            <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+              <Text style={{ fontSize:16, fontWeight:'700', color:COLORS.text }}>Expense Date</Text>
+              <TouchableOpacity onPress={() => setDatePickerVisible(false)}>
+                <Icon name="x" size={18} color={COLORS.textMute} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Manual DD / MM / YYYY inputs */}
+            <View style={{ flexDirection:'row', gap:8, marginBottom:16 }}>
+              <View style={{ flex:1 }}>
+                <Text style={{ fontSize:11, color:COLORS.textMute, marginBottom:4, fontWeight:'600' }}>DAY</Text>
+                <TextInput
+                  style={{ borderWidth:1, borderColor:COLORS.border, borderRadius:10, paddingHorizontal:10, paddingVertical:8, fontSize:16, color:COLORS.text, textAlign:'center', backgroundColor:COLORS.bg }}
+                  value={calDay} onChangeText={v => setCalDay(v.replace(/[^0-9]/g,''))}
+                  keyboardType="number-pad" maxLength={2} placeholder="DD" placeholderTextColor={COLORS.textMute}
+                />
+              </View>
+              <View style={{ flex:2 }}>
+                <Text style={{ fontSize:11, color:COLORS.textMute, marginBottom:4, fontWeight:'600' }}>MONTH</Text>
+                <TextInput
+                  style={{ borderWidth:1, borderColor:COLORS.border, borderRadius:10, paddingHorizontal:10, paddingVertical:8, fontSize:16, color:COLORS.text, textAlign:'center', backgroundColor:COLORS.bg }}
+                  value={calMonth}
+                  onChangeText={v => { const val = v.replace(/[^0-9]/g,''); setCalMonth(val); const m=parseInt(val); if(m>=1&&m<=12) setCalViewMonth(m-1); }}
+                  keyboardType="number-pad" maxLength={2} placeholder="MM" placeholderTextColor={COLORS.textMute}
+                />
+              </View>
+              <View style={{ flex:2 }}>
+                <Text style={{ fontSize:11, color:COLORS.textMute, marginBottom:4, fontWeight:'600' }}>YEAR</Text>
+                <TextInput
+                  style={{ borderWidth:1, borderColor:COLORS.border, borderRadius:10, paddingHorizontal:10, paddingVertical:8, fontSize:16, color:COLORS.text, textAlign:'center', backgroundColor:COLORS.bg }}
+                  value={calYear}
+                  onChangeText={v => { const val = v.replace(/[^0-9]/g,''); setCalYear(val); const y=parseInt(val); if(y>=1900&&y<=2100) setCalViewYear(y); }}
+                  keyboardType="number-pad" maxLength={4} placeholder="YYYY" placeholderTextColor={COLORS.textMute}
+                />
+              </View>
+            </View>
+
+            {/* Month nav */}
+            <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <TouchableOpacity onPress={() => { const p=calViewMonth===0?11:calViewMonth-1; if(calViewMonth===0) setCalViewYear(y=>y-1); setCalViewMonth(p); }} style={{ padding:6 }}>
+                <Icon name="chevron-left" size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+              <Text style={{ fontSize:14, fontWeight:'700', color:COLORS.text }}>{EXP_MONTH_NAMES[calViewMonth]} {calViewYear}</Text>
+              <TouchableOpacity onPress={() => { const n=calViewMonth===11?0:calViewMonth+1; if(calViewMonth===11) setCalViewYear(y=>y+1); setCalViewMonth(n); }} style={{ padding:6 }}>
+                <Icon name="chevron-right" size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day headers */}
+            <View style={{ flexDirection:'row', marginBottom:4 }}>
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                <Text key={d} style={{ flex:1, textAlign:'center', fontSize:11, color:COLORS.textMute, fontWeight:'600' }}>{d}</Text>
+              ))}
+            </View>
+
+            {/* Calendar grid */}
+            {getExpCalendarGrid().map((row, ri) => (
+              <View key={ri} style={{ flexDirection:'row', marginBottom:2 }}>
+                {row.map((day, ci) => {
+                  const isSel = day && parseInt(calDay)===day && parseInt(calMonth)===calViewMonth+1 && parseInt(calYear)===calViewYear;
+                  return (
+                    <TouchableOpacity key={ci} disabled={!day} onPress={() => day && selectExpCalDay(day)}
+                      style={{ flex:1, alignItems:'center', paddingVertical:6, borderRadius:20, backgroundColor: isSel ? COLORS.primary : 'transparent' }}>
+                      <Text style={{ fontSize:13, color: !day ? 'transparent' : isSel ? '#fff' : COLORS.text, fontWeight: isSel ? '700' : '400' }}>
+                        {day || ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+
+            <View style={{ flexDirection:'row', gap:10, marginTop:16 }}>
+              <TouchableOpacity onPress={() => setDatePickerVisible(false)}
+                style={{ flex:1, paddingVertical:12, borderRadius:10, borderWidth:1, borderColor:COLORS.border, alignItems:'center' }}>
+                <Text style={{ color:COLORS.textSub, fontWeight:'600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmExpDatePicker}
+                style={{ flex:1, paddingVertical:12, borderRadius:10, backgroundColor:COLORS.primary, alignItems:'center' }}>
+                <Text style={{ color:'#fff', fontWeight:'700' }}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>

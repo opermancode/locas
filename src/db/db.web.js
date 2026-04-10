@@ -464,6 +464,8 @@ export async function exportAllData() {
   const expenses = await getAll(stores.expenses);
   const quotations = await getAll(stores.quotations);
   const quotationItems = await getAll(stores.quotation_items);
+  const purchaseOrders = await getAll(stores_po.purchase_orders);
+  const poItems        = await getAll(stores_po.po_items);
 
   return JSON.stringify({
     version: 1,
@@ -471,6 +473,8 @@ export async function exportAllData() {
     profile, parties, items, invoices,
     invoice_items: invoiceItems, payments, expenses,
     quotations, quotation_items: quotationItems,
+    purchase_orders: purchaseOrders,
+    po_items: poItems,
   }, null, 2);
 }
 
@@ -486,6 +490,8 @@ export async function importAllData(jsonString) {
   await stores.expenses.clear();
   await stores.quotations.clear();
   await stores.quotation_items.clear();
+  await stores_po.purchase_orders.clear();
+  await stores_po.po_items.clear();
 
   if (data.profile?.[0]) {
     await stores.profile.setItem('1', data.profile[0]);
@@ -498,6 +504,8 @@ export async function importAllData(jsonString) {
   for (const row of data.expenses || []) await stores.expenses.setItem(String(row.id), row);
   for (const row of data.quotations || []) await stores.quotations.setItem(String(row.id), row);
   for (const row of data.quotation_items || []) await stores.quotation_items.setItem(String(row.id), row);
+  for (const row of data.purchase_orders || []) await stores_po.purchase_orders.setItem(String(row.id), row);
+  for (const row of data.po_items || []) await stores_po.po_items.setItem(String(row.id), row);
 
   const maxId = (rows) => rows.reduce((m, r) => Math.max(m, r.id || 0), 0);
   await stores.meta.setItem('parties_seq', maxId(data.parties || []));
@@ -508,6 +516,9 @@ export async function importAllData(jsonString) {
   await stores.meta.setItem('expenses_seq', maxId(data.expenses || []));
   await stores.meta.setItem('quotations_seq', maxId(data.quotations || []));
   await stores.meta.setItem('quotation_items_seq', maxId(data.quotation_items || []));
+  await stores.meta.setItem('po_id_seq',       maxId(data.purchase_orders || []));
+  await stores.meta.setItem('po_items_seq',    maxId(data.po_items || []));
+  await stores.meta.setItem('po_items_id_seq', maxId(data.purchase_orders || []));
 
   _invoiceNumberLock = Promise.resolve();
   _quoteNumberLock = Promise.resolve();
@@ -515,16 +526,22 @@ export async function importAllData(jsonString) {
 
 export async function peekNextQuoteNumber() {
   const profile = await stores.profile.getItem('1');
-  const next = (profile.quote_counter || 0) + 1;
-  return `${profile.quote_prefix || 'QUO'}-${String(next).padStart(4, '0')}`;
+  const next   = (profile.quote_counter || 0) + 1;
+  const prefix = profile.quote_prefix    || 'QUO';
+  const digits = profile.invoice_num_digits || 4;
+  const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+  return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
 }
 
 async function consumeNextQuoteNumber() {
   const result = _quoteNumberLock.then(async () => {
     const profile = await stores.profile.getItem('1');
-    const next = (profile.quote_counter || 0) + 1;
+    const next   = (profile.quote_counter || 0) + 1;
+    const prefix = profile.quote_prefix    || 'QUO';
+    const digits = profile.invoice_num_digits || 4;
+    const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
     await stores.profile.setItem('1', { ...profile, quote_counter: next });
-    return `${profile.quote_prefix || 'QUO'}-${String(next).padStart(4, '0')}`;
+    return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
   });
   _quoteNumberLock = result.catch(() => {});
   return result;
