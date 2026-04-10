@@ -28,7 +28,9 @@ const EMPTY_ITEM = {
 
 export default function CreateInvoice({ navigation, route }) {
   const insets = useSafeAreaInsets();
-  const editInvoice = route?.params?.invoice || null;
+  const editInvoice      = route?.params?.invoice        || null;
+  const preselectedParty = route?.params?.preselectedParty || null;
+  const preselectedPO    = route?.params?.preselectedPO   || null;
 
   // ── Core state ────────────────────────────────────────────────
   const [invoiceNo, setInvoiceNo]         = useState('');
@@ -154,6 +156,22 @@ export default function CreateInvoice({ navigation, route }) {
       }
     } else {
       setInvoiceNo(num);
+
+      // ── Pre-fill from PO (when navigated from PODetailScreen) ──
+      if (preselectedParty) {
+        // Match against loaded parties for full object, fallback to passed snapshot
+        const matched = p.find(pt => pt.id === preselectedParty.id) || preselectedParty;
+        setParty(matched);
+      }
+
+      if (preselectedPO) {
+        // Set invoice date to PO date
+        if (preselectedPO.date) setInvoiceDate(preselectedPO.date);
+        // Set notes to reference the PO number
+        if (preselectedPO.po_number) {
+          setNotes(`Against PO: ${preselectedPO.po_number}`);
+        }
+      }
     }
   };
 
