@@ -73,8 +73,7 @@
       ${A4_PRINT_CSS}
       body { font-family: Arial, Helvetica, sans-serif; font-size:10pt; color:#111; }
       .page {
-        padding: 14mm 12mm 0 14mm;
-        border-left: 7px solid ${accent};
+        padding: 14mm 12mm 10mm 12mm;
         position: relative;
         display: flex;
         flex-direction: column;

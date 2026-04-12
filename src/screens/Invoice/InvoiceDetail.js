@@ -1,5 +1,5 @@
 import Icon from '../../utils/Icon';
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Alert, Modal, TextInput, ActivityIndicator, Share,
@@ -222,7 +222,10 @@ export default function InvoiceDetail({ navigation, route }) {
   };
 
   const balance    = invoice ? (invoice.total || 0) - (invoice.paid || 0) : 0;
-  const invoiceHTML = invoice && profile ? buildHTML(selectedTpl, invoice, profile, accentColor) : null;
+  const invoiceHTML = useMemo(
+    () => invoice && profile ? buildHTML(selectedTpl, invoice, profile, accentColor) : null,
+    [invoice, profile, selectedTpl, accentColor]
+  );
 
   const openPayModal = () => {
     setPayAmount(balance.toFixed(2));

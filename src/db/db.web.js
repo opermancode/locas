@@ -401,6 +401,9 @@ export async function saveInvoice(invoice, lineItems) {
       paid: 0, status: 'unpaid',
       supply_type: invoice.supply_type || 'intra',
       notes: invoice.notes || '', terms: invoice.terms || '',
+      po_number: invoice.po_number || null,
+      po_date:   invoice.po_date   || null,
+      po_id:     invoice.po_id     || null,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       deleted_at: null,
     });
