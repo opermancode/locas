@@ -104,7 +104,8 @@
       thead tr { background:${accent}; color:#fff; }
       th { padding:6px 5px; font-size:9pt; font-weight:700; text-align:left; }
       .content { flex:1; padding-bottom:10mm; }
-      .bot { display:flex; gap:10px; }
+      .bot { display:flex; gap:10px; page-break-inside:avoid; break-inside:avoid; }
+      tbody tr { page-break-inside:avoid; break-inside:avoid; }
       .notes { flex:1; min-width:0; }
       .wbox { background:${accent}08; border:1px solid ${accent}22; padding:6px 9px; border-radius:3px; margin-bottom:5px; }
       .wl { font-size:8pt; font-weight:700; color:${accent}; text-transform:uppercase; margin-bottom:1px; }
