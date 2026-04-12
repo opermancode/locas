@@ -310,7 +310,7 @@ export default function App() {
         {/* Bottom badge */}
         <Animated.View style={[styles.bottomBadge, { opacity: tagOpacity }]}>
           <View style={styles.badgeDot} />
-          <Text style={styles.badgeTxt}>by Neurader</Text>
+          <Text style={styles.badgeTxt}>by Locastitch</Text>
         </Animated.View>
       </Animated.View>
     </GestureHandlerRootView>
