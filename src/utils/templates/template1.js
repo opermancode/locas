@@ -17,7 +17,7 @@
     const A4_PRINT_CSS = `
       @page { size: A4 portrait; margin: 0; }
       @media print {
-        html, body { width:210mm; margin:0!important; padding:0!important;
+        html, body { width:210mm; height:297mm; margin:0!important; padding:0!important;
           -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important; }
         .no-print { display:none!important; }
         .page { box-shadow:none!important; border-radius:0!important; }
@@ -73,7 +73,7 @@
       ${A4_PRINT_CSS}
       body { font-family: Arial, Helvetica, sans-serif; font-size:10pt; color:#111; }
       .page {
-        padding: 14mm 12mm 10mm 12mm;
+        padding: 14mm 12mm 0 14mm;
         position: relative;
         display: flex;
         flex-direction: column;
@@ -106,8 +106,8 @@
       tbody tr { page-break-inside:avoid; break-inside:avoid; }
       .bot { width:100%; border-collapse:collapse; page-break-inside:avoid; break-inside:avoid; }
       .bot td { vertical-align:top; padding:0; }
-      .bot td.bnotes { padding-right:10px; }
-      .bot td.bright { width:220px; }
+      td.bnotes { padding-right:10px; }
+      td.bright { width:220px; }
       .notes { flex:1; min-width:0; }
       .wbox { background:${accent}08; border:1px solid ${accent}22; padding:6px 9px; border-radius:3px; margin-bottom:5px; }
       .wl { font-size:8pt; font-weight:700; color:${accent}; text-transform:uppercase; margin-bottom:1px; }
@@ -208,8 +208,7 @@
       </table>
 
       <!-- Bottom: notes/QR/bank left, totals+sign right -->
-      <table class="bot">
-      <tr>
+      <table class="bot"><tr>
         <td class="bnotes">
         <div class="notes">
           <div class="wbox">
@@ -239,8 +238,7 @@
           </div>
         </div>
         </td>
-      </tr>
-      </table>
+      </tr></table>
 
     </div>
     </div>
