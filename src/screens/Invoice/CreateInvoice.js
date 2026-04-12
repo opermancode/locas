@@ -224,6 +224,61 @@ export default function CreateInvoice({ navigation, route }) {
 
   // ── Add inventory item directly ───────────────────────────────
   const addInventoryItem = (inv) => {
+    // Check if this item is already in the invoice
+    const existingIdx = lineItems.findIndex(it => it.item_id === inv.id);
+
+    if (existingIdx !== -1) {
+      // Item already in invoice — just increase qty by 1
+      const existing = lineItems[existingIdx];
+      const newQty = (parseFloat(existing.qty) || 0) + 1;
+
+      // Warn if stock is 0 (but still allow — invoice may be for pre-order)
+      if (inv.stock !== undefined && inv.stock !== null && newQty > inv.stock && inv.stock >= 0) {
+        Alert.alert(
+          'Low Stock',
+          `${inv.name} only has ${inv.stock} ${inv.unit} in stock. Adding anyway.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Anyway', onPress: () => {
+              const updated = calcLineItem({ ...existing, qty: newQty }, supplyType);
+              setLineItems(prev => prev.map((it, i) => i === existingIdx ? updated : it));
+              setItemModal(false);
+            }},
+          ]
+        );
+        return;
+      }
+
+      const updated = calcLineItem({ ...existing, qty: newQty }, supplyType);
+      setLineItems(prev => prev.map((it, i) => i === existingIdx ? updated : it));
+      setItemModal(false);
+      setItemSearch('');
+      return;
+    }
+
+    // Item not in invoice yet — check stock before adding
+    if (inv.stock === 0) {
+      Alert.alert(
+        'Out of Stock',
+        `${inv.name} has 0 stock in inventory. Add stock first or add manually.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add Anyway', onPress: () => {
+            const computed = calcLineItem({
+              item_id: inv.id, name: inv.name, hsn: inv.hsn || '',
+              unit: inv.unit || 'pcs', qty: 1,
+              rate: inv.sale_price || 0, discount: 0, gst_rate: inv.gst_rate || 18,
+            }, supplyType);
+            setLineItems(prev => [...prev, computed]);
+            setItemModal(false);
+            setItemSearch('');
+          }},
+        ]
+      );
+      return;
+    }
+
+    // Fresh add
     const computed = calcLineItem({
       item_id:  inv.id,
       name:     inv.name,
@@ -234,11 +289,7 @@ export default function CreateInvoice({ navigation, route }) {
       discount: 0,
       gst_rate: inv.gst_rate || 18,
     }, supplyType);
-    if (editingIdx !== null) {
-      setLineItems(prev => prev.map((it, i) => i === editingIdx ? computed : it));
-    } else {
-      setLineItems(prev => [...prev, computed]);
-    }
+    setLineItems(prev => [...prev, computed]);
     setItemModal(false);
     setItemSearch('');
   };
@@ -1143,6 +1194,7 @@ export default function CreateInvoice({ navigation, route }) {
                   contentContainerStyle={{ paddingBottom: 24 }}
                   renderItem={({ item: inv }) => {
                     const isLow = inv.min_stock > 0 && inv.stock <= inv.min_stock;
+                    const existingLine = lineItems.find(it => it.item_id === inv.id);
                     return (
                       <TouchableOpacity
                         style={styles.invItemRow}
@@ -1170,8 +1222,10 @@ export default function CreateInvoice({ navigation, route }) {
                           <Text style={styles.invItemPrice}>₹{inv.sale_price}</Text>
                           <Text style={styles.invItemUnit}>per {inv.unit}</Text>
                         </View>
-                        <View style={styles.addCircle}>
-                          <Text style={styles.addCircleText}>+</Text>
+                        <View style={[styles.addCircle, existingLine && { backgroundColor: COLORS.primary }]}>
+                          <Text style={[styles.addCircleText, existingLine && { color: '#fff' }]}>
+                            {existingLine ? `+${existingLine.qty}` : '+'}
+                          </Text>
                         </View>
                       </TouchableOpacity>
                     );

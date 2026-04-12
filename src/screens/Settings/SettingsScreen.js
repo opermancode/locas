@@ -551,11 +551,11 @@ export default function SettingsScreen({ navigation, route }) {
                 <TextInput
                   style={s.input}
                   value={form.invoice_prefix||'INV'}
-                  onChangeText={v => { set('invoice_prefix', v.toUpperCase().replace(/[^A-Z0-9]/g,'')); }}
+                  onChangeText={v => { set('invoice_prefix', v.toUpperCase().replace(/[^A-Z0-9\-\/]/g,'')); }}
                   placeholder="INV"
                   placeholderTextColor={COLORS.textMute}
                   autoCapitalize="characters"
-                  maxLength={8}
+                  maxLength={10}
                 />
               </FL>
               <Text style={s.hint}>Letters and numbers only. e.g. INV, BILL, 2526, OM</Text>

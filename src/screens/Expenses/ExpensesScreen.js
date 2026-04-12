@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getExpenses, saveExpense, deleteExpense } from '../../db';
+import { getExpenses, saveExpense, deleteExpense, getParties } from '../../db';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, formatINR, formatINRCompact, today } from '../../utils/gst';
 import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 
@@ -34,6 +34,11 @@ export default function ExpensesScreen({ navigation, route }) {
   const [form, setForm]     = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  // ── Supplier picker state ─────────────────────────────────────
+  const [suppliers, setSuppliers]           = useState([]);
+  const [supplierModal, setSupplierModal]   = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState('');
+
   // ── Date Picker state ─────────────────────────────────────────
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [calYear, setCalYear]   = useState('');
@@ -44,8 +49,9 @@ export default function ExpensesScreen({ navigation, route }) {
 
   const load = async () => {
     try {
-      const data = await getExpenses();
+      const [data, sups] = await Promise.all([getExpenses(), getParties('supplier')]);
       setExpenses(data);
+      setSuppliers(sups);
       apply(data, search, catFilter);
     } catch (e) {
       console.error(e);
@@ -382,13 +388,29 @@ export default function ExpensesScreen({ navigation, route }) {
             </View>
 
             <FieldLabel>Party / Vendor</FieldLabel>
-            <TextInput
-              style={styles.input}
-              value={form.party_name}
-              onChangeText={v => setForm(f => ({ ...f, party_name: v }))}
-              placeholder="Vendor or supplier name"
-              placeholderTextColor={COLORS.textMute}
-            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                value={form.party_name}
+                onChangeText={v => setForm(f => ({ ...f, party_name: v }))}
+                placeholder="Type vendor name or pick from list"
+                placeholderTextColor={COLORS.textMute}
+              />
+              {form.category === 'Purchase' && (
+                <TouchableOpacity
+                  style={{ backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: COLORS.primary, borderRadius: RADIUS.md, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={() => { setSupplierSearch(''); setSupplierModal(true); }}
+                >
+                  <Icon name="users" size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            {form.party_name ? (
+              <TouchableOpacity onPress={() => setForm(f => ({ ...f, party_name: '' }))} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 }}>
+                <Icon name="x" size={11} color={COLORS.textMute} />
+                <Text style={{ fontSize: 11, color: COLORS.textMute }}>Clear</Text>
+              </TouchableOpacity>
+            ) : null}
 
             <FieldLabel>Bill / Reference No.</FieldLabel>
             <TextInput
@@ -502,6 +524,62 @@ export default function ExpensesScreen({ navigation, route }) {
                 <Text style={{ color:'#fff', fontWeight:'700' }}>Confirm</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══ Supplier Picker Modal ══════════════════════════════════ */}
+      <Modal visible={supplierModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '75%' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+              <Text style={{ fontSize: 17, fontWeight: FONTS.black, color: COLORS.text }}>Select Supplier</Text>
+              <TouchableOpacity onPress={() => setSupplierModal(false)} style={{ padding: 4 }}>
+                <Icon name="x" size={18} color={COLORS.textMute} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 12, paddingHorizontal: 12, height: 42, backgroundColor: COLORS.bg, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border }}>
+              <Icon name="search" size={15} color={COLORS.textMute} />
+              <TextInput
+                style={{ flex: 1, fontSize: 14, color: COLORS.text }}
+                value={supplierSearch}
+                onChangeText={setSupplierSearch}
+                placeholder="Search suppliers..."
+                placeholderTextColor={COLORS.textMute}
+                autoFocus
+              />
+            </View>
+            <FlatList
+              data={suppliers.filter(s =>
+                s.name.toLowerCase().includes(supplierSearch.toLowerCase()) ||
+                (s.phone || '').includes(supplierSearch)
+              )}
+              keyExtractor={s => String(s.id)}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item: s }) => (
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
+                  onPress={() => {
+                    setForm(f => ({ ...f, party_name: s.name }));
+                    setSupplierModal(false);
+                  }}
+                >
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.infoLight, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: FONTS.black, color: COLORS.info }}>{s.name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: FONTS.semibold, color: COLORS.text }}>{s.name}</Text>
+                    {s.phone ? <Text style={{ fontSize: 12, color: COLORS.textMute }}>{s.phone}</Text> : null}
+                    {s.gstin ? <Text style={{ fontSize: 11, color: COLORS.textMute }}>GSTIN: {s.gstin}</Text> : null}
+                  </View>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={{ textAlign: 'center', color: COLORS.textMute, padding: 24 }}>
+                  {suppliers.length === 0 ? 'No suppliers in your parties list.\nAdd suppliers from the Parties screen.' : 'No suppliers found'}
+                </Text>
+              }
+            />
           </View>
         </View>
       </Modal>

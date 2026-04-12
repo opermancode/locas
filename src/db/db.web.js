@@ -208,22 +208,52 @@ export async function setDataOwner(email) {
   });
 }
 
+// ── Extract numeric counter from an invoice number string ─────────
+// e.g. "25-26/0033" → 33,  "INV-0004" → 4,  "QUO-0012" → 12
+function extractCounter(invoiceNumber) {
+  if (!invoiceNumber) return 0;
+  // Get the last numeric sequence in the string
+  const matches = invoiceNumber.match(/\d+/g);
+  if (!matches) return 0;
+  return parseInt(matches[matches.length - 1]) || 0;
+}
+
 export async function peekNextInvoiceNumber() {
   const profile = await stores.profile.getItem('1');
-  const next   = (profile.invoice_counter  || 0) + 1;
-  const prefix = profile.invoice_prefix    || 'INV';
-  const digits = profile.invoice_num_digits || 4;
-  const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+  const prefix  = profile.invoice_prefix    || 'INV';
+  const digits  = profile.invoice_num_digits || 4;
+  const sep     = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+
+  // Find actual max counter from existing invoices
+  const allInvoices = await getAll(stores.invoices, i => !i.deleted_at && i.type === 'sale');
+  const maxFromInvoices = allInvoices.reduce((max, inv) => {
+    return Math.max(max, extractCounter(inv.invoice_number));
+  }, 0);
+
+  // Use whichever is higher — stored counter or actual max in invoices
+  const storedCounter = profile.invoice_counter || 0;
+  const next = Math.max(storedCounter, maxFromInvoices) + 1;
+
   return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
 }
 
 async function consumeNextInvoiceNumber() {
   const result = _invoiceNumberLock.then(async () => {
     const profile = await stores.profile.getItem('1');
-    const next   = (profile.invoice_counter  || 0) + 1;
-    const prefix = profile.invoice_prefix    || 'INV';
-    const digits = profile.invoice_num_digits || 4;
-    const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+    const prefix  = profile.invoice_prefix    || 'INV';
+    const digits  = profile.invoice_num_digits || 4;
+    const sep     = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+
+    // Find actual max counter from existing invoices
+    const allInvoices = await getAll(stores.invoices, i => !i.deleted_at && i.type === 'sale');
+    const maxFromInvoices = allInvoices.reduce((max, inv) => {
+      return Math.max(max, extractCounter(inv.invoice_number));
+    }, 0);
+
+    const storedCounter = profile.invoice_counter || 0;
+    const next = Math.max(storedCounter, maxFromInvoices) + 1;
+
+    // Update stored counter to match
     await stores.profile.setItem('1', { ...profile, invoice_counter: next });
     return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
   });
@@ -659,26 +689,37 @@ export async function importAllData(jsonString) {
 
 export async function peekNextQuoteNumber() {
   const profile = await stores.profile.getItem('1');
-  const next   = (profile.quote_counter || 0) + 1;
-  const prefix = profile.quote_prefix    || 'QUO';
-  const digits = profile.invoice_num_digits || 4;
-  const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+  const prefix  = profile.quote_prefix    || 'QUO';
+  const digits  = profile.invoice_num_digits || 4;
+  const sep     = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+  const allQuotes = await getAll(stores.quotations, q => !q.deleted_at);
+  const maxFromQuotes = allQuotes.reduce((max, q) => {
+    return Math.max(max, extractCounter(q.quotation_number || q.quote_number || ''));
+  }, 0);
+  const storedCounter = profile.quote_counter || 0;
+  const next = Math.max(storedCounter, maxFromQuotes) + 1;
   return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
 }
 
 async function consumeNextQuoteNumber() {
   const result = _quoteNumberLock.then(async () => {
     const profile = await stores.profile.getItem('1');
-    const next   = (profile.quote_counter || 0) + 1;
-    const prefix = profile.quote_prefix    || 'QUO';
-    const digits = profile.invoice_num_digits || 4;
-    const sep    = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+    const prefix  = profile.quote_prefix    || 'QUO';
+    const digits  = profile.invoice_num_digits || 4;
+    const sep     = profile.invoice_separator !== undefined ? profile.invoice_separator : '-';
+    const allQuotes = await getAll(stores.quotations, q => !q.deleted_at);
+    const maxFromQuotes = allQuotes.reduce((max, q) => {
+      return Math.max(max, extractCounter(q.quotation_number || q.quote_number || ''));
+    }, 0);
+    const storedCounter = profile.quote_counter || 0;
+    const next = Math.max(storedCounter, maxFromQuotes) + 1;
     await stores.profile.setItem('1', { ...profile, quote_counter: next });
     return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
   });
   _quoteNumberLock = result.catch(() => {});
   return result;
 }
+
 
 export async function saveQuotation(quotation, lineItems) {
   let quotationId;
