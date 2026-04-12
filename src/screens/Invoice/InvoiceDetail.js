@@ -138,7 +138,7 @@ function useDraggableSplit(initial = 0.5) {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const x = ev.clientX - rect.left;
-      const frac = Math.min(0.75, Math.max(0.25, x / rect.width));
+      const frac = Math.min(0.72, Math.max(0.42, x / rect.width));
       setLeftFrac(frac);
     };
     const onUp = () => {
@@ -783,22 +783,23 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  moneyCell: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  moneyCell: { flex: 1, alignItems: 'center', paddingVertical: 14, minWidth: 0 },
   moneySep:  { width: 1, backgroundColor: COLORS.border, marginVertical: 10 },
   moneyLbl:  { fontSize: 10, fontWeight: FONTS.medium, color: COLORS.textMute, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
-  moneyVal:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
+  moneyVal:  { fontSize: 15, fontWeight: FONTS.black, color: COLORS.text, numberOfLines: 1 },
 
   // Pay banner
   payBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: '#FEF3C7', margin: 12, marginBottom: 0,
-    borderRadius: RADIUS.lg, padding: 14,
+    borderRadius: RADIUS.lg, padding: 12,
     borderWidth: 1, borderColor: '#FDE68A',
+    flexWrap: 'nowrap',
   },
-  payBannerLbl:    { fontSize: 11, color: '#92400E', fontWeight: FONTS.medium },
-  payBannerAmt:    { fontSize: 22, fontWeight: FONTS.black, color: '#92400E' },
-  payBannerBtn:    { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 10, borderRadius: RADIUS.md },
-  payBannerBtnTxt: { fontSize: 13, fontWeight: FONTS.bold, color: '#fff' },
+  payBannerLbl:    { fontSize: 10, color: '#92400E', fontWeight: FONTS.medium },
+  payBannerAmt:    { fontSize: 16, fontWeight: FONTS.black, color: '#92400E' },
+  payBannerBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F59E0B', paddingHorizontal: 10, paddingVertical: 8, borderRadius: RADIUS.md, flexShrink: 0 },
+  payBannerBtnTxt: { fontSize: 12, fontWeight: FONTS.bold, color: '#fff' },
 
   // Cards
   card: {
