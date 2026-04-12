@@ -1,6 +1,6 @@
 {
   "name": "locas",
-  "version": "1.12.11",
+  "version": "1.12.12",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
