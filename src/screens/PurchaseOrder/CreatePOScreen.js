@@ -133,7 +133,17 @@ import Icon from '../../utils/Icon';
     };
 
     const openEditItem = (idx) => {
-      setDraftItem({ ...lineItems[idx] });
+      const item = lineItems[idx];
+      setDraftItem({
+        item_id:     item.item_id || null,
+        name:        item.name || '',
+        hsn:         item.hsn || '',
+        unit:        item.unit || 'pcs',
+        qty_ordered: String(item.qty_ordered || '1'),
+        rate:        String(item.rate || ''),
+        notes:       item.notes || '',
+        _key:        item._key,
+      });
       setEditingIdx(idx);
       setItemModal(true);
     };
@@ -268,25 +278,14 @@ import Icon from '../../utils/Icon';
           </View>
 
           {/* Client PO Number */}
-          <View style={styles.clientPoBox}>
-            <View style={styles.clientPoIconWrap}>
-              <Icon name="hash" size={16} color={COLORS.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <SL>Client's PO Number (optional)</SL>
-              <TextInput
-                style={styles.input}
-                value={clientPoNo}
-                onChangeText={setClientPoNo}
-                placeholder="e.g. PO-2025-00142  (customer's own PO ref)"
-                placeholderTextColor={COLORS.textMute}
-                autoCapitalize="characters"
-              />
-              <Text style={styles.clientPoHint}>
-                Enter the PO number from your customer's order so you can reference it later.
-              </Text>
-            </View>
-          </View>
+          <SL>Client's PO Number (optional)</SL>
+          <TextInput
+            style={styles.input}
+            value={clientPoNo}
+            onChangeText={setClientPoNo}
+            placeholder="e.g. PO-2025-00142"
+            placeholderTextColor={COLORS.textMute}
+          />
 
           {/* Items */}
           <View style={styles.itemsHeader}>
@@ -563,14 +562,19 @@ import Icon from '../../utils/Icon';
         {/* Item Edit Modal */}
         <Modal visible={itemModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
-            <View style={styles.modalSheet}>
+            <View style={[styles.modalSheet, { maxHeight: '95%' }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingIdx !== null ? 'Edit Item' : 'Add Item'}</Text>
                 <TouchableOpacity onPress={() => setItemModal(false)} style={{ padding: 4 }}>
                   <Icon name="x" size={18} color={COLORS.textMute} />
                 </TouchableOpacity>
               </View>
-              <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+              <ScrollView
+                style={{ flex: 1, padding: 16 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={{ paddingBottom: 60 }}
+              >
 
                 {/* Pick from inventory */}
                 <SL>Pick from Inventory</SL>
@@ -687,7 +691,7 @@ import Icon from '../../utils/Icon';
     bottomBar:   { padding: 16, paddingBottom: 16, backgroundColor: COLORS.card, borderTopWidth: 1, borderTopColor: COLORS.border },
     bottomSave:  { backgroundColor: COLORS.primary, borderRadius: RADIUS.lg, paddingVertical: 15, alignItems: 'center' },
     bottomSaveTxt: { color: '#fff', fontWeight: FONTS.black, fontSize: 15 },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end', ...(typeof window !== 'undefined' ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 } : {}) },
     modalSheet:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '90%' },
     modalHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
     modalTitle:   { fontSize: 17, fontWeight: FONTS.black, color: COLORS.text },
