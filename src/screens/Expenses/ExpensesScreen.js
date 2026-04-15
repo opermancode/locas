@@ -151,27 +151,25 @@ export default function ExpensesScreen({ navigation, route }) {
   // ── Render expense row ────────────────────────────────────────
   const renderExpense = ({ item }) => (
     <View style={styles.expenseCard}>
-      <View style={styles.cardMain}>
-        <View style={styles.iconBox}>
-          <Icon name={CATEGORY_ICONS[item.category] || 'briefcase'} size={18} color={COLORS.textSub} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.category}>{item.category}</Text>
-          {item.party_name ? <Text style={styles.expSub}>{item.party_name}</Text> : null}
-          {item.bill_no    ? <Text style={styles.expSub}>Bill: {item.bill_no}</Text> : null}
-          <Text style={styles.expMeta}>{item.date}  —  {item.method}</Text>
-          {item.note       ? <Text style={styles.expNote} numberOfLines={1}>{item.note}</Text> : null}
-        </View>
-        <View style={styles.cardRight}>
-          <Text style={styles.expAmount}>{formatINR(item.amount)}</Text>
-          <View style={styles.cardActions}>
-            <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
-              <Icon name="edit-2" size={14} color={COLORS.textSub} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(item)}>
-              <Icon name="trash-2" size={14} color={COLORS.danger} />
-            </TouchableOpacity>
-          </View>
+      <View style={styles.iconBox}>
+        <Icon name={CATEGORY_ICONS[item.category] || 'briefcase'} size={18} color={COLORS.textSub} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.category}>{item.category}</Text>
+        {item.party_name ? <Text style={styles.expSub}>{item.party_name}</Text> : null}
+        {item.bill_no    ? <Text style={styles.expSub}>Bill: {item.bill_no}</Text> : null}
+        <Text style={styles.expMeta}>{item.date}  —  {item.method}</Text>
+        {item.note       ? <Text style={styles.expNote} numberOfLines={1}>{item.note}</Text> : null}
+      </View>
+      <View style={styles.cardRight}>
+        <Text style={styles.expAmount}>{formatINR(item.amount)}</Text>
+        <View style={styles.cardActions}>
+          <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
+            <Icon name="edit-2" size={14} color={COLORS.textSub} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(item)}>
+            <Icon name="trash-2" size={14} color={COLORS.danger} />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -264,25 +262,25 @@ export default function ExpensesScreen({ navigation, route }) {
 
       {/* Category chips */}
       {byCat.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.catScroll}
-          contentContainerStyle={styles.catScrollContent}
-        >
-          {allCats.map(c => (
-            <TouchableOpacity
-              key={c}
-              style={[styles.catChip, catFilter === c && styles.catChipActive]}
-              onPress={() => handleCat(c)}
-            >
-              
-              <Text style={[styles.catChipText, catFilter === c && styles.catChipTextActive]}>
-                {c}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={styles.catScrollWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.catScrollContent}
+          >
+            {allCats.map(c => (
+              <TouchableOpacity
+                key={c}
+                style={[styles.catChip, catFilter === c && styles.catChipActive]}
+                onPress={() => handleCat(c)}
+              >
+                <Text style={[styles.catChipText, catFilter === c && styles.catChipTextActive]}>
+                  {c}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {/* List */}
@@ -975,8 +973,8 @@ const styles = StyleSheet.create({
   expSub:           { fontSize: 11, color: COLORS.textMute, marginTop: 2 },
   expNote:          { fontSize: 12, color: COLORS.textSub, marginTop: 3, fontStyle: 'italic' },
   category:         { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.4 },
-  catScroll:        { borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.card },
-  catScrollContent: { paddingHorizontal: 12, paddingVertical: 5, gap: 6 },
+  catScrollWrap:    { height: 38, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.card },
+  catScrollContent: { paddingHorizontal: 12, paddingVertical: 5, gap: 6, alignItems: 'center', flexDirection: 'row' },
   catGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   catGridItem:      { width: '30%', flex: 1, backgroundColor: COLORS.bg, borderRadius: RADIUS.md, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   catGridItemActive:{ backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
