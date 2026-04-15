@@ -128,11 +128,34 @@
   // ── Download installer ────────────────────────────────────────────
   function downloadInstaller(url, dest, onProgress) {
     return new Promise((resolve, reject) => {
-      if (fs.existsSync(dest + '.part')) fs.unlinkSync(dest + '.part');
-      const file = fs.createWriteStream(dest + '.part');
+      // Clean up any leftover .part file — ignore EPERM (antivirus lock)
+      try { if (fs.existsSync(dest + '.part')) fs.unlinkSync(dest + '.part'); } catch (_) {}
+
+      let file;
+      try {
+        file = fs.createWriteStream(dest + '.part');
+      } catch (e) {
+        return reject(new Error(`Cannot write to Downloads folder: ${e.message}`));
+      }
+
+      // Retry rename up to 5 times with 500ms delay (antivirus may hold the file briefly)
+      function renameWithRetry(src, dst, attempts, cb) {
+        try {
+          fs.renameSync(src, dst);
+          cb(null);
+        } catch (e) {
+          if ((e.code === 'EPERM' || e.code === 'EACCES') && attempts > 0) {
+            setTimeout(() => renameWithRetry(src, dst, attempts - 1, cb), 500);
+          } else {
+            cb(e);
+          }
+        }
+      }
+
       https.get(url, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) {
-          file.close(); fs.unlinkSync(dest + '.part');
+          file.close();
+          try { fs.unlinkSync(dest + '.part'); } catch (_) {}
           downloadInstaller(res.headers.location, dest, onProgress).then(resolve).catch(reject);
           return;
         }
@@ -143,7 +166,16 @@
           if (total > 0 && onProgress) onProgress(Math.round((done / total) * 100));
         });
         res.on('end', () => {
-          file.end(() => { fs.renameSync(dest + '.part', dest); resolve(); });
+          file.end(() => {
+            renameWithRetry(dest + '.part', dest, 5, (err) => {
+              if (err) {
+                try { fs.unlinkSync(dest + '.part'); } catch (_) {}
+                reject(new Error(`Update download blocked by antivirus. Please disable real-time protection and try again. (${err.message})`));
+              } else {
+                resolve();
+              }
+            });
+          });
         });
         res.on('error', (e) => { file.close(); try { fs.unlinkSync(dest + '.part'); } catch(_){} reject(e); });
       }).on('error', (e) => { file.close(); try { fs.unlinkSync(dest + '.part'); } catch(_){} reject(e); });
