@@ -14,7 +14,8 @@ import Icon from '../../utils/Icon';
 
   export default function CreatePOScreen({ navigation, route }) {
     const insets = useSafeAreaInsets();
-    const editPO = route?.params?.po || null;
+    const editPO       = route?.params?.po          || null;
+    const prefillParty = route?.params?.prefillParty || null;
 
     const [date, setDate]         = useState(today());
     const [validUntil, setValid]  = useState(addDays(today(), 30));
@@ -48,6 +49,10 @@ import Icon from '../../utils/Icon';
         const [p, itms] = await Promise.all([getParties('customer'), getItems()]);
         setParties(p);
         setItems(itms);
+        if (prefillParty) {
+          const matched = p.find(pt => pt.id === prefillParty.id) || prefillParty;
+          setParty(matched);
+        }
       })();
       if (editPO) {
         setDate(editPO.date);

@@ -27,6 +27,7 @@
   export default function CreateQuotation({ navigation, route }) {
     const insets = useSafeAreaInsets();
     const editQuotation = route?.params?.quotation || null;
+    const prefillParty  = route?.params?.prefillParty || null;
     const isDesktop = Platform.OS === 'web' && Dimensions.get('window').width >= 768;
 
     // ── Core state ────────────────────────────────────────────────
@@ -131,6 +132,10 @@
         }
       } else {
         setQuoteNo(num);
+        if (prefillParty) {
+          const matched = p.find(pt => pt.id === prefillParty.id) || prefillParty;
+          setParty(matched);
+        }
       }
     };
 
