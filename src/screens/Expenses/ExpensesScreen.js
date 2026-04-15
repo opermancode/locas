@@ -616,12 +616,12 @@ const styles = StyleSheet.create({
   // Page header — white bar with title + action
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16,
+    paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: COLORS.card,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   headerLeft:  { flex: 1 },
-  headerTitle: { fontSize: 22, fontWeight: FONTS.black, color: COLORS.text, letterSpacing: -0.3 },
+  headerTitle: { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text, letterSpacing: -0.3 },
   headerSub:   { fontSize: 12, color: COLORS.textMute, marginTop: 2 },
   headerBtn: {
     backgroundColor: COLORS.primary,
@@ -642,7 +642,7 @@ const styles = StyleSheet.create({
   metricsBar:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   statsStrip:  { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   metricCell:  { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  statChip:    { flex: 1, alignItems: 'center', paddingVertical: 12 },
+  statChip:    { flex: 1, alignItems: 'center', paddingVertical: 8 },
   metricVal:   { fontSize: 16, fontWeight: FONTS.black },
   statValue:   { fontSize: 16, fontWeight: FONTS.black },
   metricLbl:   { fontSize: 10, color: COLORS.textMute, marginTop: 2, fontWeight: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.4 },
@@ -654,10 +654,10 @@ const styles = StyleSheet.create({
   searchWrap:  { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 0 },
   searchBox: {
     flexDirection: 'row', alignItems: 'center',
-    margin: 16, marginBottom: 0,
+    marginHorizontal: 12, marginTop: 8, marginBottom: 0,
     backgroundColor: COLORS.card, borderRadius: RADIUS.md,
-    paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.border,
-    height: 44,
+    paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.border,
+    height: 40,
   },
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
@@ -679,13 +679,13 @@ const styles = StyleSheet.create({
   filterChipActive:{ backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
   filterText:      { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
   filterTextActive:{ color: '#fff', fontWeight: FONTS.bold },
-  catChip:         { paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+  catChip:         { paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border },
   catChipActive:   { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  catChipText:     { fontSize: 12, color: COLORS.textSub, fontWeight: FONTS.medium },
+  catChipText:     { fontSize: 11, color: COLORS.textSub, fontWeight: FONTS.medium },
   catChipTextActive:{ color: '#fff', fontWeight: FONTS.bold },
 
   // List
-  list: { padding: 16, paddingBottom: 100 },
+  list: { padding: 12, paddingBottom: 80 },
 
   // Cards
   card: {
@@ -786,10 +786,11 @@ const styles = StyleSheet.create({
   modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.borderDark, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.card,
   },
-  modalTitle:  { fontSize: 18, fontWeight: FONTS.black, color: COLORS.text },
+  modalTitle:  { fontSize: 16, fontWeight: FONTS.black, color: COLORS.text },
   modalBody:   { padding: 20 },
   modalSave: {
     backgroundColor: COLORS.primary, paddingVertical: 15,
@@ -969,20 +970,21 @@ const styles = StyleSheet.create({
   loadingText:    { fontSize: 14, color: COLORS.textMute, marginTop: 12 },
   notFound:       { fontSize: 15, color: COLORS.textMute },
 
-  expenseCard:      { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  iconBox:          { width: 42, height: 42, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  expenseCard:      { backgroundColor: COLORS.card, borderRadius: RADIUS.lg, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+  iconBox:          { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: COLORS.bg },
   expSub:           { fontSize: 11, color: COLORS.textMute, marginTop: 2 },
   expNote:          { fontSize: 12, color: COLORS.textSub, marginTop: 3, fontStyle: 'italic' },
   category:         { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.4 },
   catScroll:        { borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.card },
-  catScrollContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  catScrollContent: { paddingHorizontal: 12, paddingVertical: 5, gap: 6 },
   catGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   catGridItem:      { width: '30%', flex: 1, backgroundColor: COLORS.bg, borderRadius: RADIUS.md, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
   catGridItemActive:{ backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
   catGridText:      { fontSize: 12, fontWeight: FONTS.medium, color: COLORS.textSub, marginTop: 6, textAlign: 'center' },
   catGridTextActive:{ color: COLORS.primary, fontWeight: FONTS.bold },
-  modalContainer:   { backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xxl, borderTopRightRadius: RADIUS.xxl, maxHeight: '92%' },
-  modalScroll:      { padding: 20, paddingBottom: 40 },
-  modalCancel:      { paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  modalContainer:   { flex: 1, backgroundColor: COLORS.bg },
+  modalScroll:      { padding: 16, paddingBottom: 40 },
+  modalCancel:      { fontSize: 14, color: COLORS.textSub, fontWeight: FONTS.semibold, paddingVertical: 4 },
+  modalSave:        { fontSize: 14, color: COLORS.primary, fontWeight: FONTS.bold, paddingVertical: 4 },
 
 });
