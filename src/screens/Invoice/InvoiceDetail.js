@@ -6,37 +6,54 @@ import {
   Dimensions, Platform,
 } from 'react-native';
 
-// ── WebView polyfill ─────────────────────────────────────────────
+// ── WebView polyfill (fit-to-screen + zoom) ───────────────────────
 const WebView = Platform.OS === 'web'
-  ? ({ source, style }) => {
+  ? ({ source, style, zoom = 1, containerHeight = 520 }) => {
       const iframeRef = React.useRef(null);
-      const [h, setH] = React.useState(style?.height || 900);
-      // Use blob URL instead of encodeURIComponent — avoids encoding 15KB HTML string on every render
+      const wrapRef   = React.useRef(null);
+      const A4_W = 794; // px at 96dpi
+
       const blobUrl = React.useMemo(() => {
         if (!source?.html) return null;
         const blob = new Blob([source.html], { type: 'text/html;charset=utf-8' });
         return URL.createObjectURL(blob);
       }, [source?.html]);
+
       React.useEffect(() => {
         return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
       }, [blobUrl]);
-      React.useEffect(() => {
-        const el = iframeRef.current;
-        if (!el) return;
-        const onLoad = () => {
-          try {
-            const sh = el.contentDocument?.body?.scrollHeight;
-            if (sh && sh > 100) setH(sh + 32);
-          } catch (_) {}
-        };
-        el.addEventListener('load', onLoad);
-        return () => el.removeEventListener('load', onLoad);
-      }, [blobUrl]);
-      return React.createElement('iframe', {
-        ref: iframeRef,
-        src: blobUrl || source?.uri,
-        style: { border: 'none', width: '100%', height: h, display: 'block' },
-      });
+
+      // Scale the iframe: always render at 794px wide (A4), then CSS-scale it
+      const scale = zoom;
+      const scaledW = A4_W * scale;
+      const scaledH = containerHeight / scale; // iframe intrinsic height so scaled result fills container
+
+      return React.createElement('div', {
+        ref: wrapRef,
+        style: {
+          width: '100%',
+          height: containerHeight,
+          overflow: 'auto',
+          position: 'relative',
+          background: '#f0f0f0',
+          display: 'flex',
+          justifyContent: 'center',
+        },
+      },
+        React.createElement('iframe', {
+          ref: iframeRef,
+          src: blobUrl || source?.uri,
+          style: {
+            border: 'none',
+            width: A4_W,
+            height: containerHeight / scale,
+            display: 'block',
+            transformOrigin: 'top center',
+            transform: `scale(${scale})`,
+            flexShrink: 0,
+          },
+        })
+      );
     }
   : require('react-native-webview').WebView;
 
@@ -190,6 +207,9 @@ export default function InvoiceDetail({ navigation, route }) {
   const [printing, setPrinting]       = useState(false);
   const [selectedTpl, setSelectedTpl] = useState('t1');
   const [accentColor, setAccentColor] = useState('#1E40AF');
+
+  // Preview zoom (fit = auto-fit, otherwise 0.5–2.0)
+  const [previewZoom, setPreviewZoom] = useState(null); // null = auto-fit
 
   // Payment modal
   const [payModal, setPayModal]   = useState(false);
@@ -542,17 +562,24 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           ))}
         </View>
 
-        {/* Live preview — fills available space */}
+        {/* Live preview — fit-to-screen with zoom controls */}
         <Text style={s.rightSecTitle}>Preview</Text>
-        {invoiceHTML && (
-          <View style={s.previewWrap}>
-            <WebView
-              source={{ html: invoiceHTML }}
-              style={{ width: '100%', height: 900 }}
-              scrollEnabled
-            />
-          </View>
-        )}
+        {invoiceHTML && Platform.OS === 'web'
+          ? React.createElement(PreviewPane, {
+              html: invoiceHTML,
+              previewZoom,
+              setPreviewZoom,
+            })
+          : invoiceHTML && (
+            <View style={s.previewWrap}>
+              <WebView
+                source={{ html: invoiceHTML }}
+                style={{ width: '100%', height: 900 }}
+                scrollEnabled
+              />
+            </View>
+          )
+        }
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -731,6 +758,127 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
     </View>
   );
 }
+
+// ── PreviewPane — fit-to-screen iframe with zoom controls ────────
+// Renders the invoice HTML scaled to fit the container, with +/- and fit buttons.
+function PreviewPane({ html, previewZoom, setPreviewZoom }) {
+  const containerRef = React.useRef(null);
+  const [containerW, setContainerW] = React.useState(0);
+  const A4_W = 794; // natural A4 width in px
+
+  // Measure container width after mount
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect?.width;
+      if (w && w > 0) setContainerW(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const fitZoom   = containerW > 0 ? containerW / A4_W : 0.7;
+  const zoom      = previewZoom !== null ? previewZoom : fitZoom;
+  const CONTAINER_H = 580; // fixed visible height
+
+  const blobUrl = React.useMemo(() => {
+    if (!html) return null;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    return URL.createObjectURL(blob);
+  }, [html]);
+  React.useEffect(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl); }, [blobUrl]);
+
+  const isFit = previewZoom === null;
+
+  const zoomIn  = () => setPreviewZoom(z => Math.min(2.0, parseFloat(((z !== null ? z : fitZoom) + 0.1).toFixed(2))));
+  const zoomOut = () => setPreviewZoom(z => Math.max(0.3, parseFloat(((z !== null ? z : fitZoom) - 0.1).toFixed(2))));
+  const resetFit = () => setPreviewZoom(null);
+
+  return React.createElement('div', { ref: containerRef, style: { width: '100%' } },
+    // Zoom toolbar
+    React.createElement('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: 6,
+        marginBottom: 8, justifyContent: 'flex-end',
+      },
+    },
+      // Zoom out
+      React.createElement('button', {
+        onClick: zoomOut,
+        style: btnStyle,
+        title: 'Zoom out',
+      }, '−'),
+      // Percentage label
+      React.createElement('span', {
+        style: { fontSize: 12, fontWeight: 600, color: '#64748b', minWidth: 42, textAlign: 'center' },
+      }, isFit ? 'Fit' : `${Math.round(zoom * 100)}%`),
+      // Zoom in
+      React.createElement('button', {
+        onClick: zoomIn,
+        style: btnStyle,
+        title: 'Zoom in',
+      }, '+'),
+      // Fit button
+      React.createElement('button', {
+        onClick: resetFit,
+        style: { ...btnStyle, background: isFit ? '#1E40AF' : '#f1f5f9', color: isFit ? '#fff' : '#374151', minWidth: 44 },
+        title: 'Fit to window',
+      }, '⊡ Fit'),
+    ),
+    // Preview container — fixed height, overflow scroll if zoomed in
+    React.createElement('div', {
+      style: {
+        width: '100%',
+        height: CONTAINER_H,
+        overflow: 'auto',
+        borderRadius: 8,
+        border: '1px solid #e2e8f0',
+        background: '#f8fafc',
+        display: 'flex',
+        justifyContent: 'center',
+        boxSizing: 'border-box',
+      },
+    },
+      React.createElement('div', {
+        style: {
+          width: A4_W,
+          height: CONTAINER_H / zoom,
+          transformOrigin: 'top center',
+          transform: `scale(${zoom})`,
+          flexShrink: 0,
+        },
+      },
+        React.createElement('iframe', {
+          src: blobUrl,
+          style: {
+            border: 'none',
+            width: A4_W,
+            height: CONTAINER_H / zoom,
+            display: 'block',
+            background: '#fff',
+          },
+        })
+      )
+    )
+  );
+}
+
+const btnStyle = {
+  width: 30, height: 30,
+  border: '1px solid #e2e8f0',
+  borderRadius: 6,
+  background: '#f1f5f9',
+  cursor: 'pointer',
+  fontSize: 16,
+  fontWeight: 700,
+  color: '#374151',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  lineHeight: 1,
+  padding: 0,
+};
 
 // ── Small helpers ────────────────────────────────────────────────
 function FL({ children }) {
