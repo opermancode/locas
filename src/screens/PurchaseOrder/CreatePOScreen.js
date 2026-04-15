@@ -442,8 +442,9 @@ import Icon from '../../utils/Icon';
                 <TouchableOpacity
                   onPress={() => {
                     const prev = calViewMonth === 0 ? 11 : calViewMonth - 1;
+                    const prevYear = calViewMonth === 0 ? calViewYear - 1 : calViewYear;
                     setCalViewMonth(prev);
-                    setCalViewYear(calViewMonth === 0 ? calViewYear - 1 : calViewYear);
+                    setCalViewYear(prevYear);
                   }}
                   style={{ padding:6 }}
                 >
@@ -455,8 +456,9 @@ import Icon from '../../utils/Icon';
                 <TouchableOpacity
                   onPress={() => {
                     const next = calViewMonth === 11 ? 0 : calViewMonth + 1;
+                    const nextYear = calViewMonth === 11 ? calViewYear + 1 : calViewYear;
                     setCalViewMonth(next);
-                    setCalViewYear(calViewMonth === 11 ? calViewYear + 1 : calViewYear);
+                    setCalViewYear(nextYear);
                   }}
                   style={{ padding:6 }}
                 >
