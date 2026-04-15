@@ -264,7 +264,7 @@
       show: false,
     });
     mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-    mainWindow.once('ready-to-show', () => mainWindow.show());
+    mainWindow.once('ready-to-show', () => { mainWindow.maximize(); mainWindow.show(); });
     mainWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
     mainWindow.on('closed', () => { mainWindow = null; });
   }
