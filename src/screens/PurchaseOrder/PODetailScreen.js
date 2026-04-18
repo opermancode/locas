@@ -6,7 +6,7 @@
   } from 'react-native';
   import { useSafeAreaInsets } from 'react-native-safe-area-context';
   import { useFocusEffect } from '@react-navigation/native';
-  import { getPurchaseOrderDetail, updatePOStatus, deletePurchaseOrder, recordPODelivery } from '../../db';
+  import { getPurchaseOrderDetail, updatePOStatus, deletePurchaseOrder, recordPODelivery, reconcilePOFromInvoices } from '../../db';
   import PODeliveryModal from './PODeliveryModal';
   import { COLORS, RADIUS, FONTS } from '../../theme';
 
@@ -24,9 +24,13 @@
     const [po, setPO]         = useState(null);
     const [loading, setLoading] = useState(true);
     const [deliveryModal, setDeliveryModal] = useState(false);
+    const [reconciled, setReconciled] = useState(false); // true if auto-fix was applied
 
     const load = async () => {
       try {
+        // Reconcile first — fix any missed deliveries from linked invoices
+        const wasFixed = await reconcilePOFromInvoices(poId).catch(() => false);
+        if (wasFixed) setReconciled(true);
         const data = await getPurchaseOrderDetail(poId);
         setPO(data);
       } catch (e) { console.error(e); }
@@ -109,7 +113,18 @@
 
         <ScrollView showsVerticalScrollIndicator={false}>
 
-          {/* Progress overview */}
+          {/* Auto-reconcile banner — shown once when missed deliveries were fixed */}
+          {reconciled && (
+            <View style={s.reconciledBanner}>
+              <Icon name="check-circle" size={15} color={COLORS.success} />
+              <Text style={s.reconciledTxt}>
+                Delivery quantities updated automatically from linked invoices.
+              </Text>
+              <TouchableOpacity onPress={() => setReconciled(false)} style={{ padding: 2 }}>
+                <Icon name="x" size={13} color={COLORS.success} />
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={s.progressCard}>
             <View style={s.progressRow}>
               <View style={s.progressCell}>
@@ -310,6 +325,8 @@
     notesText: { fontSize: 13, color: COLORS.textSub, lineHeight: 20 },
     infoBox:   { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: COLORS.infoLight, borderRadius: RADIUS.md, padding: 12, margin: 12, marginBottom: 0 },
     infoTxt:   { flex: 1, fontSize: 12, color: COLORS.info, lineHeight: 18 },
+    reconciledBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.successBg, borderRadius: RADIUS.md, padding: 10, margin: 12, marginBottom: 0 },
+    reconciledTxt:    { flex: 1, fontSize: 12, color: COLORS.success, fontWeight: FONTS.semibold },
 
     actionsRow:     { padding: 12, paddingBottom: 0, gap: 10 },
     actionPrimary:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: RADIUS.lg },

@@ -55,6 +55,7 @@
   export const savePurchaseOrder     = db.savePurchaseOrder;
   export const getPurchaseOrders     = db.getPurchaseOrders;
   export const getPurchaseOrderDetail = db.getPurchaseOrderDetail;
+  export const reconcilePOFromInvoices = db.reconcilePOFromInvoices;
   export const getOpenPOsForParty    = db.getOpenPOsForParty;
   export const recordPODelivery      = db.recordPODelivery;
   export const updatePOStatus        = db.updatePOStatus;

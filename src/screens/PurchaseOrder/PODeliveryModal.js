@@ -21,22 +21,34 @@ export default function PODeliveryModal({ visible, pos, invoiceItems, onConfirm,
   React.useEffect(() => {
     if (pos?.length > 0) {
       setSelectedPO(pos[0]);
-      // Pre-fill deliveries from invoice items by matching name
-      const pre = {};
-      pos[0]?.items?.forEach(poItem => {
-        const match = invoiceItems?.find(ii =>
-          ii.name?.toLowerCase().trim() === poItem.name?.toLowerCase().trim() ||
-          (ii.item_id && poItem.item_id && Number(ii.item_id) === Number(poItem.item_id))
-        );
-        if (match) {
-          const remaining = poItem.qty_ordered - (poItem.qty_delivered || 0);
-          const invoiceQty = parseFloat(match.qty) || parseFloat(match.qty_ordered) || 0;
-          pre[poItem.id] = String(Math.min(remaining, invoiceQty));
-        }
-      });
-      setDeliveries(pre);
+      prefill(pos[0], invoiceItems);
     }
   }, [visible, pos]);
+
+  const prefill = (po, invItems) => {
+    const pre = {};
+    po?.items?.forEach(poItem => {
+      const remaining = poItem.qty_ordered - (poItem.qty_delivered || 0);
+      if (remaining <= 0) return;
+
+      // Try to match invoice item by item_id first, then by name (case-insensitive, trimmed)
+      const match = invItems?.find(ii =>
+        (ii.item_id && poItem.item_id && Number(ii.item_id) === Number(poItem.item_id)) ||
+        ii.name?.toLowerCase().trim() === poItem.name?.toLowerCase().trim()
+      );
+
+      if (match) {
+        // Pre-fill with invoice qty clamped to remaining
+        const invoiceQty = parseFloat(match.qty) || 0;
+        pre[poItem.id] = String(Math.min(remaining, invoiceQty));
+      } else {
+        // No match — still show the remaining qty so user can edit
+        // Default to 0 so nothing is accidentally recorded
+        pre[poItem.id] = '0';
+      }
+    });
+    setDeliveries(pre);
+  };
 
   if (!visible || !pos?.length) return null;
 
@@ -44,6 +56,12 @@ export default function PODeliveryModal({ visible, pos, invoiceItems, onConfirm,
     const result = Object.entries(deliveries)
       .filter(([, v]) => parseFloat(v) > 0)
       .map(([id, v]) => ({ po_item_id: Number(id), qty_delivered: parseFloat(v) }));
+
+    if (result.length === 0) {
+      // All qtys are 0 — treat as skip rather than a silent no-op
+      onSkip();
+      return;
+    }
     onConfirm({ poId: selectedPO.id, deliveries: result });
   };
 
@@ -73,7 +91,7 @@ export default function PODeliveryModal({ visible, pos, invoiceItems, onConfirm,
                     <TouchableOpacity
                       key={po.id}
                       style={[s.poChip, selectedPO?.id === po.id && s.poChipActive]}
-                      onPress={() => { setSelectedPO(po); setDeliveries({}); }}
+                      onPress={() => { setSelectedPO(po); prefill(po, invoiceItems); }}
                     >
                       <Text style={[s.poChipTxt, selectedPO?.id === po.id && s.poChipTxtActive]}>{po.po_number}</Text>
                       <Text style={[s.poChipSub, selectedPO?.id === po.id && { color: COLORS.primary }]}>{po.party_name}</Text>
@@ -90,16 +108,28 @@ export default function PODeliveryModal({ visible, pos, invoiceItems, onConfirm,
               </View>
             )}
 
-            <Text style={s.label}>Set Qty Delivered per Item</Text>
-            <Text style={s.hint}>Leave 0 for items not being delivered now.</Text>
+            <Text style={s.label}>Qty Delivered per Item</Text>
+            <Text style={s.hint}>Matched items from your invoice are pre-filled. Edit if needed. Leave 0 to skip.</Text>
 
             {poItems.map(item => {
               const remaining = item.qty_ordered - (item.qty_delivered || 0);
-              if (remaining <= 0) return null; // already fully delivered
+              if (remaining <= 0) return null;
+              const isMatched = invoiceItems?.some(ii =>
+                (ii.item_id && item.item_id && Number(ii.item_id) === Number(item.item_id)) ||
+                ii.name?.toLowerCase().trim() === item.name?.toLowerCase().trim()
+              );
+              const currentQty = parseFloat(deliveries[item.id] ?? '0');
               return (
-                <View key={item.id} style={s.itemRow}>
+                <View key={item.id} style={[s.itemRow, currentQty > 0 && s.itemRowActive]}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.itemName}>{item.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                      <Text style={s.itemName}>{item.name}</Text>
+                      {isMatched && (
+                        <View style={s.matchBadge}>
+                          <Text style={s.matchBadgeTxt}>✓ matched</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={s.itemMeta}>
                       {item.qty_delivered || 0} / {item.qty_ordered} {item.unit} delivered
                       {'  ·  '}<Text style={{ color: COLORS.warning }}>{remaining} remaining</Text>
@@ -116,9 +146,9 @@ export default function PODeliveryModal({ visible, pos, invoiceItems, onConfirm,
                       <Text style={s.qtyBtnTxt}>−</Text>
                     </TouchableOpacity>
                     <TextInput
-                      style={s.qtyField}
-                      value={deliveries[item.id] || '0'}
-                      onChangeText={v => setDeliveries(d => ({ ...d, [item.id]: v }))}
+                      style={[s.qtyField, currentQty > 0 && { color: COLORS.primary, fontWeight: FONTS.black }]}
+                      value={deliveries[item.id] ?? '0'}
+                      onChangeText={v => setDeliveries(d => ({ ...d, [item.id]: v.replace(/[^0-9.]/g, '') }))}
                       keyboardType="decimal-pad"
                     />
                     <TouchableOpacity
@@ -176,8 +206,11 @@ const s = StyleSheet.create({
   poDate:  { fontSize: 11, color: COLORS.textSub, marginTop: 2 },
 
   itemRow:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 12 },
+  itemRowActive: { backgroundColor: COLORS.successBg + '40' },
   itemName: { fontSize: 14, fontWeight: FONTS.semibold, color: COLORS.text, marginBottom: 2 },
   itemMeta: { fontSize: 11, color: COLORS.textSub },
+  matchBadge: { backgroundColor: COLORS.successBg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  matchBadgeTxt: { fontSize: 9, fontWeight: FONTS.bold, color: COLORS.success },
 
   qtyInput: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bg, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
   qtyBtn:   { width: 32, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.bgDeep },

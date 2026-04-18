@@ -1204,8 +1204,12 @@ export async function getOpenPOsForParty(partyId) {
  */
 export async function recordPODelivery(poId, deliveries) {
   for (const d of deliveries) {
+    if (!d.po_item_id || !d.qty_delivered || d.qty_delivered <= 0) continue;
     const item = await stores_po.po_items.getItem(String(d.po_item_id));
-    if (!item) continue;
+    if (!item) {
+      console.warn(`recordPODelivery: po_item ${d.po_item_id} not found — skipping`);
+      continue;
+    }
     const newDelivered = Math.min(
       item.qty_ordered,
       (item.qty_delivered || 0) + d.qty_delivered
@@ -1232,6 +1236,87 @@ export async function recordPODelivery(poId, deliveries) {
       ...po, status: newStatus, updated_at: new Date().toISOString(),
     });
   }
+}
+
+/**
+ * Reconcile a PO's delivered quantities from linked invoices.
+ * Scans all invoices that have po_id = this PO, loads their line items,
+ * matches by item_id or name, sums up quantities, and updates po_items.
+ * This fixes cases where recordPODelivery was skipped due to the old bug.
+ * Returns true if any quantities were updated.
+ */
+export async function reconcilePOFromInvoices(poId) {
+  // 1. Get the PO and its items
+  const po = await getPurchaseOrderDetail(poId);
+  if (!po) return false;
+
+  // 2. Find all invoices linked to this PO (by po_id field)
+  const allInvoices = await getAll(stores.invoices, i =>
+    !i.deleted_at && Number(i.po_id) === Number(poId)
+  );
+
+  // Also check invoices linked by po_number for older invoices saved before po_id was stored
+  const allByNumber = po.po_number
+    ? await getAll(stores.invoices, i =>
+        !i.deleted_at && !i.po_id && i.po_number === po.po_number &&
+        Number(i.party_id) === Number(po.party_id)
+      )
+    : [];
+
+  const linkedInvoices = [...allInvoices, ...allByNumber];
+  if (linkedInvoices.length === 0) return false;
+
+  // 3. Load all invoice line items for these invoices
+  const allLineItems = [];
+  for (const inv of linkedInvoices) {
+    const items = await getAll(stores.invoice_items, i => i.invoice_id === Number(inv.id));
+    items.forEach(li => allLineItems.push({ ...li, invoice_date: inv.date }));
+  }
+  if (allLineItems.length === 0) return false;
+
+  // 4. For each PO item, sum up qty from all matched invoice items
+  let anyChanged = false;
+  for (const poItem of po.items) {
+    const matched = allLineItems.filter(li =>
+      (li.item_id && poItem.item_id && Number(li.item_id) === Number(poItem.item_id)) ||
+      (li.name?.toLowerCase().trim() === poItem.name?.toLowerCase().trim())
+    );
+
+    if (matched.length === 0) continue;
+
+    const totalDelivered = Math.min(
+      poItem.qty_ordered,
+      matched.reduce((sum, li) => sum + (parseFloat(li.qty) || 0), 0)
+    );
+
+    // Only update if different from what's stored
+    if (Math.abs(totalDelivered - (poItem.qty_delivered || 0)) > 0.001) {
+      await stores_po.po_items.setItem(String(poItem.id), {
+        ...poItem,
+        qty_delivered: totalDelivered,
+      });
+      anyChanged = true;
+    }
+  }
+
+  // 5. Recompute PO status if anything changed
+  if (anyChanged) {
+    const updatedItems = [];
+    await stores_po.po_items.iterate(val => {
+      if (val.po_id === Number(poId)) updatedItems.push(val);
+    });
+    const allDone = updatedItems.every(i => i.qty_delivered >= i.qty_ordered);
+    const anyDone = updatedItems.some(i => (i.qty_delivered || 0) > 0);
+    const newStatus = allDone ? 'completed' : anyDone ? 'partial' : 'active';
+    const poRecord = await stores_po.purchase_orders.getItem(String(poId));
+    if (poRecord && poRecord.status !== newStatus) {
+      await stores_po.purchase_orders.setItem(String(poId), {
+        ...poRecord, status: newStatus, updated_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  return anyChanged;
 }
 
 export async function updatePOStatus(poId, status) {
