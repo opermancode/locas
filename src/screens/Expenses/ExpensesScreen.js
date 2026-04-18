@@ -13,6 +13,7 @@ import { COLORS, SHADOW, RADIUS, FONTS } from '../../theme';
 const EMPTY_FORM = {
   category: 'Other', amount: '', date: today(),
   party_name: '', bill_no: '', method: 'Cash', note: '',
+  is_recurring: false, recurring_day: '',
 };
 
 const CATEGORY_ICONS = {
@@ -50,9 +51,56 @@ export default function ExpensesScreen({ navigation, route }) {
   const load = async () => {
     try {
       const [data, sups] = await Promise.all([getExpenses(), getParties('supplier')]);
-      setExpenses(data);
+
+      // ── Auto-generate missed recurring expenses ──────────────
+      const now      = new Date();
+      const thisYear = now.getFullYear();
+      const thisMonth= now.getMonth(); // 0-based
+      const toCreate = [];
+
+      const recurring = data.filter(e => e.is_recurring && e.recurring_day);
+      for (const r of recurring) {
+        const day = parseInt(r.recurring_day);
+        if (!day || day < 1 || day > 28) continue;
+
+        // Check last 3 months including current
+        for (let mOffset = 2; mOffset >= 0; mOffset--) {
+          const d = new Date(thisYear, thisMonth - mOffset, day);
+          if (d > now) continue; // future date — skip
+
+          const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          // Check if already created for this month+category+amount
+          const alreadyExists = data.some(e =>
+            !e.is_recurring && // only check non-recurring (the generated copies)
+            e.category    === r.category &&
+            e.party_name  === (r.party_name || '') &&
+            Math.abs(e.amount - r.amount) < 0.01 &&
+            e.date        === dateStr &&
+            e.note?.startsWith('[Auto]')
+          );
+          if (!alreadyExists) {
+            toCreate.push({
+              category:   r.category,
+              amount:     r.amount,
+              date:       dateStr,
+              party_name: r.party_name || '',
+              bill_no:    '',
+              method:     r.method || 'Cash',
+              note:       `[Auto] Recurring: ${r.note || r.category}`,
+              is_recurring: false,
+            });
+          }
+        }
+      }
+
+      for (const exp of toCreate) {
+        await saveExpense(exp);
+      }
+
+      const fresh = toCreate.length > 0 ? await getExpenses() : data;
+      setExpenses(fresh);
       setSuppliers(sups);
-      apply(data, search, catFilter);
+      apply(fresh, search, catFilter);
     } catch (e) {
       console.error(e);
     } finally {
@@ -91,14 +139,16 @@ export default function ExpensesScreen({ navigation, route }) {
   const openAdd  = () => { setForm({ ...EMPTY_FORM, date: today() }); setModal(true); };
   const openEdit = (e) => {
     setForm({
-      id:         e.id,
-      category:   e.category   || 'Other',
-      amount:     String(e.amount),
-      date:       e.date,
-      party_name: e.party_name || '',
-      bill_no:    e.bill_no    || '',
-      method:     e.method     || 'Cash',
-      note:       e.note       || '',
+      id:           e.id,
+      category:     e.category   || 'Other',
+      amount:       String(e.amount),
+      date:         e.date,
+      party_name:   e.party_name || '',
+      bill_no:      e.bill_no    || '',
+      method:       e.method     || 'Cash',
+      note:         e.note       || '',
+      is_recurring: e.is_recurring || false,
+      recurring_day: String(e.recurring_day || ''),
     });
     setModal(true);
   };
@@ -160,6 +210,12 @@ export default function ExpensesScreen({ navigation, route }) {
         {item.bill_no    ? <Text style={styles.expSub}>Bill: {item.bill_no}</Text> : null}
         <Text style={styles.expMeta}>{item.date}  —  {item.method}</Text>
         {item.note       ? <Text style={styles.expNote} numberOfLines={1}>{item.note}</Text> : null}
+        {item.is_recurring && (
+          <View style={styles.recurringBadge}>
+            <Icon name="repeat" size={9} color={COLORS.primary} />
+            <Text style={styles.recurringBadgeTxt}>Monthly · Day {item.recurring_day}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.cardRight}>
         <Text style={styles.expAmount}>{formatINR(item.amount)}</Text>
@@ -430,6 +486,48 @@ export default function ExpensesScreen({ navigation, route }) {
               numberOfLines={2}
             />
 
+            {/* Recurring toggle */}
+            <FieldLabel>Recurring</FieldLabel>
+            <TouchableOpacity
+              style={styles.recurringRow}
+              onPress={() => setForm(f => ({ ...f, is_recurring: !f.is_recurring }))}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.toggle, form.is_recurring && styles.toggleOn]}>
+                <View style={[styles.toggleThumb, form.is_recurring && styles.toggleThumbOn]} />
+              </View>
+              <Text style={styles.recurringLabel}>
+                {form.is_recurring ? 'Repeats every month' : 'One-time expense'}
+              </Text>
+            </TouchableOpacity>
+
+            {form.is_recurring && (
+              <View style={styles.recurringBox}>
+                <Icon name="repeat" size={14} color={COLORS.primary} />
+                <Text style={styles.recurringBoxLabel}>Repeat on day</Text>
+                <TextInput
+                  style={styles.recurringDayInput}
+                  value={form.recurring_day}
+                  onChangeText={v => setForm(f => ({ ...f, recurring_day: v.replace(/[^0-9]/g, '') }))}
+                  placeholder="1–28"
+                  placeholderTextColor={COLORS.textMute}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                />
+                <Text style={styles.recurringBoxHint}>of every month</Text>
+              </View>
+            )}
+
+            {form.is_recurring && (
+              <View style={styles.recurringInfo}>
+                <Icon name="info" size={12} color={COLORS.info} />
+                <Text style={styles.recurringInfoTxt}>
+                  Locas will auto-create this expense entry every month on day {form.recurring_day || '?'}. Missed months are filled automatically when you open the app.
+                </Text>
+              </View>
+            )}
+
+            {/* Recurring badge on expense card */}
             <View style={{ height: 40 }} />
           </ScrollView>
         </View>
@@ -972,6 +1070,22 @@ const styles = StyleSheet.create({
   iconBox:          { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: COLORS.bg },
   expSub:           { fontSize: 11, color: COLORS.textMute, marginTop: 2 },
   expNote:          { fontSize: 12, color: COLORS.textSub, marginTop: 3, fontStyle: 'italic' },
+  recurringBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  recurringBadgeTxt:{ fontSize: 10, color: COLORS.primary, fontWeight: FONTS.bold },
+
+  // Recurring toggle
+  recurringRow:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  toggle:           { width: 42, height: 24, borderRadius: 12, backgroundColor: COLORS.border, justifyContent: 'center', padding: 2 },
+  toggleOn:         { backgroundColor: COLORS.primary },
+  toggleThumb:      { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
+  toggleThumbOn:    { alignSelf: 'flex-end' },
+  recurringLabel:   { fontSize: 14, color: COLORS.text },
+  recurringBox:     { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.md, padding: 12, marginTop: 10 },
+  recurringBoxLabel:{ fontSize: 13, color: COLORS.primary, fontWeight: FONTS.semibold },
+  recurringDayInput:{ width: 52, backgroundColor: COLORS.card, borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 6, fontSize: 15, fontWeight: FONTS.bold, color: COLORS.primary, textAlign: 'center' },
+  recurringBoxHint: { fontSize: 13, color: COLORS.primary },
+  recurringInfo:    { flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: COLORS.infoLight, borderRadius: RADIUS.md, padding: 10, marginTop: 8 },
+  recurringInfoTxt: { flex: 1, fontSize: 12, color: COLORS.info, lineHeight: 17 },
   category:         { fontSize: 11, fontWeight: FONTS.bold, color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.4 },
   catScrollWrap:    { height: 38, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.card },
   catScrollContent: { paddingHorizontal: 12, paddingVertical: 5, gap: 6, alignItems: 'center', flexDirection: 'row' },

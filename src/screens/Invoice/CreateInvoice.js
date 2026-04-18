@@ -107,10 +107,12 @@ export default function CreateInvoice({ navigation, route }) {
     setProfile(prof);
 
     if (editInvoice) {
-      // ── Edit mode: pre-populate all fields from existing invoice ──
-      setInvoiceNo(editInvoice.invoice_number);
-      setInvoiceDate(editInvoice.date);
-      setDueDate(editInvoice.due_date || addDays(editInvoice.date, 30));
+      const isDuplicate = !editInvoice.id; // duplicate: invoice object but no id
+
+      // ── Edit / Duplicate mode: pre-populate all fields ──
+      setInvoiceNo(isDuplicate ? num : editInvoice.invoice_number);
+      setInvoiceDate(isDuplicate ? today() : editInvoice.date);
+      setDueDate(isDuplicate ? addDays(today(), 30) : (editInvoice.due_date || addDays(editInvoice.date, 30)));
       setNotes(editInvoice.notes || '');
       setTerms(editInvoice.terms || 'Payment due within 30 days.');
       setInvoiceDiscount(String(editInvoice.discount || 0));
@@ -519,7 +521,7 @@ export default function CreateInvoice({ navigation, route }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Icon name="arrow-left" size={20} color={COLORS.primary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{editInvoice ? 'Edit Invoice' : 'New Invoice'}</Text>
+          <Text style={styles.headerTitle}>{editInvoice ? (editInvoice.id ? 'Edit Invoice' : 'Duplicate Invoice') : 'New Invoice'}</Text>
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.5 }]}
             onPress={handleSave}

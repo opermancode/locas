@@ -3,7 +3,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, RefreshControl, StatusBar, ScrollView,
-  Platform, Dimensions,
+  Platform, Dimensions, Share, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,19 +47,35 @@ export default function InvoiceListScreen({ navigation }) {
   const [refreshing, setRefreshing]     = useState(false);
   const [sortKey, setSortKey]           = useState('date');
   const [sortAsc, setSortAsc]           = useState(false);
-  const [stats, setStats]               = useState({ total: 0, unpaid: 0, paid: 0, count: 0 });
+  const [stats, setStats]               = useState({ total: 0, unpaid: 0, paid: 0, count: 0, overdue: 0 });
 
   const load = async () => {
     try {
       const data = await getInvoices({ type: 'sale' });
       setInvoices(data);
-      const total  = data.reduce((s, i) => s + (i.total || 0), 0);
-      const unpaid = data.reduce((s, i) => s + Math.max(0, (i.total || 0) - (i.paid || 0)), 0);
-      const paid   = data.reduce((s, i) => s + (i.paid || 0), 0);
-      setStats({ total, unpaid, paid, count: data.length });
+      const total   = data.reduce((s, i) => s + (i.total || 0), 0);
+      const unpaid  = data.reduce((s, i) => s + Math.max(0, (i.total || 0) - (i.paid || 0)), 0);
+      const paid    = data.reduce((s, i) => s + (i.paid || 0), 0);
+      const overdue = data.filter(i => resolveStatus(i) === 'overdue').length;
+      setStats({ total, unpaid, paid, count: data.length, overdue });
       applyFilters(data, search, statusFilter, sortKey, sortAsc);
     } catch (e) { console.error(e); }
     finally { setRefreshing(false); }
+  };
+
+  const sendOverdueReminders = async () => {
+    const overdue = invoices.filter(i => resolveStatus(i) === 'overdue');
+    if (overdue.length === 0) { Alert.alert('No Overdue Invoices', 'All invoices are up to date!'); return; }
+
+    // Build a combined message for all overdue invoices
+    const lines = overdue.map(i => {
+      const bal = (i.total || 0) - (i.paid || 0);
+      return `• ${i.invoice_number} — ${i.party_name || 'Walk-in'} — Due: ${i.due_date} — Balance: ${formatINR(bal)}`;
+    });
+    const msg = `*Payment Reminder*\n\nThe following invoices are overdue:\n\n${lines.join('\n')}\n\nPlease arrange payment at the earliest. Thank you.`;
+
+    try { await Share.share({ message: msg }); }
+    catch (e) { console.error(e); }
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
@@ -129,16 +145,24 @@ export default function InvoiceListScreen({ navigation }) {
       <View style={s.header}>
         <View>
           <Text style={s.headerTitle}>Invoices</Text>
-          <Text style={s.headerSub}>{stats.count} records</Text>
+          <Text style={s.headerSub}>{stats.count} records{stats.overdue > 0 ? ` · ${stats.overdue} overdue` : ''}</Text>
         </View>
-        <TouchableOpacity
-          style={s.newBtn}
-          onPress={() => navigation.navigate('CreateInvoice')}
-          activeOpacity={0.85}
-        >
-          <Icon name="plus" size={15} color="#fff" />
-          <Text style={s.newBtnText}>New Invoice</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {stats.overdue > 0 && (
+            <TouchableOpacity style={s.overdueBtn} onPress={sendOverdueReminders} activeOpacity={0.85}>
+              <Icon name="bell" size={13} color={COLORS.danger} />
+              <Text style={s.overdueBtnTxt}>Remind ({stats.overdue})</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={s.newBtn}
+            onPress={() => navigation.navigate('CreateInvoice')}
+            activeOpacity={0.85}
+          >
+            <Icon name="plus" size={15} color="#fff" />
+            <Text style={s.newBtnText}>New Invoice</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── KPI strip ── */}
@@ -149,7 +173,7 @@ export default function InvoiceListScreen({ navigation }) {
         <View style={s.kpiDiv} />
         <KPI label="Outstanding" value={formatINRCompact(stats.unpaid)} color={stats.unpaid > 0 ? COLORS.danger : COLORS.textMute} />
         <View style={s.kpiDiv} />
-        <KPI label="Count"       value={String(stats.count)}             color={COLORS.text} />
+        <KPI label="Overdue"     value={String(stats.overdue)}           color={stats.overdue > 0 ? COLORS.danger : COLORS.textMute} />
       </View>
 
       {/* ── Search + filters ── */}
@@ -329,6 +353,8 @@ const s = StyleSheet.create({
   headerSub:   { fontSize: 12, color: COLORS.textMute, marginTop: 1 },
   newBtn:      { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 9, borderRadius: RADIUS.md },
   newBtnText:  { color: '#fff', fontWeight: FONTS.bold, fontSize: 13 },
+  overdueBtn:  { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.dangerLight, paddingHorizontal: 12, paddingVertical: 9, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.danger + '40' },
+  overdueBtnTxt: { color: COLORS.danger, fontWeight: FONTS.bold, fontSize: 12 },
 
   // KPI strip
   kpiStrip: { flexDirection: 'row', backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border },

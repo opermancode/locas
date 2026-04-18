@@ -281,6 +281,21 @@ export default function InvoiceDetail({ navigation, route }) {
     ]);
   };
 
+  const handleDuplicate = () => {
+    // Strip id, invoice_number, paid, status, payments — create as a fresh draft
+    const draft = {
+      ...invoice,
+      id: undefined,
+      invoice_number: undefined,
+      paid: 0,
+      status: 'unpaid',
+      payments: [],
+      date: undefined,       // let CreateInvoice default to today
+      due_date: undefined,
+    };
+    navigation.navigate('CreateInvoice', { invoice: draft });
+  };
+
   const doPDF = async () => {
     setPrinting(true);
     try {
@@ -625,6 +640,9 @@ ${isInter ? `IGST: ${formatINR(invoice.igst)}` : `CGST: ${formatINR(invoice.cgst
           style={s.iconBtn}
         >
           <Icon name="edit-2" size={16} color={COLORS.textSub} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleDuplicate} style={s.iconBtn} title="Duplicate">
+          <Icon name="copy" size={16} color={COLORS.textSub} />
         </TouchableOpacity>
         <TouchableOpacity onPress={handleDelete} style={[s.iconBtn, s.iconBtnDanger]}>
           <Icon name="trash-2" size={16} color={COLORS.danger} />
