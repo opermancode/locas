@@ -316,48 +316,7 @@ import React, { useState, useCallback } from 'react';
             )}
           </div>
 
-          {/* Flyout — clean minimal panel */}
-          {isFlying && hasFlyout && (
-            <div
-              style={{
-                position: 'fixed',
-                left: w + 1,
-                top: flyoutY - 4,
-                zIndex: 2000,
-                backgroundColor: '#1a2035',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderLeft: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '0 6px 6px 0',
-                minWidth: 170,
-                boxShadow: '4px 4px 16px rgba(0,0,0,0.35)',
-                animation: 'flyoutIn 0.1s ease',
-                overflow: 'hidden',
-              }}
-              onMouseEnter={() => setFlyoutItem(item.name)}
-              onMouseLeave={() => setFlyoutItem(null)}
-            >
-              {flyouts.map((f, fi) => (
-                <div
-                  key={fi}
-                  onClick={() => go(f)}
-                  style={{
-                    display:'flex', alignItems:'center',
-                    padding:'9px 16px',
-                    cursor:'pointer',
-                    fontSize: 13,
-                    fontWeight: f.primary ? 500 : 400,
-                    color: f.primary ? '#FF7A24' : 'rgba(255,255,255,0.72)',
-                    transition:'background 0.1s, color 0.1s',
-                    borderTop: fi === 0 ? 'none' : '1px solid rgba(255,255,255,0.04)',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = f.primary ? '#FF9A50' : '#fff'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = f.primary ? '#FF7A24' : 'rgba(255,255,255,0.72)'; }}
-                >
-                  {f.label}
-                </div>
-              ))}
-            </div>
-          )}
+          {/* no inline flyout — rendered at sidebar root to avoid clipping */}
         </div>
       );
     }
@@ -435,7 +394,54 @@ import React, { useState, useCallback } from 'react';
           {SIDEBAR_ITEMS.map((item, idx) => renderNavItem(item, idx))}
         </div>
 
-        {/* Footer: Help & Support */}
+        {/* ── Root-level flyout — not clipped by sidebar overflow ── */}
+        {flyoutItem && (() => {
+          const activeFlying = SIDEBAR_ITEMS.find(i => i.name === flyoutItem) || (SIDEBAR_FOOTER.name === flyoutItem ? SIDEBAR_FOOTER : null);
+          const flyouts = SIDEBAR_FLYOUTS[flyoutItem];
+          if (!activeFlying || !flyouts) return null;
+          return (
+            <div
+              style={{
+                position: 'fixed',
+                left: w + 6,
+                top: flyoutY,
+                zIndex: 3000,
+                backgroundColor: '#161D2F',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                minWidth: 160,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                overflow: 'hidden',
+                animation: 'flyoutIn 0.12s ease',
+              }}
+              onMouseEnter={() => setFlyoutItem(flyoutItem)}
+              onMouseLeave={() => setFlyoutItem(null)}
+            >
+              {flyouts.map((f, fi) => (
+                <div
+                  key={fi}
+                  onClick={() => go(f)}
+                  style={{
+                    padding: '10px 16px',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: f.primary ? 600 : 400,
+                    color: f.primary ? '#FF7A24' : 'rgba(255,255,255,0.75)',
+                    borderTop: fi === 0 ? 'none' : '1px solid rgba(255,255,255,0.05)',
+                    transition: 'background 0.1s',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {f.label}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Footer */}
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 6px' }}>
           {(() => {
             const item = SIDEBAR_FOOTER;
