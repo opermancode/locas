@@ -12,7 +12,7 @@
     { id: 't3', name: 'Elegant',     subtitle: 'Top strip · Purple',    accent: '#7C2D92', fn: template3 },
     { id: 't4', name: 'Dark Pro',    subtitle: 'Dark header · Orange',  accent: '#C2410C', fn: template4 },
     { id: 't5', name: 'Thermal',     subtitle: '58/80mm receipt',       accent: '#111111', fn: template5 },
-    { id: 't6', name: 'Minimal Pro', subtitle: 'Corner accent · Blue',  accent: '#2563EB', fn: template6 },
+    { id: 't6', name: 'Clean Pro',   subtitle: 'Figma style · White A4',  accent: '#E85D04', fn: template6 },
   ];
 
   export function buildHTML(templateId, invoice, profile, accentColor) {
