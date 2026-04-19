@@ -2,7 +2,7 @@ import Icon from '../../utils/Icon';
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, ScrollView, Alert, RefreshControl, StatusBar,
+  TextInput, Modal, ScrollView, Alert, RefreshControl, StatusBar, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -168,7 +168,13 @@ export default function ExpensesScreen({ navigation, route }) {
     }
   };
 
-  const handleDelete = (e) => {
+  const handleDelete = async (e) => {
+    if (Platform.OS === 'web') {
+      if (!window.confirm(`Delete ₹${e.amount} — ${e.category}? This cannot be undone.`)) return;
+      await deleteExpense(e.id);
+      load();
+      return;
+    }
     Alert.alert('Delete Expense', `Delete ₹${e.amount} — ${e.category}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {

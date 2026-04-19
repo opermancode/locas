@@ -243,22 +243,20 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
       const soon    = new Date(); soon.setDate(soon.getDate() + 7);
       const soonStr = soon.toISOString().split('T')[0];
 
-      // POs created in the selected month
-      const monthPOs = (allPOs || []).filter(po => po.date >= fromStr && po.date <= toStr);
+      // POs created in the selected month — EXCLUDE completed & cancelled
+      const monthPOs = (allPOs || []).filter(po =>
+        po.date >= fromStr && po.date <= toStr &&
+        po.status !== 'completed' && po.status !== 'cancelled'
+      );
+      const total = monthPOs.reduce((sum, po) => sum + (po.total || 0), 0);
 
-      // Total order value = sum of (qty_ordered × rate) per item across month POs
-      // POs don't store a total field so we compute from the po record itself
-      // Many POs store items qty/rate in separate po_items store — approximate via
-      // checking if PO has a cached total, else we skip (will be 0)
-      const total = monthPOs.reduce((sum, po) => sum + (po.total || po.grand_total || 0), 0);
-
-      // Near-due: active/partial POs with valid_until in next 7 days and still has remaining
+      // Near-due: active/partial POs due within 7 days (not yet passed)
       const nearDue = (allPOs || []).filter(po =>
         (po.status === 'active' || po.status === 'partial') &&
         po.valid_until && po.valid_until >= today && po.valid_until <= soonStr
       );
 
-      // Overdue: active/partial POs with valid_until in the past
+      // Overdue: active/partial POs past deadline
       const overdue = (allPOs || []).filter(po =>
         (po.status === 'active' || po.status === 'partial') &&
         po.valid_until && po.valid_until < today
@@ -655,6 +653,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
                 onMonthChange={handlePOMonthChange}
                 onNavigate={() => navigation.navigate('More', { screen: 'PurchaseOrders' })}
                 onPoPress={(poId) => navigation.navigate('More', { screen: 'PODetail', params: { poId } })}
+                onNavigatePOAlerts={() => navigation.navigate('More', { screen: 'POAlerts' })}
               />
 
             </View>
@@ -765,7 +764,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
   // ── PO Widget ────────────────────────────────────────────────────
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  function POWidget({ poStats, selectedMonth, onMonthChange, onNavigate, onPoPress }) {
+  function POWidget({ poStats, selectedMonth, onMonthChange, onNavigate, onPoPress, onNavigatePOAlerts }) {
     const now = new Date();
 
     const prevMonth = () => {
@@ -840,12 +839,19 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
             <Text style={pw.statLbl}>Total Value</Text>
           </View>
           <View style={pw.statDiv} />
-          <View style={pw.statCell}>
+          <TouchableOpacity
+            style={pw.statCell}
+            onPress={() => {
+              const count = (poStats?.overdue?.length ?? 0) + (poStats?.nearDue?.length ?? 0);
+              if (count > 0) onNavigatePOAlerts();
+            }}
+            activeOpacity={0.7}
+          >
             <Text style={[pw.statVal, { color: COLORS.danger }]}>
               {(poStats?.overdue?.length ?? 0) + (poStats?.nearDue?.length ?? 0)}
             </Text>
-            <Text style={pw.statLbl}>Need Action</Text>
-          </View>
+            <Text style={[pw.statLbl, { color: COLORS.danger }]}>Need Action ↗</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Alert banners — overdue first */}
