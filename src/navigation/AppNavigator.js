@@ -164,10 +164,10 @@ import React, { useState, useCallback } from 'react';
       { label: 'New Invoice',   icon: 'plus',     tab: 'InvoicesTab',   screen: 'CreateInvoice',   primary: true },
     ],
     PartiesTab: [
-      { label: 'Create Party',  icon: 'plus',     tab: 'PartiesTab',    screen: 'PartiesList',     primary: true },
+      { label: 'Create Party',  icon: 'plus',     tab: 'PartiesTab',    screen: 'PartiesList',     primary: true, params: { openAdd: true } },
     ],
     Inventory: [
-      { label: 'Create Item',   icon: 'plus',     tab: 'Inventory',     screen: null,              primary: true },
+      { label: 'Create Item',   icon: 'plus',     tab: 'Inventory',     screen: null,              primary: true, params: { openAdd: true } },
     ],
     PurchaseOrders: [
       { label: 'New PO',        icon: 'plus',           tab: 'More',    screen: 'CreatePO',        primary: true },
@@ -242,13 +242,16 @@ import React, { useState, useCallback } from 'react';
 
     const go = (item) => {
       setFlyoutItem(null);
-      if (item.screen) {
-        navigation.navigate(item.tab, { screen: item.screen });
+      if (item.tab === 'Inventory') {
+        // Inventory is a tab screen (not a stack), params go directly
+        navigation.navigate('Inventory', item.params);
+      } else if (item.screen) {
+        navigation.navigate(item.tab, { screen: item.screen, params: item.params });
       } else {
         const screenMap = { InvoicesTab:'InvoiceList', QuotationsTab:'QuotationList', PartiesTab:'PartiesList' };
         const initialScreen = screenMap[item.tab];
-        if (initialScreen) navigation.navigate(item.tab, { screen: initialScreen });
-        else navigation.navigate(item.tab);
+        if (initialScreen) navigation.navigate(item.tab, { screen: initialScreen, params: item.params });
+        else navigation.navigate(item.tab, item.params);
       }
     };
 
@@ -333,17 +336,13 @@ import React, { useState, useCallback } from 'react';
               onMouseEnter={() => setFlyoutItem(item.name)}
               onMouseLeave={() => setFlyoutItem(null)}
             >
-              {/* Section title */}
-              <div style={{ padding:'8px 14px 6px', fontSize:10, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.12em', color:'rgba(255,255,255,0.3)' }}>
-                {item.label}
-              </div>
               {flyouts.map((f, fi) => (
                 <div
                   key={fi}
                   onClick={() => go(f)}
                   style={{
                     display:'flex', alignItems:'center',
-                    padding:'8px 14px',
+                    padding:'9px 16px',
                     cursor:'pointer',
                     fontSize: 13,
                     fontWeight: f.primary ? 500 : 400,

@@ -79,7 +79,7 @@ function parsePartiesCSV(text) {
   return { results, errors };
 }
 
-export default function PartiesScreen({ navigation }) {
+export default function PartiesScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
 
   const [parties,   setParties]   = useState([]);
@@ -113,7 +113,10 @@ export default function PartiesScreen({ navigation }) {
     finally { setRefreshing(false); }
   };
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useFocusEffect(useCallback(() => {
+    load();
+    if (route?.params?.openAdd) { setForm(EMPTY_FORM); setModal(true); navigation.setParams({ openAdd: false }); }
+  }, []));
 
   // ── Derived lists ──────────────────────────────────────────────
   const customers = useMemo(() => parties.filter(p => p.type === 'customer'), [parties]);
