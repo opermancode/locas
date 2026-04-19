@@ -317,6 +317,7 @@ export default function CreateInvoice({ navigation, route }) {
     try {
       const invoice = {
         ...(editInvoice ? { id: editInvoice.id } : {}),
+        invoice_number:   invoiceNo.trim() || undefined,  // pass user-typed number; undefined = auto-generate
         type:             'sale',
         party_id:         party?.id || null,
         party_name:       party?.name || '',
@@ -392,7 +393,59 @@ export default function CreateInvoice({ navigation, route }) {
   const doSave = async (invoice, mappedItems, poDelivery) => {
     setSaving(true);
     try {
-      const invoiceId = await saveInvoice(invoice, mappedItems);
+      const result = await saveInvoice(invoice, mappedItems);
+
+      // ── Duplicate invoice number conflict ────────────────────────
+      if (result?.conflict) {
+        setSaving(false);
+        const num = result.invoice_number;
+        const existingId = result.existingId;
+        const msg = `Invoice number "${num}" already exists.\n\nDo you want to replace the existing invoice with this new one?`;
+
+        if (Platform.OS === 'web') {
+          if (window.confirm(msg)) {
+            // User confirmed replace — save with the existing invoice's id (overwrites it)
+            const { getInvoiceDetail } = await import('../../db');
+            const existingInv = await getInvoiceDetail(existingId);
+            const overwrite = { ...invoice, id: existingId };
+            const invoiceId = await saveInvoice(overwrite, mappedItems);
+            if (poDelivery?.poId && poDelivery?.deliveries?.length > 0) {
+              await recordPODelivery(poDelivery.poId, poDelivery.deliveries).catch(() => {});
+            }
+            navigation.replace('InvoiceDetail', { invoiceId: existingId });
+          }
+          // else: user cancelled — stay on form, do nothing
+          return;
+        }
+
+        Alert.alert(
+          'Invoice number already exists',
+          `"${num}" is already used.\n\nReplace the existing invoice with this new one?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Replace',
+              style: 'destructive',
+              onPress: async () => {
+                setSaving(true);
+                try {
+                  const overwrite = { ...invoice, id: existingId };
+                  await saveInvoice(overwrite, mappedItems);
+                  if (poDelivery?.poId && poDelivery?.deliveries?.length > 0) {
+                    await recordPODelivery(poDelivery.poId, poDelivery.deliveries).catch(() => {});
+                  }
+                  navigation.replace('InvoiceDetail', { invoiceId: existingId });
+                } catch (e) {
+                  Alert.alert('Error', e.message || 'Failed to save');
+                } finally { setSaving(false); }
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      const invoiceId = result; // normal save returns numeric id
 
       // Record PO delivery if user linked this invoice to a PO
       if (poDelivery?.poId && poDelivery?.deliveries?.length > 0) {

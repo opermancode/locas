@@ -379,7 +379,24 @@ export async function saveInvoice(invoice, lineItems) {
     invoiceId = invoice.id;
   } else {
     invoiceId = await nextId('invoices');
-    const invoiceNumber = await consumeNextInvoiceNumber();
+
+    // ── Invoice number logic ──────────────────────────────────────────
+    // If user provided a custom number, use it — but check for duplicates first.
+    // If no number provided, auto-generate the next sequential one.
+    let invoiceNumber;
+    if (invoice.invoice_number && invoice.invoice_number.trim()) {
+      invoiceNumber = invoice.invoice_number.trim();
+      // Check if this number is already used by another non-deleted invoice
+      const existing = await getAll(stores.invoices, i =>
+        !i.deleted_at && i.invoice_number === invoiceNumber
+      );
+      if (existing.length > 0) {
+        // Signal conflict back to caller — contains the existing invoice id
+        return { conflict: true, invoice_number: invoiceNumber, existingId: existing[0].id };
+      }
+    } else {
+      invoiceNumber = await consumeNextInvoiceNumber();
+    }
     await stores.invoices.setItem(String(invoiceId), {
       id: invoiceId, invoice_number: invoiceNumber,
       type: invoice.type || 'sale',

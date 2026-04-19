@@ -171,6 +171,11 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
     const [searchQuery,    setSearchQuery]    = useState('');
     const [searchResults,  setSearchResults]  = useState(null);
     const [searching,      setSearching]      = useState(false);
+
+    // PO Dashboard widget
+    const now0 = new Date();
+    const [poSelectedMonth, setPoSelectedMonth] = useState({ year: now0.getFullYear(), month: now0.getMonth() });
+    const [poStats,         setPoStats]         = useState(null); // { total, count, nearDue: [], allPos: [] }
     const searchRef   = useRef(null);
     const searchTimer = useRef(null);
     const loadingRef  = useRef(false);
@@ -196,6 +201,20 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
         setRecentInvoices(inv || []);
         setTopParties(parties || []);
         setOpenPOs((pos || []).slice(0, 4));
+
+        // ── PO Stats for widget ──────────────────────────────────────
+        try {
+          const allPOs = await DB.getPurchaseOrders().catch(() => []);
+          // Compute total per PO from its items (qty_ordered × rate)
+          const posWithTotal = await Promise.all(allPOs.map(async po => {
+            try {
+              const detail = await DB.getPurchaseOrderDetail(po.id);
+              const total  = (detail?.items || []).reduce((s, it) => s + (it.qty_ordered || 0) * (it.rate || 0), 0);
+              return { ...po, total };
+            } catch { return { ...po, total: 0 }; }
+          }));
+          computePOStats(posWithTotal, poSelectedMonth);
+        } catch (_) {}
         const allInv = await DB.getInvoices({ type: 'sale' }).catch(() => []);
         const now = new Date();
         const trend = [];
@@ -214,6 +233,53 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
     };
 
     useFocusEffect(useCallback(() => { load(); }, []));
+
+    // ── Compute PO stats for selected month ───────────────────────
+    const computePOStats = useCallback((allPOs, { year, month }) => {
+      const fromStr = `${year}-${String(month+1).padStart(2,'0')}-01`;
+      const lastDay = new Date(year, month+1, 0).getDate();
+      const toStr   = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+      const today   = new Date().toISOString().split('T')[0];
+      const soon    = new Date(); soon.setDate(soon.getDate() + 7);
+      const soonStr = soon.toISOString().split('T')[0];
+
+      // POs created in the selected month
+      const monthPOs = (allPOs || []).filter(po => po.date >= fromStr && po.date <= toStr);
+
+      // Total order value = sum of (qty_ordered × rate) per item across month POs
+      // POs don't store a total field so we compute from the po record itself
+      // Many POs store items qty/rate in separate po_items store — approximate via
+      // checking if PO has a cached total, else we skip (will be 0)
+      const total = monthPOs.reduce((sum, po) => sum + (po.total || po.grand_total || 0), 0);
+
+      // Near-due: active/partial POs with valid_until in next 7 days and still has remaining
+      const nearDue = (allPOs || []).filter(po =>
+        (po.status === 'active' || po.status === 'partial') &&
+        po.valid_until && po.valid_until >= today && po.valid_until <= soonStr
+      );
+
+      // Overdue: active/partial POs with valid_until in the past
+      const overdue = (allPOs || []).filter(po =>
+        (po.status === 'active' || po.status === 'partial') &&
+        po.valid_until && po.valid_until < today
+      );
+
+      setPoStats({ total, count: monthPOs.length, nearDue, overdue, allPOs });
+    }, []);
+
+    // When user changes month in PO widget, recompute from cached allPOs
+    const handlePOMonthChange = useCallback(async (newSel) => {
+      setPoSelectedMonth(newSel);
+      const allPOs = await DB.getPurchaseOrders().catch(() => []);
+      const posWithTotal = await Promise.all(allPOs.map(async po => {
+        try {
+          const detail = await DB.getPurchaseOrderDetail(po.id);
+          const total  = (detail?.items || []).reduce((s, it) => s + (it.qty_ordered || 0) * (it.rate || 0), 0);
+          return { ...po, total };
+        } catch { return { ...po, total: 0 }; }
+      }));
+      computePOStats(posWithTotal, newSel);
+    }, [computePOStats]);
 
     useEffect(() => {
       if (typeof window === 'undefined' || !window.electronAPI) return;
@@ -582,6 +648,15 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
                 })}
               </View>
 
+              {/* ── PO Orders Widget ── */}
+              <POWidget
+                poStats={poStats}
+                selectedMonth={poSelectedMonth}
+                onMonthChange={handlePOMonthChange}
+                onNavigate={() => navigation.navigate('More', { screen: 'PurchaseOrders' })}
+                onPoPress={(poId) => navigation.navigate('More', { screen: 'PODetail', params: { poId } })}
+              />
+
             </View>
           </View>
         </Animated.View>
@@ -683,6 +758,161 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
             </View>
           </View>
         </Modal>
+      </View>
+    );
+  }
+
+  // ── PO Widget ────────────────────────────────────────────────────
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function POWidget({ poStats, selectedMonth, onMonthChange, onNavigate, onPoPress }) {
+    const now = new Date();
+
+    const prevMonth = () => {
+      const m = selectedMonth.month === 0
+        ? { year: selectedMonth.year - 1, month: 11 }
+        : { year: selectedMonth.year,     month: selectedMonth.month - 1 };
+      onMonthChange(m);
+    };
+
+    const nextMonth = () => {
+      // Don't go into future
+      if (selectedMonth.year >= now.getFullYear() && selectedMonth.month >= now.getMonth()) return;
+      const m = selectedMonth.month === 11
+        ? { year: selectedMonth.year + 1, month: 0 }
+        : { year: selectedMonth.year,     month: selectedMonth.month + 1 };
+      onMonthChange(m);
+    };
+
+    const isCurrent = selectedMonth.year === now.getFullYear() && selectedMonth.month === now.getMonth();
+    const alerts    = [...(poStats?.overdue || []), ...(poStats?.nearDue || [])];
+    const hasAlerts = alerts.length > 0;
+
+    return (
+      <View style={pw.card}>
+        {/* Header */}
+        <View style={pw.header}>
+          <View style={{ flexDirection:'row', alignItems:'center', gap:6 }}>
+            <View style={pw.iconBox}>
+              <Icon name="shopping-bag" size={13} color="#10B981" />
+            </View>
+            <Text style={pw.title}>Purchase Orders</Text>
+            {hasAlerts && (
+              <View style={pw.alertDot}>
+                <Text style={pw.alertDotTxt}>{alerts.length}</Text>
+              </View>
+            )}
+          </View>
+          <TouchableOpacity onPress={onNavigate}>
+            <Text style={pw.seeAll}>See all →</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Month selector */}
+        <View style={pw.monthRow}>
+          <TouchableOpacity onPress={prevMonth} style={pw.monthBtn}>
+            <Icon name="chevron-left" size={14} color={COLORS.textSub} />
+          </TouchableOpacity>
+          <Text style={pw.monthLabel}>
+            {MONTH_NAMES[selectedMonth.month]} {selectedMonth.year}
+            {isCurrent ? '  ·  This Month' : ''}
+          </Text>
+          <TouchableOpacity
+            onPress={nextMonth}
+            style={[pw.monthBtn, isCurrent && { opacity: 0.3 }]}
+            disabled={isCurrent}
+          >
+            <Icon name="chevron-right" size={14} color={COLORS.textSub} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Stats row */}
+        <View style={pw.statsRow}>
+          <View style={pw.statCell}>
+            <Text style={pw.statVal}>{poStats?.count ?? '—'}</Text>
+            <Text style={pw.statLbl}>Orders</Text>
+          </View>
+          <View style={pw.statDiv} />
+          <View style={pw.statCell}>
+            <Text style={[pw.statVal, { color: '#10B981' }]}>
+              {poStats?.total ? formatINRCompact(poStats.total) : '₹—'}
+            </Text>
+            <Text style={pw.statLbl}>Total Value</Text>
+          </View>
+          <View style={pw.statDiv} />
+          <View style={pw.statCell}>
+            <Text style={[pw.statVal, { color: COLORS.danger }]}>
+              {(poStats?.overdue?.length ?? 0) + (poStats?.nearDue?.length ?? 0)}
+            </Text>
+            <Text style={pw.statLbl}>Need Action</Text>
+          </View>
+        </View>
+
+        {/* Alert banners — overdue first */}
+        {(poStats?.overdue || []).length > 0 && (
+          <View style={pw.alertBanner}>
+            <Icon name="alert-triangle" size={13} color="#DC2626" />
+            <Text style={pw.alertTxt}>
+              <Text style={{ fontWeight: FONTS.bold }}>
+                {poStats.overdue.length} PO{poStats.overdue.length > 1 ? 's' : ''} overdue
+              </Text>
+              {' — delivery deadline passed, items still remaining'}
+            </Text>
+          </View>
+        )}
+
+        {(poStats?.nearDue || []).length > 0 && (
+          <View style={[pw.alertBanner, pw.alertBannerWarn]}>
+            <Icon name="clock" size={13} color="#D97706" />
+            <Text style={[pw.alertTxt, { color: '#92400E' }]}>
+              <Text style={{ fontWeight: FONTS.bold }}>
+                {poStats.nearDue.length} PO{poStats.nearDue.length > 1 ? 's' : ''} due within 7 days
+              </Text>
+              {' — create invoices before deadline'}
+            </Text>
+          </View>
+        )}
+
+        {/* Alert PO list — show overdue + near-due POs */}
+        {alerts.slice(0, 3).map((po, i) => {
+          const isOD    = poStats.overdue?.some(p => p.id === po.id);
+          const daysStr = po.valid_until
+            ? (() => {
+                const diff = Math.ceil((new Date(po.valid_until) - new Date()) / 86400000);
+                return diff < 0 ? `${Math.abs(diff)}d overdue` : `due in ${diff}d`;
+              })()
+            : '';
+          return (
+            <TouchableOpacity
+              key={po.id}
+              style={[pw.poRow, i < Math.min(alerts.length, 3) - 1 && pw.poRowBorder]}
+              onPress={() => onPoPress(po.id)}
+              activeOpacity={0.75}
+            >
+              <View style={[pw.poStatusDot, { backgroundColor: isOD ? COLORS.danger : '#F59E0B' }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={pw.poNum} numberOfLines={1}>{po.po_number}</Text>
+                <Text style={pw.poParty} numberOfLines={1}>{po.party_name || '—'}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                {daysStr ? (
+                  <View style={[pw.duePill, isOD && pw.duePillOD]}>
+                    <Text style={[pw.duePillTxt, isOD && { color: '#991B1B' }]}>{daysStr}</Text>
+                  </View>
+                ) : null}
+                <Text style={pw.poStatus}>
+                  {po.status === 'partial' ? 'Partial' : po.status === 'active' ? 'Active' : po.status}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        {poStats && poStats.count === 0 && (
+          <View style={pw.empty}>
+            <Text style={pw.emptyTxt}>No POs in {MONTH_NAMES[selectedMonth.month]} {selectedMonth.year}</Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -812,4 +1042,49 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
     searchHintsTitle:  { fontSize:15, fontWeight:FONTS.bold, color:COLORS.text, marginBottom:16 },
     searchHintRow:     { flexDirection:'row', alignItems:'center', gap:12, paddingVertical:8 },
     searchHintTxt:     { fontSize:13, color:COLORS.textSub },
+  });
+
+  // ── PO Widget Styles ─────────────────────────────────────────────
+  const pw = StyleSheet.create({
+    card:        { backgroundColor:COLORS.card, borderRadius:RADIUS.xl, padding:12, borderWidth:1, borderColor:COLORS.border },
+
+    // Header
+    header:      { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:10 },
+    iconBox:     { width:24, height:24, borderRadius:6, backgroundColor:'#ECFDF5', alignItems:'center', justifyContent:'center' },
+    title:       { fontSize:11, fontWeight:FONTS.bold, color:COLORS.textSub, textTransform:'uppercase', letterSpacing:0.5 },
+    seeAll:      { fontSize:11, color:BRAND, fontWeight:FONTS.semibold },
+    alertDot:    { backgroundColor:COLORS.danger, borderRadius:10, paddingHorizontal:5, paddingVertical:1, minWidth:18, alignItems:'center' },
+    alertDotTxt: { fontSize:9, fontWeight:FONTS.black, color:'#fff' },
+
+    // Month selector
+    monthRow:    { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:COLORS.bg, borderRadius:RADIUS.md, paddingVertical:6, paddingHorizontal:10, marginBottom:10 },
+    monthBtn:    { padding:4 },
+    monthLabel:  { fontSize:12, fontWeight:FONTS.semibold, color:COLORS.text },
+
+    // Stats
+    statsRow:    { flexDirection:'row', backgroundColor:COLORS.bg, borderRadius:RADIUS.md, padding:10, marginBottom:10 },
+    statCell:    { flex:1, alignItems:'center' },
+    statDiv:     { width:1, backgroundColor:COLORS.border, marginVertical:2 },
+    statVal:     { fontSize:16, fontWeight:FONTS.black, color:COLORS.text, marginBottom:2 },
+    statLbl:     { fontSize:9, color:COLORS.textMute, textTransform:'uppercase', letterSpacing:0.4 },
+
+    // Alert banners
+    alertBanner:     { flexDirection:'row', alignItems:'flex-start', gap:7, backgroundColor:'#FEF2F2', borderRadius:RADIUS.md, padding:9, marginBottom:6 },
+    alertBannerWarn: { backgroundColor:'#FFFBEB' },
+    alertTxt:        { flex:1, fontSize:11, color:COLORS.danger, lineHeight:16 },
+
+    // PO rows
+    poRow:       { flexDirection:'row', alignItems:'center', gap:8, paddingVertical:9 },
+    poRowBorder: { borderBottomWidth:1, borderBottomColor:COLORS.border },
+    poStatusDot: { width:7, height:7, borderRadius:4, flexShrink:0 },
+    poNum:       { fontSize:13, fontWeight:FONTS.bold, color:COLORS.text },
+    poParty:     { fontSize:11, color:COLORS.textSub, marginTop:1 },
+    poStatus:    { fontSize:10, color:COLORS.textMute },
+    duePill:     { backgroundColor:'#FEF3C7', borderRadius:RADIUS.full, paddingHorizontal:6, paddingVertical:2 },
+    duePillOD:   { backgroundColor:'#FEE2E2' },
+    duePillTxt:  { fontSize:9, fontWeight:FONTS.bold, color:'#92400E' },
+
+    // Empty
+    empty:       { paddingVertical:16, alignItems:'center' },
+    emptyTxt:    { fontSize:12, color:COLORS.textMute },
   });
