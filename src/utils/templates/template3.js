@@ -1,276 +1,311 @@
 function r(n){return Number(n||0).toFixed(2);}
-  function fmtDate(d){if(!d)return '';const parts=d.split('-');if(parts.length===3&&parts[0].length===4){return`${parts[2]}-${parts[1]}-${parts[0]}`;}return d;}
-  function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
-  function words(amount){
-    const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-    const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-    const n=Math.floor(amount);if(n===0)return'Zero';
-    const two=(x)=>x>=20?tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:''):ones[x];
-    let w='';
-    const cr=Math.floor(n/10000000),lk=Math.floor((n%10000000)/100000),th=Math.floor((n%100000)/1000),hu=Math.floor((n%1000)/100),re=n%100;
-    if(cr)w+=two(cr)+' Crore ';if(lk)w+=two(lk)+' Lakh ';if(th)w+=two(th)+' Thousand ';if(hu)w+=ones[hu]+' Hundred ';if(re)w+=two(re);
-    return w.trim()+' Rupees Only';
+function inr(n){return '₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});}
+function fmtDate(d){
+  if(!d)return'';
+  const p=d.split('-');
+  if(p.length===3&&p[0].length===4){
+    const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return p[2]+' '+m[parseInt(p[1])-1]+', '+p[0];
+  }
+  return d;
+}
+function words(amount){
+  const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  const n=Math.floor(amount);if(n===0)return'Zero';
+  const two=(x)=>x>=20?tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:''):ones[x];
+  let w='';
+  const cr=Math.floor(n/10000000),lk=Math.floor((n%10000000)/100000),th=Math.floor((n%100000)/1000),hu=Math.floor((n%1000)/100),re=n%100;
+  if(cr)w+=two(cr)+' Crore ';if(lk)w+=two(lk)+' Lakh ';if(th)w+=two(th)+' Thousand ';if(hu)w+=ones[hu]+' Hundred ';if(re)w+=two(re);
+  return w.trim()+' Rupees Only';
+}
+
+export default function template3(invoice, profile, accent, upiBlock) {
+  accent = accent || '#4A5568';
+  upiBlock = upiBlock || '';
+  const inv = invoice, prof = profile || {};
+  const isInter = inv.supply_type === 'inter';
+
+  // Empty rows to pad table to minimum 8 rows
+  const itemCount = (inv.items || []).length;
+  const minRows   = Math.max(8, itemCount);
+  const emptyRows = Math.max(0, minRows - itemCount);
+
+  const itemRows = (inv.items || []).map((item, i) => `
+    <tr>
+      <td class="td-desc">
+        <div class="item-name">${item.name}</div>
+        ${item.hsn ? `<div class="item-meta">HSN: ${item.hsn}</div>` : ''}
+        <div class="item-meta tax-line">${
+          isInter
+            ? `IGST @ ${item.gst_rate}%: ${inr(item.igst)}`
+            : `CGST @ ${item.gst_rate/2}%: ${inr(item.cgst)} &nbsp;|&nbsp; SGST @ ${item.gst_rate/2}%: ${inr(item.sgst)}`
+        }${item.discount > 0 ? ` &nbsp;|&nbsp; Disc: ${item.discount}%` : ''}</div>
+      </td>
+      <td class="td-qty">${item.qty} ${item.unit || 'pcs'}</td>
+      <td class="td-num">${inr(item.rate)}</td>
+      <td class="td-num total-cell">${inr(item.total)}</td>
+    </tr>
+  `).join('');
+
+  const emptyRowsHtml = Array(emptyRows).fill(`
+    <tr class="empty-row">
+      <td class="td-desc">&nbsp;</td>
+      <td class="td-qty"></td>
+      <td class="td-num"></td>
+      <td class="td-num"></td>
+    </tr>
+  `).join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: 210mm 297mm;
+    margin: 18mm 16mm;
+  }
+  @media print {
+    html, body { width: 210mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .page { box-shadow: none !important; }
   }
 
-  export default function template3(invoice, profile, accent='#6D28D9', upiBlock='') {
-    const inv=invoice, prof=profile||{};
-    const isInter=inv.supply_type==='inter';
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-    const rows=(inv.items||[]).map((item,i)=>`
-      <tr class="${i%2===0?'row-alt':''}">
-        <td class="tc num">${i+1}</td>
-        <td class="tl">
-          <span class="iname">${item.name}</span>
-          ${item.hsn?`<span class="imeta">HSN: ${item.hsn}</span>`:''}
-          ${item.description?`<span class="imeta">${item.description}</span>`:''}
-        </td>
-        <td class="tc">${item.qty}<br><span class="muted">${item.unit}</span></td>
-        <td class="tr">₹${r(item.rate)}</td>
-        <td class="tr">${item.discount>0?item.discount+'%':'—'}</td>
-        <td class="tr">₹${r(item.taxable)}</td>
-        <td class="tc">${item.gst_rate}%</td>
-        <td class="tr">
-          ${isInter
-            ? `₹${r(item.igst)}`
-            : `₹${r(item.cgst)}<br><span class="muted">₹${r(item.sgst)}</span>`
-          }
-        </td>
-        <td class="tr amount-col">₹${r(item.total)}</td>
-      </tr>`).join('');
+  html { background: #1a1a1a; }
+  body {
+    font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
+    font-size: 12px;
+    color: #222;
+    background: #1a1a1a;
+    padding: 24px;
+    line-height: 1.4;
+  }
 
-    return `<!DOCTYPE html><html lang="en"><head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Tax Invoice — ${inv.invoice_number}</title>
-  <style>
-    @page { size: A4 portrait; margin: 12mm 14mm; }
-    @media print {
-      html,body { margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-      .no-print { display:none !important; }
-    }
-    @media screen {
-      body { background:#f0f0f5; min-height:100vh; }
-      .page { width:210mm; min-height:277mm; margin:20px auto; box-shadow:0 8px 40px rgba(0,0,0,0.18); }
-    }
+  .page {
+    background: #fff;
+    width: 100%;
+    max-width: 750px;
+    margin: 0 auto;
+    padding: 40px 44px 48px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.4);
+    min-height: 900px;
+  }
 
-    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
-    body { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:9pt; color:#1a1a2e; line-height:1.5; }
-    .page { background:#fff; }
+  /* ── Top: Invoice title ── */
+  .top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+  }
+  .meta-block { font-size: 12px; color: #222; line-height: 1.9; }
+  .meta-label { font-weight: 700; }
+  .invoice-title {
+    font-size: 36px;
+    font-weight: 300;
+    color: #2d3748;
+    letter-spacing: 1px;
+    text-align: right;
+  }
 
-    /* ── Top accent bar ── */
-    .top-bar { height:5px; background:linear-gradient(90deg, ${accent} 0%, ${accent}99 100%); }
+  /* ── From / Bill To ── */
+  .parties-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    gap: 20px;
+  }
+  .from-block, .bill-block { flex: 1; font-size: 12px; line-height: 1.8; color: #333; }
+  .party-label { font-weight: 700; font-size: 12px; color: #222; margin-bottom: 2px; }
+  .party-name  { font-weight: 700; font-size: 13px; color: #111; }
+  .party-sub   { color: #555; font-size: 11.5px; }
+  .gstin-txt   { font-size: 11px; color: #666; }
 
-    /* ── Header ── */
-    .header { display:flex; justify-content:space-between; align-items:flex-start; padding:18px 20px 14px; border-bottom:1px solid #e8e8f0; }
-    .biz-name { font-size:18pt; font-weight:900; color:${accent}; letter-spacing:-0.5px; margin-bottom:3px; }
-    .biz-details { font-size:8pt; color:#555; line-height:1.8; }
-    .gstin-tag { display:inline-block; margin-top:4px; padding:2px 8px; background:${accent}15; color:${accent}; font-size:7.5pt; font-weight:700; border-radius:3px; border:1px solid ${accent}30; }
-    .inv-title { font-size:20pt; font-weight:900; color:#1a1a2e; letter-spacing:3px; text-align:right; }
-    .inv-meta { text-align:right; margin-top:6px; }
-    .inv-num { font-size:11pt; font-weight:800; color:#1a1a2e; }
-    .inv-date { font-size:8.5pt; color:#666; line-height:1.9; }
+  /* ── Items table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+  }
+  thead tr {
+    background: ${accent};
+    color: #fff;
+  }
+  thead th {
+    padding: 9px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .th-desc { text-align: left; }
+  .th-num  { text-align: right; }
+  .th-qty  { text-align: center; }
 
-    /* ── Meta strip ── */
-    .meta-strip { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid #e8e8f0; margin:0 20px 12px; border-radius:6px; overflow:hidden; }
-    .meta-cell { padding:7px 10px; border-right:1px solid #e8e8f0; }
-    .meta-cell:last-child { border-right:none; }
-    .meta-cell:nth-child(even) { background:#fafaff; }
-    .meta-label { font-size:7pt; font-weight:700; color:${accent}; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:2px; }
-    .meta-value { font-size:9pt; font-weight:700; color:#1a1a2e; }
+  tbody tr {
+    border-bottom: 1px solid #e8e8e8;
+  }
+  tbody tr:last-child { border-bottom: 2px solid #ccc; }
 
-    /* ── Party cards ── */
-    .parties { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 20px 12px; }
-    .party-card { border:1px solid #e8e8f0; border-radius:6px; overflow:hidden; }
-    .party-head { padding:6px 12px; background:${accent}; color:#fff; font-size:7.5pt; font-weight:800; text-transform:uppercase; letter-spacing:1px; }
-    .party-body { padding:10px 12px; }
-    .party-name { font-size:11pt; font-weight:800; color:#1a1a2e; margin-bottom:3px; }
-    .party-detail { font-size:8pt; color:#555; line-height:1.8; }
-    .supply-tag { display:inline-block; margin-top:4px; padding:2px 8px; border-radius:3px; font-size:7.5pt; font-weight:700; background:${accent}12; color:${accent}; border:1px solid ${accent}25; }
+  .td-desc {
+    padding: 9px 10px;
+    text-align: left;
+    vertical-align: top;
+    min-width: 220px;
+  }
+  .td-qty  { padding: 9px 10px; text-align: center; vertical-align: top; color: #333; }
+  .td-num  { padding: 9px 10px; text-align: right;  vertical-align: top; color: #333; }
+  .total-cell { font-weight: 600; color: #111; }
 
-    /* ── Items table ── */
-    .table-wrap { margin:0 20px 12px; border:1px solid #e8e8f0; border-radius:6px; overflow:hidden; }
-    table { width:100%; border-collapse:collapse; }
-    thead tr { background:${accent}; }
-    th { padding:7px 6px; font-size:8pt; font-weight:800; color:#fff; text-transform:uppercase; letter-spacing:0.4px; }
-    tbody td { padding:7px 6px; font-size:8.5pt; border-bottom:1px solid #f0f0f8; vertical-align:middle; }
-    .row-alt td { background:#fafaff; }
-    tbody tr:last-child td { border-bottom:none; }
-    .tc { text-align:center; }
-    .tr { text-align:right; }
-    .tl { text-align:left; }
-    .num { color:#888; font-size:8pt; }
-    .iname { display:block; font-weight:700; color:#1a1a2e; }
-    .imeta { display:block; font-size:7.5pt; color:#999; margin-top:1px; }
-    .muted { font-size:7.5pt; color:#aaa; }
-    .amount-col { font-weight:800; color:${accent}; }
+  .item-name { font-weight: 600; color: #111; font-size: 12px; }
+  .item-meta { font-size: 10.5px; color: #888; margin-top: 1px; }
+  .tax-line  { color: #999; }
 
-    /* ── Bottom section ── */
-    .bottom { display:grid; grid-template-columns:1fr 220px; gap:10px; margin:0 20px 14px; }
+  .empty-row td { height: 30px; }
 
-    /* Words + notes */
-    .words-box { background:${accent}08; border:1px solid ${accent}20; border-radius:5px; padding:8px 10px; margin-bottom:8px; }
-    .words-label { font-size:7pt; font-weight:800; color:${accent}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px; }
-    .words-val { font-style:italic; color:#333; font-size:8.5pt; }
-    .notes-box { border-left:3px solid ${accent}; padding:6px 10px; background:#fafaff; font-size:8pt; color:#555; line-height:1.7; border-radius:0 4px 4px 0; margin-bottom:8px; }
-    .bank-box { border:1px solid #e8e8f0; border-radius:5px; padding:8px 10px; margin-bottom:8px; }
-    .bank-label { font-size:7pt; font-weight:800; color:${accent}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
-    .bank-val { font-size:8.5pt; color:#333; line-height:1.8; }
+  /* ── Totals + Payment footer ── */
+  .footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 0;
+  }
+  .payment-terms {
+    font-size: 12px;
+    color: #333;
+    padding-top: 10px;
+    flex: 1;
+  }
+  .payment-terms-label { font-weight: 700; }
 
-    /* Totals */
-    .totals-wrap { border:1px solid #e8e8f0; border-radius:6px; overflow:hidden; }
-    .tot-row { display:flex; justify-content:space-between; padding:5px 10px; font-size:8.5pt; border-bottom:1px solid #f0f0f8; }
-    .tot-label { color:#666; }
-    .tot-val { font-weight:600; color:#1a1a2e; }
-    .tot-muted { color:#999; }
-    .grand-row { display:flex; justify-content:space-between; padding:10px 12px; background:${accent}; color:#fff; font-size:12pt; font-weight:900; }
+  .totals-block { min-width: 260px; }
+  .totals-table { width: 100%; border-collapse: collapse; }
+  .totals-table td { padding: 5px 10px; font-size: 12px; color: #333; }
+  .totals-table .lbl { text-align: left; }
+  .totals-table .amt { text-align: right; }
+  .totals-table .total-row td {
+    background: ${accent};
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+  .totals-table .sub-row td { border-top: 1px solid #e8e8e8; }
 
-    /* Signature */
-    .sign-box { border:1px solid #e8e8f0; border-radius:5px; overflow:hidden; margin-top:8px; }
-    .sign-head { padding:5px 10px; background:${accent}10; font-size:7.5pt; font-weight:800; color:${accent}; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid ${accent}18; }
-    .sign-body { padding:10px; min-height:55px; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; }
-    .sign-seal { width:38px; height:38px; border-radius:50%; border:1.5px dashed ${accent}50; display:flex; align-items:center; justify-content:center; font-size:7px; color:${accent}; text-align:center; font-weight:700; margin-bottom:6px; }
-    .sign-line { width:100%; border-top:1px solid #ccc; padding-top:3px; font-size:7.5pt; color:#888; text-align:center; }
+  /* ── Bank / Notes ── */
+  .bank-section {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    gap: 32px;
+    font-size: 11.5px;
+    color: #444;
+  }
+  .bank-col { flex: 1; }
+  .bank-label { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #888; margin-bottom: 6px; }
+  .bank-det   { line-height: 1.8; }
+  .words-txt  { font-size: 11px; color: #666; font-style: italic; margin-top: 6px; }
+  .powered    { margin-top: 20px; font-size: 10px; color: #bbb; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
 
-    /* Footer */
-    .footer { background:${accent}; color:#fff; padding:7px 20px; display:flex; justify-content:space-between; align-items:center; font-size:8pt; font-weight:600; }
-    .footer-right { text-align:right; font-size:7.5pt; opacity:0.8; }
-  </style>
-  </head>
-  <body>
-  <div class="page">
-    <div class="top-bar"></div>
-
-    <!-- Header -->
-    <div class="header">
-      <div>
-        <div class="biz-name">${prof.name||'My Business'}</div>
-        <div class="biz-details">
-          ${prof.address?prof.address+'<br>':''}
-          ${prof.phone?'📞 '+prof.phone+(prof.email?' &nbsp;·&nbsp; ✉ '+prof.email:'')+'<br>':''}
-          ${prof.pan?'PAN: '+prof.pan+'<br>':''}
-        </div>
-        ${prof.gstin?`<span class="gstin-tag">GSTIN: ${prof.gstin}</span>`:''}
-      </div>
-      <div>
-        <div class="inv-title">TAX INVOICE</div>
-        <div class="inv-meta">
-          <div class="inv-num">${inv.invoice_number}</div>
-          <div class="inv-date">
-            Date: ${fmtDate(inv.date)}<br>
-            
-          </div>
-        </div>
-      </div>
+  <!-- Top: meta + title -->
+  <div class="top-row">
+    <div class="meta-block">
+      <div><span class="meta-label">Date:</span> ${fmtDate(inv.date)}</div>
+      <div><span class="meta-label">Invoice #:</span> ${inv.invoice_number}</div>
+      ${inv.due_date ? `<div><span class="meta-label">Due Date:</span> ${fmtDate(inv.due_date)}</div>` : ''}
+      ${inv.po_number ? `<div><span class="meta-label">PO Ref:</span> ${inv.po_number}</div>` : ''}
+      <div><span class="meta-label">Status:</span> ${(inv.status || 'Unpaid').toUpperCase()}</div>
     </div>
+    <div class="invoice-title">Invoice</div>
+  </div>
 
-    <!-- Meta strip -->
-    <div class="meta-strip">
-      <div class="meta-cell"><div class="meta-label">Invoice No.</div><div class="meta-value">${inv.invoice_number}</div></div>
-      <div class="meta-cell"><div class="meta-label">Date</div><div class="meta-value">${fmtDate(inv.date)}</div></div>
-      <div class="meta-cell"><div class="meta-label">Supply Type</div><div class="meta-value">${isInter?'Inter-state':'Intra-state'}</div></div>
+  <!-- From / Bill To -->
+  <div class="parties-row">
+    <div class="from-block">
+      <div class="party-label">Your Company Name</div>
+      <div class="party-name">${prof.name || ''}</div>
+      ${prof.address ? `<div class="party-sub">${prof.address}</div>` : ''}
+      ${[prof.city, prof.state].filter(Boolean).length ? `<div class="party-sub">${[prof.city, prof.state, prof.pincode].filter(Boolean).join(', ')}</div>` : ''}
+      ${prof.phone ? `<div class="party-sub">${prof.phone}</div>` : ''}
+      ${prof.email ? `<div class="party-sub">${prof.email}</div>` : ''}
+      ${prof.gstin ? `<div class="gstin-txt">GSTIN: ${prof.gstin}</div>` : ''}
     </div>
-
-    <!-- Parties -->
-    <div class="parties">
-      <div class="party-card">
-        <div class="party-head">Bill To</div>
-        <div class="party-body">
-          <div class="party-name">${inv.party_name||'Walk-in Customer'}</div>
-          <div class="party-detail">
-            ${inv.party_address?inv.party_address+'<br>':''}
-            ${inv.party_gstin?'GSTIN: '+inv.party_gstin+'<br>':''}
-            ${inv.party_state?'State: '+inv.party_state+(inv.party_state_code?' ('+inv.party_state_code+')':''):''}
-          </div>
-          <span class="supply-tag">${isInter?'🔀 IGST Applicable':'✅ CGST + SGST'}</span>
-        </div>
-      </div>
-      <div class="party-card">
-        <div class="party-head">Ship To</div>
-        <div class="party-body">
-          ${(!inv.ship_to_same && inv.ship_to_name) ? `
-            <div class="party-name">${inv.ship_to_name}</div>
-            <div class="party-detail">
-              ${inv.ship_to_address?inv.ship_to_address+'<br>':''}
-              ${inv.ship_to_gstin?'GSTIN: '+inv.ship_to_gstin:''}
-            </div>
-          ` : `
-            <div class="party-name">${inv.party_name||'Walk-in Customer'}</div>
-            <div class="party-detail">
-              ${inv.party_address?inv.party_address+'<br>':''}
-              ${inv.party_gstin?'GSTIN: '+inv.party_gstin:''}
-              <span style="font-size:7.5pt;color:#888;font-style:italic">Same as billing address</span>
-            </div>
-          `}
-        </div>
-      </div>
-    </div>
-
-    <!-- Items table -->
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="tc" style="width:4%">#</th>
-            <th class="tl" style="width:26%">Item / Description</th>
-            <th class="tc" style="width:8%">Qty</th>
-            <th class="tr" style="width:9%">Rate</th>
-            <th class="tr" style="width:6%">Disc</th>
-            <th class="tr" style="width:10%">Taxable</th>
-            <th class="tc" style="width:6%">GST%</th>
-            <th class="tr" style="width:13%">${isInter?'IGST':'CGST/SGST'}</th>
-            <th class="tr" style="width:10%">Amount</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-
-    <!-- Bottom: words+notes | totals -->
-    <div class="bottom">
-      <div>
-        <div class="words-box">
-          <div class="words-label">Amount in Words</div>
-          <div class="words-val">${words(inv.total)}</div>
-        </div>
-        ${inv.terms||inv.notes?`<div class="notes-box">${[inv.terms,inv.notes].filter(Boolean).join('<br>')}</div>`:''}
-        ${upiBlock}
-        ${prof.bank_name||prof.account_no?`
-        <div class="bank-box">
-          <div class="bank-label">Bank Details</div>
-          <div class="bank-val">
-            ${prof.bank_name?'<strong>'+prof.bank_name+'</strong><br>':''}
-            ${prof.account_no?'A/C No: '+prof.account_no+'<br>':''}
-            ${prof.ifsc?'IFSC: '+prof.ifsc:''}
-          </div>
-        </div>`:''}
-      </div>
-
-      <div>
-        <div class="totals-wrap">
-          <div class="tot-row"><span class="tot-label">Subtotal</span><span class="tot-val">${inr(inv.subtotal)}</span></div>
-          ${inv.discount>0?`<div class="tot-row"><span class="tot-label tot-muted">Discount</span><span class="tot-val tot-muted">−${inr((inv.subtotal||0)-(inv.taxable||0))}</span></div>`:''}
-          <div class="tot-row"><span class="tot-label">Taxable Amount</span><span class="tot-val">${inr(inv.taxable)}</span></div>
-          ${isInter
-            ? `<div class="tot-row"><span class="tot-label tot-muted">IGST</span><span class="tot-val tot-muted">${inr(inv.igst)}</span></div>`
-            : `<div class="tot-row"><span class="tot-label tot-muted">CGST</span><span class="tot-val tot-muted">${inr(inv.cgst)}</span></div>
-              <div class="tot-row"><span class="tot-label tot-muted">SGST</span><span class="tot-val tot-muted">${inr(inv.sgst)}</span></div>`
-          }
-          <div class="grand-row"><span>Grand Total</span><span>${inr(inv.total)}</span></div>
-        </div>
-        <div class="sign-box">
-          <div class="sign-head">For ${prof.name||'My Business'}</div>
-          <div class="sign-body">
-                      <div class="sign-line">Authorised Signatory</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <div class="footer">
-      <div>${prof.name||'My Business'}${prof.gstin?' &nbsp;|&nbsp; GSTIN: '+prof.gstin:''}</div>
-      <div class="footer-right">Thank you for your business! 🙏</div>
+    <div class="bill-block">
+      <div class="party-label">Bill To:</div>
+      <div class="party-name">${inv.party_name || 'Walk-in Customer'}</div>
+      ${inv.party_address ? `<div class="party-sub">${inv.party_address}</div>` : ''}
+      ${inv.party_state   ? `<div class="party-sub">${inv.party_state}</div>` : ''}
+      ${inv.party_gstin   ? `<div class="gstin-txt">GSTIN: ${inv.party_gstin}</div>` : ''}
+      <div class="gstin-txt">${isInter ? 'Inter-state (IGST)' : 'Intra-state (CGST+SGST)'}</div>
     </div>
   </div>
-  </body></html>`;
-  }
+
+  <!-- Items Table -->
+  <table>
+    <thead>
+      <tr>
+        <th class="th-desc">Description</th>
+        <th class="th-qty">Quantity</th>
+        <th class="th-num">Unit Price</th>
+        <th class="th-num">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemRows}
+      ${emptyRowsHtml}
+    </tbody>
+  </table>
+
+  <!-- Footer: payment terms + totals -->
+  <div class="footer-row">
+    <div class="payment-terms">
+      <div class="payment-terms-label">Payment Terms:</div>
+      <div>${inv.terms || 'Net 30'}</div>
+      ${inv.notes ? `<div style="margin-top:8px;color:#555">${inv.notes}</div>` : ''}
+    </div>
+    <div class="totals-block">
+      <table class="totals-table">
+        <tr class="sub-row"><td class="lbl">Subtotal</td><td class="amt">${inr(inv.subtotal || inv.taxable)}</td></tr>
+        ${inv.discount > 0 ? `<tr class="sub-row"><td class="lbl">Discount</td><td class="amt">−${inr((inv.subtotal||0)-(inv.taxable||0))}</td></tr>` : ''}
+        <tr class="sub-row"><td class="lbl">Taxable Amount</td><td class="amt">${inr(inv.taxable)}</td></tr>
+        ${isInter
+          ? `<tr class="sub-row"><td class="lbl">IGST</td><td class="amt">${inr(inv.igst)}</td></tr>`
+          : `<tr class="sub-row"><td class="lbl">CGST</td><td class="amt">${inr(inv.cgst)}</td></tr>
+             <tr class="sub-row"><td class="lbl">SGST</td><td class="amt">${inr(inv.sgst)}</td></tr>`
+        }
+        <tr class="total-row"><td class="lbl">Total Amount Due:</td><td class="amt">${inr(inv.total)}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Bank / Notes -->
+  ${prof.bank_name || prof.account_no || prof.upi_id || upiBlock ? `
+  <div class="bank-section">
+    ${prof.bank_name || prof.account_no ? `
+    <div class="bank-col">
+      <div class="bank-label">Payment Details</div>
+      <div class="bank-det">
+        ${prof.bank_name  ? `<div>${prof.bank_name}</div>` : ''}
+        ${prof.account_no ? `<div>A/C: ${prof.account_no}</div>` : ''}
+        ${prof.ifsc       ? `<div>IFSC: ${prof.ifsc}</div>` : ''}
+        ${prof.upi_id     ? `<div>UPI: ${prof.upi_id}</div>` : ''}
+      </div>
+    </div>` : ''}
+    ${upiBlock ? `<div class="bank-col">${upiBlock}</div>` : ''}
+  </div>
+  ` : ''}
+
+  <div class="words-txt">Amount in words: ${words(inv.total)}</div>
+  <div class="powered">— Generated by Locas —</div>
+
+</div>
+</body>
+</html>`;
+}
