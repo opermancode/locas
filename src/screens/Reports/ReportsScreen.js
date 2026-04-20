@@ -1,4 +1,4 @@
-  import Icon from '../../utils/Icon';
+import Icon from '../../utils/Icon';
   import React, { useState, useCallback } from 'react';
   import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -24,7 +24,9 @@
     switch (key) {
       case 'today':      return { from: fmtDate(now), to: fmtDate(now) };
       case 'thisWeek': {
-        const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1);
+        const mon = new Date(now);
+        // getDay(): 0=Sun,1=Mon...6=Sat → ((getDay()+6)%7) gives 0=Mon,1=Tue,...6=Sun
+        mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
         return { from: fmtDate(mon), to: fmtDate(now) };
       }
       case 'thisMonth':  return { from: `${y}-${pad(m+1)}-01`, to: fmtDate(lastDay(y, m)) };

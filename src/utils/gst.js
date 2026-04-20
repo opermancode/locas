@@ -1,4 +1,4 @@
-  // Auto-split GST based on supply type
+// Auto-split GST based on supply type
   // intra-state → CGST + SGST (half each)
   // inter-state → IGST (full)
 
@@ -107,9 +107,11 @@
 
   export function formatINRCompact(n) {
     const num = Number(n || 0);
-    if (num >= 1_00_000) return '₹' + (num / 1_00_000).toFixed(1) + 'L';
-    if (num >= 1_000)    return '₹' + (num / 1_000).toFixed(1) + 'K';
-    return '₹' + num.toFixed(0);
+    const abs = Math.abs(num);
+    const sign = num < 0 ? '-' : '';
+    if (abs >= 1_00_000) return sign + '₹' + (abs / 1_00_000).toFixed(1) + 'L';
+    if (abs >= 1_000)    return sign + '₹' + (abs / 1_000).toFixed(1) + 'K';
+    return sign + '₹' + abs.toFixed(0);
   }
 
   export function today() { return new Date().toISOString().split('T')[0]; }

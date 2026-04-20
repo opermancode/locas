@@ -581,7 +581,8 @@ export async function getDashboardStats() {
   const allInvoices = await getAll(stores.invoices, i => !i.deleted_at);
   const allExpenses = await getAll(stores.expenses, e => !e.deleted_at);
 
-  const monthSales    = allInvoices.filter(i => i.type === 'sale' && i.date >= monthStart && i.date <= monthEnd);
+  const monthSales    = allInvoices.filter(i => i.type === 'sale'     && i.date >= monthStart && i.date <= monthEnd);
+  const monthPurchases= allInvoices.filter(i => i.type === 'purchase' && i.date >= monthStart && i.date <= monthEnd);
   const monthExpenses = allExpenses.filter(e => e.date >= monthStart && e.date <= monthEnd);
 
   const sales = {
@@ -610,7 +611,10 @@ export async function getDashboardStats() {
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 
-  const result = { sales, expenses, receivables, payables, topCustomers, collected };
+  const purchases = {
+    total: monthPurchases.reduce((s, i) => s + (i.total || 0), 0),
+  };
+  const result = { sales, expenses, purchases, receivables, payables, topCustomers, collected };
   _dashCache = result;
   _dashCacheTime = Date.now();
   return result;
