@@ -65,26 +65,21 @@ export default function template5(invoice, profile, accent, upiBlock) {
 
   html, body {
     background: #fff;
-    width: 80mm;
+    width: 100%;
   }
 
   body {
     font-family: 'Courier New', Courier, monospace;
-    font-size: 11px;
+    font-size: 12px;
     color: #000;
     line-height: 1.5;
-    /* Screen preview: centre the receipt */
-    display: flex;
-    justify-content: center;
-    padding: 16px;
-    background: #e8e8e8;
+    padding: 12px;
   }
 
   .receipt {
-    width: 72mm;
+    width: 100%;
     background: #fff;
-    padding: 8px 6px 12px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    padding: 0;
   }
 
   /* ── Header ── */
