@@ -1,6 +1,6 @@
 {
   "name": "locas-desktop",
-  "version": "1.13.10",
+  "version": "1.13.11",
   "description": "Locas — Smart Billing for India (Desktop)",
   "main": "main.js",
   "private": true,
