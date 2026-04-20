@@ -233,8 +233,8 @@ export default function CreateInvoice({ navigation, route }) {
       const existing = lineItems[existingIdx];
       const newQty = (parseFloat(existing.qty) || 0) + 1;
 
-      // Block if exceeds available stock
-      if (inv.stock !== undefined && inv.stock !== null && inv.stock >= 0 && newQty > inv.stock) {
+      // Block if exceeds available stock (skip for services — unlimited)
+      if (inv.item_type !== 'service' && inv.stock !== undefined && inv.stock !== null && inv.stock >= 0 && newQty > inv.stock) {
         Alert.alert(
           'Not Enough Stock',
           `${inv.name} only has ${inv.stock} ${inv.unit} in stock.\nAdd more stock in Inventory first.`,
@@ -249,8 +249,8 @@ export default function CreateInvoice({ navigation, route }) {
       return;
     }
 
-    // Not in invoice yet — block if no stock
-    if (inv.stock !== undefined && inv.stock !== null && inv.stock <= 0) {
+    // Not in invoice yet — block if no stock (skip check for services)
+    if (inv.item_type !== 'service' && inv.stock !== undefined && inv.stock !== null && inv.stock <= 0) {
       Alert.alert(
         'Out of Stock',
         `${inv.name} has no stock in inventory.\nPlease add stock first.`,
