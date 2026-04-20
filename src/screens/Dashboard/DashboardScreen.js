@@ -209,9 +209,11 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
           const posWithTotal = await Promise.all(allPOs.map(async po => {
             try {
               const detail = await DB.getPurchaseOrderDetail(po.id);
-              const total  = (detail?.items || []).reduce((s, it) => s + (it.qty_ordered || 0) * (it.rate || 0), 0);
-              return { ...po, total };
-            } catch { return { ...po, total: 0 }; }
+              const items  = detail?.items || [];
+              const total         = items.reduce((s, it) => s + (it.qty_ordered || 0) * (it.rate || 0), 0);
+              const remainingValue= items.reduce((s, it) => s + Math.max(0, (it.qty_ordered || 0) - (it.qty_delivered || 0)) * (it.rate || 0), 0);
+              return { ...po, total, remainingValue, items };
+            } catch { return { ...po, total: 0, remainingValue: 0, items: [] }; }
           }));
           computePOStats(posWithTotal, poSelectedMonth);
         } catch (_) {}
@@ -250,6 +252,12 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
       );
       const total = monthPOs.reduce((sum, po) => sum + (po.total || 0), 0);
 
+      // Remaining value = total ordered - delivered across ALL active/partial POs
+      const activePOs = (allPOs || []).filter(po =>
+        po.status === 'active' || po.status === 'partial'
+      );
+      const remainingValue = activePOs.reduce((sum, po) => sum + (po.remainingValue || 0), 0);
+
       // Near-due: active/partial POs due within 7 days (not yet passed)
       const nearDue = (allPOs || []).filter(po =>
         (po.status === 'active' || po.status === 'partial') &&
@@ -262,7 +270,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
         po.valid_until && po.valid_until < today
       );
 
-      setPoStats({ total, count: monthPOs.length, nearDue, overdue, allPOs });
+      setPoStats({ total, count: monthPOs.length, nearDue, overdue, allPOs, remainingValue, activePOs });
     }, []);
 
     // When user changes month in PO widget, recompute from cached allPOs
@@ -272,9 +280,11 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
       const posWithTotal = await Promise.all(allPOs.map(async po => {
         try {
           const detail = await DB.getPurchaseOrderDetail(po.id);
-          const total  = (detail?.items || []).reduce((s, it) => s + (it.qty_ordered || 0) * (it.rate || 0), 0);
-          return { ...po, total };
-        } catch { return { ...po, total: 0 }; }
+          const items  = detail?.items || [];
+          const total          = items.reduce((s, it) => s + (it.qty_ordered || 0) * (it.rate || 0), 0);
+          const remainingValue = items.reduce((s, it) => s + Math.max(0, (it.qty_ordered || 0) - (it.qty_delivered || 0)) * (it.rate || 0), 0);
+          return { ...po, total, remainingValue, items };
+        } catch { return { ...po, total: 0, remainingValue: 0, items: [] }; }
       }));
       computePOStats(posWithTotal, newSel);
     }, [computePOStats]);
@@ -654,6 +664,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
                 onNavigate={() => navigation.navigate('More', { screen: 'PurchaseOrders' })}
                 onPoPress={(poId) => navigation.navigate('More', { screen: 'PODetail', params: { poId } })}
                 onNavigatePOAlerts={() => navigation.navigate('More', { screen: 'POAlerts' })}
+                onNavigateBacklog={() => navigation.navigate('More', { screen: 'POBacklog' })}
               />
 
             </View>
@@ -764,7 +775,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
   // ── PO Widget ────────────────────────────────────────────────────
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  function POWidget({ poStats, selectedMonth, onMonthChange, onNavigate, onPoPress, onNavigatePOAlerts }) {
+  function POWidget({ poStats, selectedMonth, onMonthChange, onNavigate, onPoPress, onNavigatePOAlerts, onNavigateBacklog }) {
     const now = new Date();
 
     const prevMonth = () => {
@@ -841,16 +852,27 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
           <View style={pw.statDiv} />
           <TouchableOpacity
             style={pw.statCell}
+            onPress={() => (poStats?.remainingValue > 0) && onNavigateBacklog && onNavigateBacklog()}
+            activeOpacity={0.7}
+          >
+            <Text style={[pw.statVal, { color: COLORS.danger }]}>
+              {poStats?.remainingValue ? formatINRCompact(poStats.remainingValue) : '₹0'}
+            </Text>
+            <Text style={[pw.statLbl, { color: COLORS.danger }]}>Remaining ↗</Text>
+          </TouchableOpacity>
+          <View style={pw.statDiv} />
+          <TouchableOpacity
+            style={pw.statCell}
             onPress={() => {
               const count = (poStats?.overdue?.length ?? 0) + (poStats?.nearDue?.length ?? 0);
               if (count > 0) onNavigatePOAlerts();
             }}
             activeOpacity={0.7}
           >
-            <Text style={[pw.statVal, { color: COLORS.danger }]}>
+            <Text style={[pw.statVal, { color: COLORS.warning }]}>
               {(poStats?.overdue?.length ?? 0) + (poStats?.nearDue?.length ?? 0)}
             </Text>
-            <Text style={[pw.statLbl, { color: COLORS.danger }]}>Need Action ↗</Text>
+            <Text style={[pw.statLbl, { color: COLORS.warning }]}>Alerts ↗</Text>
           </TouchableOpacity>
         </View>
 
