@@ -1233,7 +1233,8 @@ export default function CreateInvoice({ navigation, route }) {
                   keyboardShouldPersistTaps="handled"
                   contentContainerStyle={{ paddingBottom: 24 }}
                   renderItem={({ item: inv }) => {
-                    const isLow = inv.min_stock > 0 && inv.stock <= inv.min_stock;
+                    const isLow = inv.item_type !== 'service' && inv.min_stock > 0 && inv.stock <= inv.min_stock;
+                    const isService = inv.item_type === 'service';
                     const existingLine = lineItems.find(it => it.item_id === inv.id);
                     return (
                       <TouchableOpacity
@@ -1255,7 +1256,7 @@ export default function CreateInvoice({ navigation, route }) {
                           </View>
                           <Text style={styles.invItemSub}>
                             {inv.hsn ? `HSN: ${inv.hsn}  ·  ` : ''}
-                            GST {inv.gst_rate}%  ·  Stock: {inv.stock} {inv.unit}
+                            GST {inv.gst_rate}%  ·  {isService ? 'Service' : `Stock: ${inv.stock} ${inv.unit}`}
                           </Text>
                         </View>
                         <View style={{ alignItems: 'flex-end', gap: 6 }}>

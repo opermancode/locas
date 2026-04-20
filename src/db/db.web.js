@@ -319,6 +319,7 @@ export async function saveItem(data) {
       id, name: data.name, code: data.code || '', unit: data.unit || 'pcs',
       hsn: data.hsn || '', sale_price: data.sale_price || 0,
       purchase_price: data.purchase_price || 0, gst_rate: data.gst_rate || 18,
+      item_type: data.item_type || 'product',
       stock: data.stock || 0, min_stock: data.min_stock || 0,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       deleted_at: null,
