@@ -2,7 +2,7 @@ Locasdot - SMART BILLING FOR INDIA
 END USER LICENSE AGREEMENT & PRIVACY POLICY
 
 Create Date: March 2026
-Developed by: Omkar Ganesh Jagtap
+Developed by: locastitch
 Contact: https://locasdot.vercel.app/index.html#contact
 
 By installing locasdot, you agree to the following terms. Please read carefully.
@@ -12,7 +12,7 @@ PART 1 - TERMS AND CONDITIONS
 ================================================================
 
 1. LICENSE GRANT
-   Omkar Jagtap grants you a personal, non-exclusive, non-transferable
+   locastitch grants you a personal, non-exclusive, non-transferable
    license to install and use this software on Windows devices that you
    own or control, solely for your personal or internal business purposes.
 
