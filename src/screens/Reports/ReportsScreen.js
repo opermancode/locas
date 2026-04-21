@@ -1,4 +1,4 @@
-import Icon from '../../utils/Icon';
+  import Icon from '../../utils/Icon';
   import React, { useState, useCallback } from 'react';
   import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -6,7 +6,7 @@ import Icon from '../../utils/Icon';
   } from 'react-native';
   import { useSafeAreaInsets } from 'react-native-safe-area-context';
   import { useFocusEffect } from '@react-navigation/native';
-  import { getReportData } from '../../db';
+  import { getReportData, getPurchaseOrders, getPurchaseOrderDetail } from '../../db';
   import { formatINR, formatINRCompact } from '../../utils/gst';
   import { COLORS, RADIUS, FONTS } from '../../theme';
 
@@ -61,6 +61,7 @@ import Icon from '../../utils/Icon';
   // Report tabs
   const REPORT_TABS = [
     { key: 'overview',  label: 'Overview',   icon: 'bar-chart-2' },
+    { key: 'income',    label: 'Income',     icon: 'trending-up' },
     { key: 'sales',     label: 'Sales',      icon: 'file-text'   },
     { key: 'purchases', label: 'Purchases',  icon: 'shopping-bag'},
     { key: 'expenses',  label: 'Expenses',   icon: 'credit-card' },
@@ -86,6 +87,290 @@ import Icon from '../../utils/Icon';
   }
   const n2 = (v) => Number(v || 0).toFixed(2);
 
+  // ── Income Tab Component — GST toggle + date filter ────────────
+  function IncomeTab({ sales, poData, totalTax, totalSales, totalCollected, totalOutstanding, totalPOTaxable, totalIncomeTaxable, totalIncome, periodLabel, exportIncomeCSV }) {
+    const [showGST,     setShowGST]     = React.useState(false); // false = ex-GST (default), true = incl. GST
+    const [invFrom,     setInvFrom]     = React.useState('');
+    const [invTo,       setInvTo]       = React.useState('');
+    const [poFrom,      setPoFrom]      = React.useState('');
+    const [poTo,        setPoTo]        = React.useState('');
+
+    // Apply date filters
+    const filteredSales = React.useMemo(() => {
+      let r = sales;
+      if (invFrom) r = r.filter(i => i.date >= invFrom);
+      if (invTo)   r = r.filter(i => i.date <= invTo);
+      return r;
+    }, [sales, invFrom, invTo]);
+
+    const filteredPOs = React.useMemo(() => {
+      let r = poData;
+      if (poFrom) r = r.filter(p => p.date >= poFrom);
+      if (poTo)   r = r.filter(p => p.date <= poTo);
+      return r;
+    }, [poData, poFrom, poTo]);
+
+    // Values — switch based on toggle
+    const invValue    = showGST
+      ? filteredSales.reduce((s,i) => s+(i.total||0), 0)
+      : filteredSales.reduce((s,i) => s+(i.taxable||0), 0);
+    const invGST      = filteredSales.reduce((s,i) => s+(i.total_tax||0), 0);
+    const invCollected= filteredSales.reduce((s,i) => s+(i.paid||0), 0);
+    const invOutstanding = filteredSales.reduce((s,i) => s+Math.max(0,(i.total||0)-(i.paid||0)), 0);
+
+    const poValue     = filteredPOs.reduce((s,p) => s+(p.taxable||0), 0); // POs never have GST
+
+    const totalNet    = showGST ? (invValue + poValue) : (invValue + poValue);
+    const heroColor   = '#22C55E';
+
+    return (
+      <>
+        {/* ── Controls: GST toggle + date filters ── */}
+        <View style={it.controls}>
+          {/* GST Toggle */}
+          <View style={it.toggleWrap}>
+            <TouchableOpacity
+              style={[it.toggleBtn, !showGST && it.toggleActive]}
+              onPress={() => setShowGST(false)}
+            >
+              <Text style={[it.toggleTxt, !showGST && it.toggleActiveTxt]}>Ex-GST</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[it.toggleBtn, showGST && it.toggleActive]}
+              onPress={() => setShowGST(true)}
+            >
+              <Text style={[it.toggleTxt, showGST && it.toggleActiveTxt]}>Incl. GST</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={it.exportBtn} onPress={exportIncomeCSV}>
+            <Icon name="download" size={13} color={COLORS.primary}/>
+            <Text style={it.exportTxt}>CSV</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* GST mode info banner */}
+        <View style={[it.modeBanner, showGST ? it.modeBannerGST : it.modeBannerNet]}>
+          <Icon name={showGST ? 'info' : 'check-circle'} size={13} color={showGST ? '#60A5FA' : '#4ADE80'}/>
+          <Text style={[it.modeTxt, showGST ? {color:'#60A5FA'} : {color:'#4ADE80'}]}>
+            {showGST
+              ? 'Showing amounts INCLUSIVE of GST — this is what customers paid'
+              : 'Showing amounts EXCLUDING GST — this is your actual income / revenue'}
+          </Text>
+        </View>
+
+        {/* Hero */}
+        <View style={[s.plHero, { backgroundColor:'#0A1A0A', borderColor:'#22C55E22' }]}>
+          <Text style={[s.plHeroLabel, { color:'#4ADE80' }]}>
+            {showGST ? 'TOTAL INCOME · INCL. GST' : 'NET INCOME · EXCL. GST'}
+          </Text>
+          <Text style={[s.plHeroAmt, { color:'#4ADE80' }]}>{formatINR(totalNet)}</Text>
+          <Text style={s.plHeroPeriod}>{periodLabel}</Text>
+          <View style={s.plRow}>
+            <PLStat label="Invoices"  value={invValue}  color="#4ADE80" />
+            <View style={s.plDiv}/>
+            <PLStat label="PO Orders" value={poValue}   color="#34D399" />
+            {!showGST && <><View style={s.plDiv}/><PLStat label="GST Excluded" value={invGST} color="#F87171" /></>}
+          </View>
+        </View>
+
+        {/* 4 KPI tiles */}
+        <View style={s.kpiGrid}>
+          <KPITile label={showGST ? 'Sales (incl. GST)' : 'Sales (ex-GST)'}
+            value={formatINRCompact(invValue)} color="#22C55E" icon="file-text" bg="#F0FDF4" />
+          <KPITile label="PO Orders (net)" value={formatINRCompact(poValue)} color="#3B82F6" icon="shopping-bag" bg="#EFF6FF" />
+          <KPITile label={showGST ? 'GST on Sales' : 'GST Excluded'}
+            value={formatINRCompact(invGST)} color="#EF4444" icon="hash" bg="#FEF2F2" />
+          <KPITile label="Total Income" value={formatINRCompact(totalNet)} color="#8B5CF6" icon="trending-up" bg="#F5F3FF" />
+        </View>
+
+        {/* ── INVOICE SECTION ── */}
+        <View style={it.sectionHeader}>
+          <Text style={it.sectionTitle}>Sales Invoices</Text>
+          {/* Date filter */}
+          <View style={it.dateFilter}>
+            <TextInput
+              style={it.dateInput}
+              placeholder="From YYYY-MM-DD"
+              placeholderTextColor={COLORS.textMute}
+              value={invFrom}
+              onChangeText={setInvFrom}
+            />
+            <Text style={{color:COLORS.textMute,fontSize:11}}>→</Text>
+            <TextInput
+              style={it.dateInput}
+              placeholder="To YYYY-MM-DD"
+              placeholderTextColor={COLORS.textMute}
+              value={invTo}
+              onChangeText={setInvTo}
+            />
+            {(invFrom||invTo)&&(
+              <TouchableOpacity onPress={()=>{setInvFrom('');setInvTo('');}}>
+                <Icon name="x" size={14} color={COLORS.textMute}/>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Invoice summary */}
+        <View style={s.card}>
+          {!showGST && <DataRow label="Taxable Amount (ex-GST)"  value={formatINR(invValue)}       color={COLORS.success} />}
+          {showGST  && <DataRow label="Invoice Total (incl. GST)" value={formatINR(invValue)}       color={COLORS.success} />}
+          {!showGST && <DataRow label="GST Collected"             value={formatINR(invGST)}         color={COLORS.danger} />}
+          {showGST  && <DataRow label="GST Component"             value={formatINR(invGST)}         color={COLORS.warning} />}
+          <DataRow label="Collected (Paid)"    value={formatINR(invCollected)}   color={COLORS.success} />
+          <DataRow label="Outstanding"         value={formatINR(invOutstanding)} color={invOutstanding>0?COLORS.danger:COLORS.textMute} last />
+        </View>
+
+        {/* Invoice table */}
+        {filteredSales.length === 0 ? (
+          <View style={s.card}><DataRow label="No invoices in selected range" value="" muted last /></View>
+        ) : (
+          <View style={s.tableCard}>
+            <View style={s.thead}>
+              <Text style={[s.th,{flex:1.3}]}>Invoice #</Text>
+              <Text style={[s.th,{flex:1.2}]}>Party</Text>
+              <Text style={[s.th,{flex:0.8,textAlign:'right'}]}>{showGST?'Total':'Taxable'}</Text>
+              {!showGST && <Text style={[s.th,{flex:0.7,textAlign:'right',color:COLORS.danger}]}>GST</Text>}
+              <Text style={[s.th,{flex:0.8,textAlign:'right'}]}>Paid</Text>
+              <Text style={[s.th,{flex:0.7,textAlign:'right'}]}>Status</Text>
+            </View>
+            {filteredSales.map((inv, idx) => {
+              const displayAmt = showGST ? (inv.total||0) : (inv.taxable||0);
+              const isPaid = inv.status==='paid';
+              const sc = isPaid?'#22C55E':inv.status==='partial'?'#F59E0B':'#EF4444';
+              return (
+                <View key={inv.id} style={[s.trow, idx%2===0&&s.trowEven]}>
+                  <Text style={[s.td,{flex:1.3,color:COLORS.primary,fontWeight:FONTS.bold}]} numberOfLines={1}>{inv.invoice_number}</Text>
+                  <Text style={[s.td,{flex:1.2}]} numberOfLines={1}>{inv.party_name||'Walk-in'}</Text>
+                  <Text style={[s.td,{flex:0.8,textAlign:'right',color:COLORS.success,fontWeight:FONTS.semibold}]}>{formatINRCompact(displayAmt)}</Text>
+                  {!showGST && <Text style={[s.td,{flex:0.7,textAlign:'right',color:COLORS.danger}]}>{formatINRCompact(inv.total_tax||0)}</Text>}
+                  <Text style={[s.td,{flex:0.8,textAlign:'right',color:COLORS.success}]}>{formatINRCompact(inv.paid||0)}</Text>
+                  <Text style={[s.td,{flex:0.7,textAlign:'right',color:sc,fontSize:10}]}>{(inv.status||'unpaid').charAt(0).toUpperCase()+(inv.status||'unpaid').slice(1)}</Text>
+                </View>
+              );
+            })}
+            {/* Totals row */}
+            <View style={[s.trow,{backgroundColor:COLORS.bgDeep,borderTopWidth:1.5,borderTopColor:COLORS.border}]}>
+              <Text style={[s.td,{flex:1.3,fontWeight:FONTS.bold}]}>TOTAL</Text>
+              <Text style={[s.td,{flex:1.2}]}>{filteredSales.length} invoices</Text>
+              <Text style={[s.td,{flex:0.8,textAlign:'right',color:COLORS.success,fontWeight:FONTS.bold}]}>{formatINRCompact(invValue)}</Text>
+              {!showGST && <Text style={[s.td,{flex:0.7,textAlign:'right',color:COLORS.danger,fontWeight:FONTS.bold}]}>{formatINRCompact(invGST)}</Text>}
+              <Text style={[s.td,{flex:0.8,textAlign:'right',color:COLORS.success,fontWeight:FONTS.bold}]}>{formatINRCompact(invCollected)}</Text>
+              <Text style={[s.td,{flex:0.7}]}/>
+            </View>
+          </View>
+        )}
+
+        {/* ── PO SECTION ── */}
+        <View style={it.sectionHeader}>
+          <Text style={it.sectionTitle}>Purchase Orders</Text>
+          <Text style={it.sectionNote}>POs are always net (no GST)</Text>
+          <View style={[it.dateFilter,{marginLeft:0}]}>
+            <TextInput
+              style={it.dateInput}
+              placeholder="From"
+              placeholderTextColor={COLORS.textMute}
+              value={poFrom}
+              onChangeText={setPoFrom}
+            />
+            <Text style={{color:COLORS.textMute,fontSize:11}}>→</Text>
+            <TextInput
+              style={it.dateInput}
+              placeholder="To"
+              placeholderTextColor={COLORS.textMute}
+              value={poTo}
+              onChangeText={setPoTo}
+            />
+            {(poFrom||poTo)&&(
+              <TouchableOpacity onPress={()=>{setPoFrom('');setPoTo('');}}>
+                <Icon name="x" size={14} color={COLORS.textMute}/>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {filteredPOs.length === 0 ? (
+          <View style={s.card}><DataRow label="No POs in selected range" value="" muted last /></View>
+        ) : (
+          <>
+            <View style={s.card}>
+              <DataRow label="Total PO Net Value"          value={formatINR(poValue)} color={COLORS.success} />
+              <DataRow label="Completed"                   value={formatINR(filteredPOs.filter(p=>p.status==='completed').reduce((s,p)=>s+(p.taxable||0),0))} color={COLORS.success} />
+              <DataRow label="Active / Partial (Unfulfilled)" value={formatINR(filteredPOs.filter(p=>p.status==='active'||p.status==='partial').reduce((s,p)=>s+(p.taxable||0),0))} color={COLORS.warning} last />
+            </View>
+            <View style={s.tableCard}>
+              <View style={s.thead}>
+                <Text style={[s.th,{flex:1.4}]}>PO Number</Text>
+                <Text style={[s.th,{flex:1.2}]}>Party</Text>
+                <Text style={[s.th,{flex:0.9,textAlign:'right'}]}>Net Value</Text>
+                <Text style={[s.th,{flex:0.7,textAlign:'right'}]}>Fulfilled</Text>
+                <Text style={[s.th,{flex:0.8,textAlign:'right'}]}>Status</Text>
+              </View>
+              {filteredPOs.map((po, idx) => {
+                const fulfilled = (po.items||[]).reduce((s,it)=>(it.qty_delivered||0)*(it.rate||0)+s, 0);
+                const pct = po.taxable>0 ? Math.round(fulfilled/po.taxable*100) : 0;
+                const sc = po.status==='completed'?'#22C55E':po.status==='partial'?'#F59E0B':'#94A3B8';
+                return (
+                  <View key={po.id} style={[s.trow, idx%2===0&&s.trowEven]}>
+                    <Text style={[s.td,{flex:1.4,color:COLORS.primary,fontWeight:FONTS.bold}]} numberOfLines={1}>{po.po_number}</Text>
+                    <Text style={[s.td,{flex:1.2}]} numberOfLines={1}>{po.party_name||'—'}</Text>
+                    <Text style={[s.td,{flex:0.9,textAlign:'right',color:COLORS.success,fontWeight:FONTS.semibold}]}>{formatINRCompact(po.taxable||0)}</Text>
+                    <Text style={[s.td,{flex:0.7,textAlign:'right'}]}>{pct}%</Text>
+                    <Text style={[s.td,{flex:0.8,textAlign:'right',color:sc,fontSize:10,textTransform:'capitalize'}]}>{po.status}</Text>
+                  </View>
+                );
+              })}
+              <View style={[s.trow,{backgroundColor:COLORS.bgDeep,borderTopWidth:1.5,borderTopColor:COLORS.border}]}>
+                <Text style={[s.td,{flex:1.4,fontWeight:FONTS.bold}]}>TOTAL</Text>
+                <Text style={[s.td,{flex:1.2}]}>{filteredPOs.length} POs</Text>
+                <Text style={[s.td,{flex:0.9,textAlign:'right',color:COLORS.success,fontWeight:FONTS.bold}]}>{formatINRCompact(poValue)}</Text>
+                <Text style={[s.td,{flex:0.7}]}/>
+                <Text style={[s.td,{flex:0.8}]}/>
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* Combined summary */}
+        <SectionHead title="Combined Income Summary" />
+        <View style={s.card}>
+          <DataRow label={showGST ? 'Sales (incl. GST)' : 'Sales (ex-GST)'} value={formatINR(invValue)} color={COLORS.success} />
+          <DataRow label="PO Orders (net, no GST)"   value={formatINR(poValue)}  color={COLORS.success} />
+          <DataRow label="Total Combined Income"     value={formatINR(totalNet)} color={COLORS.success} />
+          {!showGST && (
+            <>
+              <DataRow label="─────────────────────" value="" muted />
+              <DataRow label="GST Collected (excluded above)" value={formatINR(invGST)}   color={COLORS.danger} />
+              <DataRow label="Total if GST included"          value={formatINR(invValue + invGST + poValue)} last />
+            </>
+          )}
+          {showGST && <DataRow label="GST component in Sales" value={formatINR(invGST)} color={COLORS.warning} last />}
+        </View>
+      </>
+    );
+  }
+
+  // ── Income Tab Styles ─────────────────────────────────────────────
+  const it = StyleSheet.create({
+    controls:      { flexDirection:'row', alignItems:'center', marginBottom:10, gap:10 },
+    toggleWrap:    { flexDirection:'row', backgroundColor:COLORS.bgDeep, borderRadius:RADIUS.md, padding:3, borderWidth:1, borderColor:COLORS.border },
+    toggleBtn:     { paddingHorizontal:16, paddingVertical:7, borderRadius:RADIUS.sm-2 },
+    toggleActive:  { backgroundColor:COLORS.primary },
+    toggleTxt:     { fontSize:12, fontWeight:FONTS.semibold, color:COLORS.textMute },
+    toggleActiveTxt:{ color:'#fff' },
+    exportBtn:     { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:12, paddingVertical:7, borderRadius:RADIUS.md, borderWidth:1, borderColor:COLORS.border },
+    exportTxt:     { fontSize:11, fontWeight:FONTS.semibold, color:COLORS.primary },
+    modeBanner:    { flexDirection:'row', alignItems:'flex-start', gap:8, borderRadius:RADIUS.md, padding:10, marginBottom:10, borderWidth:1 },
+    modeBannerNet: { backgroundColor:'rgba(34,197,94,0.07)', borderColor:'rgba(34,197,94,0.2)' },
+    modeBannerGST: { backgroundColor:'rgba(96,165,250,0.07)', borderColor:'rgba(96,165,250,0.2)' },
+    modeTxt:       { flex:1, fontSize:11, lineHeight:16 },
+    sectionHeader: { flexDirection:'row', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:6, marginTop:14 },
+    sectionTitle:  { fontSize:13, fontWeight:FONTS.bold, color:COLORS.text },
+    sectionNote:   { fontSize:10, color:COLORS.textMute, fontStyle:'italic' },
+    dateFilter:    { flexDirection:'row', alignItems:'center', gap:5, marginLeft:'auto' },
+    dateInput:     { backgroundColor:COLORS.bgDeep, borderRadius:RADIUS.sm, paddingHorizontal:8, paddingVertical:4, fontSize:10, color:COLORS.text, borderWidth:1, borderColor:COLORS.border, width:105 },
+  });
+
   export default function ReportsScreen({ navigation }) {
     const insets = useSafeAreaInsets();
 
@@ -94,6 +379,7 @@ import Icon from '../../utils/Icon';
     const [customTo,   setCustomTo]   = useState('');
     const [activeTab,  setActiveTab]  = useState('overview');
     const [data,       setData]       = useState(null);
+    const [poData,     setPoData]     = useState([]);
     const [loading,    setLoading]    = useState(true);
     const [exporting,  setExporting]  = useState(false);
 
@@ -102,8 +388,23 @@ import Icon from '../../utils/Icon';
       try {
         const { from, to } = getRange(p, cf, ct);
         if (!from || !to) return;
-        const d = await getReportData(from, to);
+        const [d, allPOs] = await Promise.all([
+          getReportData(from, to),
+          getPurchaseOrders().catch(() => []),
+        ]);
         setData(d);
+        // Filter POs created in date range, load their items
+        const periodPOs = (allPOs || []).filter(po => po.date >= from && po.date <= to);
+        const enriched = await Promise.all(periodPOs.map(async po => {
+          try {
+            const detail = await getPurchaseOrderDetail(po.id);
+            const items  = detail?.items || [];
+            const taxable     = items.reduce((s, it) => s + (it.qty_ordered||0) * (it.rate||0), 0);
+            // POs typically don't have GST stored — taxable = total for POs
+            return { ...po, taxable, total: taxable, cgst: 0, sgst: 0, igst: 0, total_tax: 0, items };
+          } catch { return { ...po, taxable: 0, total: 0, cgst: 0, sgst: 0, igst: 0, total_tax: 0, items: [] }; }
+        }));
+        setPoData(enriched);
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     };
@@ -135,10 +436,61 @@ import Icon from '../../utils/Icon';
     const igst = data?.gst?.igst  || 0;
     const totalTax = data?.gst?.total || 0;
 
+    // PO derived totals
+    const totalPOValue     = poData.reduce((s, po) => s + (po.total || 0), 0);
+    const totalPOTax       = poData.reduce((s, po) => s + (po.total_tax || 0), 0);
+    const totalPOTaxable   = poData.reduce((s, po) => s + (po.taxable || 0), 0);
+    const poByStatus = poData.reduce((acc, po) => {
+      const st = po.status || 'active';
+      acc[st] = (acc[st] || 0) + (po.total || 0);
+      return acc;
+    }, {});
+
+    // Combined income
+    const totalIncome      = totalSales + totalPOValue;
+    const totalIncomeTax   = totalTax + totalPOTax;
+    const totalIncomeTaxable = (totalSales - totalTax) + totalPOTaxable;
+
     const { from, to } = getRange(preset, customFrom, customTo);
     const periodLabel  = from && to ? `${from}  →  ${to}` : '—';
 
     // ── Export functions ──────────────────────────────────────────
+    const exportIncomeCSV = () => {
+      const lines = [
+        `# COMBINED INCOME REPORT — ${from} to ${to}`,
+        '',
+        '## SALES INVOICES',
+        'Invoice No,Date,Party,GSTIN,Supply Type,Taxable,CGST,SGST,IGST,Total Tax,Total,Paid,Outstanding,Status',
+        ...sales.map(i => [
+          i.invoice_number, i.date, esc(i.party_name), esc(i.party_gstin||''),
+          i.supply_type==='inter'?'Inter-state':'Intra-state',
+          n2(i.taxable), n2(i.cgst), n2(i.sgst), n2(i.igst), n2(i.total_tax),
+          n2(i.total), n2(i.paid), n2((i.total||0)-(i.paid||0)), i.status||'unpaid',
+        ].join(',')),
+        `Sales Total,,,,,${n2(sales.reduce((s,i)=>s+(i.taxable||0),0))},,,,${n2(totalTax)},${n2(totalSales)},${n2(totalCollected)},${n2(totalOutstanding)},`,
+        '',
+        '## PURCHASE ORDERS',
+        'PO Number,Date,Party,GSTIN,Status,PO Value,Delivered Qty Value,Remaining',
+        ...poData.map(po => {
+          const delivered = (po.items||[]).reduce((s,it)=>(it.qty_delivered||0)*(it.rate||0)+s,0);
+          const remaining = po.total - delivered;
+          return [po.po_number, po.date, esc(po.party_name), esc(po.party_gstin||''), po.status, n2(po.total), n2(delivered), n2(remaining)].join(',');
+        }),
+        `PO Total,,,,,${n2(totalPOValue)},,`,
+        '',
+        '## SUMMARY',
+        `Total Sales (with GST),${n2(totalSales)}`,
+        `Total PO Value,${n2(totalPOValue)}`,
+        `Combined Income,${n2(totalIncome)}`,
+        `GST on Sales (CGST),${n2(cgst)}`,
+        `GST on Sales (SGST),${n2(sgst)}`,
+        `GST on Sales (IGST),${n2(igst)}`,
+        `Total GST,${n2(totalTax)}`,
+        `Taxable Income (excl. GST),${n2(totalSales - totalTax)}`,
+      ];
+      downloadCSV(`Income_Report_${from}_${to}.csv`, lines.join('\n'));
+    };
+
     const exportSalesCSV = () => {
       const header = 'Invoice No,Date,Party,GSTIN,Supply,Taxable,CGST,SGST,IGST,Total Tax,Total,Paid,Outstanding,Status';
       const rows   = sales.map(i => [
@@ -437,6 +789,23 @@ import Icon from '../../utils/Icon';
                   <DataRow label="Total Tax Collected" value={formatINR(totalTax)} last />
                 </View>
               </>
+            )}
+
+            {/* ════ INCOME (No GST) ════ */}
+            {activeTab === 'income' && (
+              <IncomeTab
+                sales={sales}
+                poData={poData}
+                totalTax={totalTax}
+                totalSales={totalSales}
+                totalCollected={totalCollected}
+                totalOutstanding={totalOutstanding}
+                totalPOTaxable={totalPOTaxable}
+                totalIncomeTaxable={totalIncomeTaxable}
+                totalIncome={totalIncome}
+                periodLabel={periodLabel}
+                exportIncomeCSV={exportIncomeCSV}
+              />
             )}
 
             {/* ════ SALES ════ */}
