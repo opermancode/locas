@@ -1,5 +1,1 @@
-# locas
-
-resize logo 
-sudo apt install imagemagick -y
-convert ./assets/icon.png -resize 512x512! ./assets/icon.png
+#Copyright © 2026 Locastitch. All rights reserved.
