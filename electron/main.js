@@ -7,8 +7,10 @@
   const fs     = require('fs');
   const https  = require('https');
   const crypto = require('crypto');
+  const { spawn } = require('child_process');
+  const os     = require('os');
 
-  const UPDATE_URL  = 'https://locas-business.vercel.app/updates/latest.json';
+  const UPDATE_URL  = 'https://locasdot.vercel.app/updates/latest.json';
   const CURRENT_VER = app.getVersion();
 
   let mainWindow       = null;
@@ -490,8 +492,36 @@
     else checkForUpdate(true);
   });
 
+  // ── IPC: generate styled XLSX report — pure Node.js, no Python needed ────
+  const { generateReport } = require('./xlsxGenerator');
+
+  ipcMain.handle('generate-report', async (_, { reportData, reportType }) => {
+    try {
+      const dateStr   = `${reportData.from}_${reportData.to}`.replace(/-/g,'');
+      const defName   = reportType === 'gstr1'
+        ? `GSTR1_${dateStr}.xlsx`
+        : `Income_Report_${dateStr}.xlsx`;
+
+      const { filePath, canceled } = await dialog.showSaveDialog({
+        title: 'Save Report',
+        defaultPath: path.join(app.getPath('documents'), defName),
+        filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }],
+      });
+
+      if (canceled || !filePath) return { success: false, reason: 'Cancelled' };
+
+      const buf = generateReport(reportData);
+      fs.writeFileSync(filePath, buf);
+      shell.openPath(filePath);
+      return { success: true, filePath };
+    } catch (e) {
+      return { success: false, reason: e.message };
+    }
+  });
+
   // ── App lifecycle ─────────────────────────────────────────────────
   app.whenReady().then(() => {
+    app.setAppUserModelId('Locasdot');
     migrateOldDataIfNeeded(); // one-time move from exe folder → userData
     createWindow();
     setTimeout(() => checkPendingInstaller(), 4000);

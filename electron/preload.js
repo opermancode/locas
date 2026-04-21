@@ -30,6 +30,7 @@
     // ── Updates ──────────────────────────────────────────────────────
     checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
     installUpdate:  () => ipcRenderer.invoke('install-update'),
+    generateReport: (reportData, reportType) => ipcRenderer.invoke('generate-report', { reportData, reportType }),
     getUpdateState: () => _updateState,
 
     onUpdateDownloading: (cb) => {
