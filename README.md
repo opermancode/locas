@@ -1,10 +1,21 @@
 # Locas · Smart Billing for India 🇮🇳
 
-> GST-compliant offline billing software for Indian small businesses — invoices, purchase orders, quotations, parties, inventory, expenses, and detailed reports. Built with React Native for Web + Electron.
+<p align="center">
+  <img src="./assets/icon.png" alt="Locas Logo" width="280" />
+</p>
 
-[![License](https://img.shields.io/badge/license-PolyForm%20Shield-orange)](./LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-1.12.16-blue)](./electron/package.json)
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](https://locasdot.vercel.app)
+<p align="center">
+  GST-compliant offline billing software for Indian small businesses —<br/>
+  invoices, purchase orders, quotations, parties, inventory, expenses, and detailed reports.<br/>
+  Built with React Native for Web + Electron.
+</p>
+
+<p align="center">
+  <a href="./LICENSE.txt"><img src="https://img.shields.io/badge/license-PolyForm%20Shield-orange" alt="License"/></a>
+  <a href="./electron/package.json"><img src="https://img.shields.io/badge/version-1.12.16-blue" alt="Version"/></a>
+  <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Platform"/>
+  <a href="https://locasdot.vercel.app"><img src="https://img.shields.io/badge/website-locasdot.vercel.app-FF6B00" alt="Website"/></a>
+</p>
 
 ---
 
