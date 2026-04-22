@@ -10,7 +10,7 @@
   const { spawn } = require('child_process');
   const os     = require('os');
 
-  const UPDATE_URL  = 'https://locasdot.vercel.app/updates/latest.json';
+  const UPDATE_URL  = 'https://locas-business.vercel.app/updates/latest.json';
   const CURRENT_VER = app.getVersion();
 
   let mainWindow       = null;
@@ -493,7 +493,7 @@
   });
 
   // ── IPC: generate styled XLSX report — pure Node.js, no Python needed ────
-  const { generateReport } = require('./xlsxGenerator');
+  const { generateIncomeReport, generateGSTR1Report } = require('./xlsxGenerator');
 
   ipcMain.handle('generate-report', async (_, { reportData, reportType }) => {
     try {
@@ -510,7 +510,9 @@
 
       if (canceled || !filePath) return { success: false, reason: 'Cancelled' };
 
-      const buf = generateReport(reportData);
+      const buf = reportType === 'gstr1'
+        ? generateGSTR1Report(reportData)
+        : generateIncomeReport(reportData);
       fs.writeFileSync(filePath, buf);
       shell.openPath(filePath);
       return { success: true, filePath };
