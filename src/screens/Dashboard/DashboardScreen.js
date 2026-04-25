@@ -14,10 +14,48 @@
   import { COLORS, RADIUS, FONTS, SHADOW } from '../../theme';
 
   const RENEW_URL = 'https://locas-business.vercel.app/renew.html';
-  const BRAND     = '#FF6B00';
-  const DARK      = '#0B1120';
-  const CARD_BG   = '#131C2E';
-  const ACCENT_DIM= 'rgba(255,107,0,0.12)';
+  const BRAND = '#FF6B00';
+
+  // ── Auto theme: day (6am-6pm) = light, evening/night = dark ──────
+  function getTheme() {
+    const h = new Date().getHours();
+    const isDay = h >= 6 && h < 18;
+    return isDay ? {
+      isDay:      true,
+      bg:         '#F1F5F9',
+      cardBg:     '#FFFFFF',
+      topBarBg:   '#FFFFFF',
+      border:     'rgba(0,0,0,0.08)',
+      textPrimary:'#0F172A',
+      textSub:    '#475569',
+      textMuted:  'rgba(0,0,0,0.35)',
+      textMuted2: 'rgba(0,0,0,0.22)',
+      heroStats:  'rgba(0,0,0,0.04)',
+      heroDivider:'rgba(0,0,0,0.08)',
+      innerBg:    'rgba(0,0,0,0.04)',
+      rowBorder:  'rgba(0,0,0,0.06)',
+      accentDim:  'rgba(255,107,0,0.10)',
+      chartGrid:  'rgba(0,0,0,0.06)',
+      statusBar:  'dark-content',
+    } : {
+      isDay:      false,
+      bg:         '#0B1120',
+      cardBg:     '#131C2E',
+      topBarBg:   '#131C2E',
+      border:     'rgba(255,255,255,0.07)',
+      textPrimary:'#FFFFFF',
+      textSub:    'rgba(255,255,255,0.7)',
+      textMuted:  'rgba(255,255,255,0.3)',
+      textMuted2: 'rgba(255,255,255,0.2)',
+      heroStats:  'rgba(255,255,255,0.04)',
+      heroDivider:'rgba(255,255,255,0.07)',
+      innerBg:    'rgba(255,255,255,0.04)',
+      rowBorder:  'rgba(255,255,255,0.05)',
+      accentDim:  'rgba(255,107,0,0.12)',
+      chartGrid:  'rgba(255,255,255,0.06)',
+      statusBar:  'light',
+    };
+  }
 
   // ── Mini sparkline SVG ─────────────────────────────────────────────
   function Sparkline({ points = [], width = 88, height = 36, color = '#4ADE80' }) {
@@ -33,7 +71,7 @@
   }
 
   // ── Revenue area chart ─────────────────────────────────────────────
-  function AreaChart({ data = [] }) {
+  function AreaChart({ data = [], gridColor = 'rgba(128,128,128,0.15)', labelColor = 'rgba(100,100,100,0.5)' }) {
     if (!data.length) return null;
     const max = Math.max(...data.map(d => d.value), 1);
     if (Platform.OS !== 'web') {
@@ -45,7 +83,7 @@
             return (
               <View key={i} style={{ flex:1, alignItems:'center', gap:4 }}>
                 <View style={{ width:'70%', height:h, backgroundColor: isLast ? BRAND : BRAND+'55', borderRadius:3 }} />
-                <Text style={{ fontSize:7, color:'rgba(255,255,255,0.35)' }}>{d.label}</Text>
+                <Text style={{ fontSize:7, color:T.textMuted }}>{d.label}</Text>
               </View>
             );
           })}
@@ -71,8 +109,8 @@
     const gridLines = [0, 0.5, 1].map(pct => {
       const y = (PT + (1-pct)*cH).toFixed(1);
       const lbl = fmt(max * pct);
-      return `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,4"/>
-              <text x="${PL-4}" y="${parseFloat(y)+3}" text-anchor="end" font-size="8" fill="rgba(255,255,255,0.25)" font-family="system-ui">${lbl}</text>`;
+      return `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="${gridColor}" stroke-dasharray="3,4"/>
+              <text x="${PL-4}" y="${parseFloat(y)+3}" text-anchor="end" font-size="8" fill="${labelColor}" font-family="system-ui">${lbl}</text>`;
     }).join('');
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="${H}" viewBox="0 0 ${W} ${H}">
       <defs><linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
@@ -113,7 +151,7 @@
       offset += dash;
       return el;
     });
-    const svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="${stroke}"/>${paths.join('')}</svg>`;
+    const svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${gridColor}" stroke-width="${stroke}"/>${paths.join('')}</svg>`;
     return React.createElement('div', { style:{width:size,height:size}, dangerouslySetInnerHTML:{__html:svg} });
   }
 
@@ -207,7 +245,7 @@
         })}
         {poStats&&poStats.count===0&&(
           <View style={{paddingVertical:14,alignItems:'center'}}>
-            <Text style={{fontSize:11,color:'rgba(255,255,255,0.25)'}}>No POs this month</Text>
+            <Text style={{fontSize:11,color:T.textMuted}}>No POs this month</Text>
           </View>
         )}
       </View>
@@ -238,6 +276,9 @@
     const now0 = new Date();
     const [poSelectedMonth, setPoSelectedMonth]= useState({ year:now0.getFullYear(), month:now0.getMonth() });
     const [poStats,         setPoStats]        = useState(null);
+    const [T, setT] = useState(getTheme);  // T = current theme
+    const s  = React.useMemo(() => makeStyles(T), [T]);
+    const pw = React.useMemo(() => makePWStyles(T), [T]);
     const searchRef   = useRef(null);
     const searchTimer = useRef(null);
     const loadingRef  = useRef(false);
@@ -295,7 +336,7 @@
       finally { setLoading(false); loadingRef.current=false; }
     };
 
-    useFocusEffect(useCallback(()=>{ load(); },[]))
+    useFocusEffect(useCallback(()=>{ setT(getTheme()); load(); },[]))
 
     const computePOStats = useCallback((allPOs, { year, month }) => {
       const fromStr = `${year}-${String(month+1).padStart(2,'0')}-01`;
@@ -384,7 +425,7 @@
       { label:'Expense',   icon:'minus-circle', color:'#F87171', bg:'rgba(248,113,113,0.12)', go:()=>navigation.navigate('More',          { screen:'Expenses' }) },
       { label:'Reports',   icon:'bar-chart-2',  color:'#38BDF8', bg:'rgba(56,189,248,0.12)',  go:()=>navigation.navigate('More',          { screen:'Reports' }) },
       { label:'Inventory', icon:'box',          color:'#818CF8', bg:'rgba(129,140,248,0.12)', go:()=>navigation.navigate('Inventory') },
-      { label:'Settings',  icon:'settings',     color:'rgba(255,255,255,0.4)', bg:'rgba(255,255,255,0.06)', go:()=>navigation.navigate('More',{ screen:'Settings' }) },
+      { label:'Settings',  icon:'settings',     color:T.textMuted, bg:T.innerBg, go:()=>navigation.navigate('More',{ screen:'Settings' }) },
     ];
 
     const formatDate = ds => {
@@ -406,7 +447,7 @@
 
     return (
       <View style={[s.container, { paddingTop:insets.top }]}>
-        <StatusBar style="light"/>
+        <StatusBar style={T.statusBar}/>
         <Animated.View style={[s.fill, { opacity:fadeAnim }]}>
 
           {/* ══ TOP BAR ══════════════════════════════════════════════ */}
@@ -511,7 +552,7 @@
                 </View>
                 {/* Chart inside hero card */}
                 <View style={{marginTop:8}}>
-                  <AreaChart data={monthlyTrend}/>
+                  <AreaChart data={monthlyTrend} gridColor={T.chartGrid} labelColor={T.textMuted}/>
                 </View>
               </View>
 
@@ -546,7 +587,7 @@
                         <View style={s.avatar}><Text style={s.avatarTxt}>{(p.name||'?')[0].toUpperCase()}</Text></View>
                         <View style={{flex:1}}>
                           <Text style={s.rowName} numberOfLines={1}>{p.name}</Text>
-                          <Text style={[s.rowAmtSub,{color:bal===0?'rgba(255,255,255,0.2)':isCredit?'#4ADE80':'#F87171'}]}>{bal===0?'Settled':isCredit?'+'+formatINRCompact(bal):'-'+formatINRCompact(Math.abs(bal))}</Text>
+                          <Text style={[s.rowAmtSub,{color:bal===0?T.textMuted2:isCredit?'#4ADE80':'#F87171'}]}>{bal===0?'Settled':isCredit?'+'+formatINRCompact(bal):'-'+formatINRCompact(Math.abs(bal))}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -566,7 +607,7 @@
                   ):recentInvoices.map((inv,i)=>{
                     const isPaid=inv.status==='paid';
                     const isOD=!isPaid&&inv.due_date&&inv.due_date<new Date().toISOString().split('T')[0];
-                    const sc=isPaid?{color:'#4ADE80',label:'Paid'}:isOD?{color:'#F87171',label:'Overdue'}:inv.status==='partial'?{color:'#FCD34D',label:'Partial'}:{color:'rgba(255,255,255,0.3)',label:'Unpaid'};
+                    const sc=isPaid?{color:'#4ADE80',label:'Paid'}:isOD?{color:'#F87171',label:'Overdue'}:inv.status==='partial'?{color:'#FCD34D',label:'Partial'}:{color:T.textMuted,label:'Unpaid'};
                     return (
                       <TouchableOpacity key={inv.id} style={[s.row,i<recentInvoices.length-1&&s.rowBorder]} onPress={()=>navigation.navigate('InvoicesTab',{screen:'InvoiceDetail',params:{invoiceId:inv.id}})} activeOpacity={0.75}>
                         <View style={{flex:1}}>
@@ -632,7 +673,7 @@
                         <View style={[s.legendDot,{backgroundColor:it.color}]}/>
                         <Text style={s.legendLbl}>{it.label}</Text>
                         <Text style={[s.legendVal,{color:it.color}]}>{it.val}</Text>
-                        <Text style={{fontSize:8,color:'rgba(255,255,255,0.2)',marginLeft:3}}>{it.pct}%</Text>
+                        <Text style={{fontSize:8,color:T.textMuted2,marginLeft:3}}>{it.pct}%</Text>
                       </View>
                     ))}
                   </View>
@@ -711,7 +752,7 @@
                   />
                   {searchQuery.length>0&&(
                     <TouchableOpacity onPress={()=>handleSearch('')}>
-                      <Icon name="x" size={14} color="rgba(255,255,255,0.4)"/>
+                      <Icon name="x" size={14} color={T.textMuted}/>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -723,14 +764,14 @@
                 {searching?(
                   <View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',paddingVertical:40,gap:10}}>
                     <ActivityIndicator size="small" color={BRAND}/>
-                    <Text style={{fontSize:14,color:'rgba(255,255,255,0.4)'}}>Searching...</Text>
+                    <Text style={{fontSize:14,color:T.textMuted}}>Searching...</Text>
                   </View>
                 ):searchResults?(()=>{
                   const total=(searchResults.invoices?.length||0)+(searchResults.quotations?.length||0)+(searchResults.parties?.length||0)+(searchResults.products?.length||0);
                   return total===0?(
                     <View style={{alignItems:'center',paddingVertical:48,gap:10}}>
                       <Icon name="search" size={36} color="rgba(255,255,255,0.1)"/>
-                      <Text style={{fontSize:14,color:'rgba(255,255,255,0.3)'}}>No results for "{searchQuery}"</Text>
+                      <Text style={{fontSize:14,color:T.textMuted}}>No results for "{searchQuery}"</Text>
                     </View>
                   ):(
                     <>
@@ -742,7 +783,7 @@
                       ].map(({key,type,label,icon,color})=>
                         searchResults[key]?.length>0?(
                           <View key={key} style={{padding:14}}>
-                            <Text style={{fontSize:10,fontWeight:'700',color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:0.7,marginBottom:8}}>{label} ({searchResults[key].length})</Text>
+                            <Text style={{fontSize:10,fontWeight:'700',color:T.textMuted,textTransform:'uppercase',letterSpacing:0.7,marginBottom:8}}>{label} ({searchResults[key].length})</Text>
                             {searchResults[key].map(item=>{
                               const title=item.invoice_number||item.quote_number||item.name;
                               const sub=type==='invoice'?`${item.party_name||'Walk-in'} · ${formatINR(item.total)}`:type==='quotation'?`${item.party_name||'-'} · ${formatINR(item.total)}`:type==='party'?`${item.phone||''} · ${formatINR(Math.abs(item.balance||0))}`:`₹${item.sale_price} · Stock: ${item.stock||0}`;
@@ -764,7 +805,7 @@
                   );
                 })():(
                   <View style={{padding:20}}>
-                    <Text style={{fontSize:15,fontWeight:'700',color:'rgba(255,255,255,0.7)',marginBottom:16}}>Search across everything</Text>
+                    <Text style={{fontSize:15,fontWeight:'700',color:T.textPrimary,marginBottom:16}}>Search across everything</Text>
                     {[
                       {icon:'file-text',color:'#60A5FA',text:'Invoice numbers — INV-0001'},
                       {icon:'clipboard',color:'#A78BFA',text:'Quotation numbers — QUO-0001'},
@@ -775,7 +816,7 @@
                         <View style={{width:32,height:32,borderRadius:9,backgroundColor:h.color+'18',alignItems:'center',justifyContent:'center'}}>
                           <Icon name={h.icon} size={14} color={h.color}/>
                         </View>
-                        <Text style={{fontSize:13,color:'rgba(255,255,255,0.45)'}}>{h.text}</Text>
+                        <Text style={{fontSize:13,color:T.textMuted}}>{h.text}</Text>
                       </View>
                     ))}
                   </View>
@@ -789,148 +830,156 @@
   }
 
   // ── Styles ─────────────────────────────────────────────────────────
-  const s = StyleSheet.create({
-    container: { flex:1, backgroundColor:DARK },
-    fill:      { flex:1, display:'flex', flexDirection:'column' },
+  // ── Dynamic styles based on theme ─────────────────────────────────
+  function makeStyles(T) {
+    const CARD_BG   = T.cardBg;
+    const DARK      = T.bg;
+    const ACCENT_DIM= T.accentDim;
+    return StyleSheet.create({
+      container: { flex:1, backgroundColor:T.bg },
+      fill:      { flex:1, display:'flex', flexDirection:'column' },
 
-    // Top bar — deep dark
-    topBar:    { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:CARD_BG, paddingHorizontal:14, paddingVertical:8, borderBottomWidth:1, borderBottomColor:'rgba(255,255,255,0.06)' },
-    topLeft:   { flex:1 },
-    greetTxt:  { fontSize:10, color:'rgba(255,255,255,0.3)', marginBottom:1, letterSpacing:0.2 },
-    bizName:   { fontSize:15, fontWeight:'800', color:'#fff' },
-    topRight:  { flexDirection:'row', gap:6 },
-    topBtn:    { width:30, height:30, borderRadius:8, backgroundColor:'rgba(255,255,255,0.06)', alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:'rgba(255,255,255,0.08)' },
+      // Top bar
+      topBar:    { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:T.topBarBg, paddingHorizontal:14, paddingVertical:8, borderBottomWidth:1, borderBottomColor:T.border },
+      topLeft:   { flex:1 },
+      greetTxt:  { fontSize:10, color:T.textMuted, marginBottom:1, letterSpacing:0.2 },
+      bizName:   { fontSize:15, fontWeight:'800', color:T.textPrimary },
+      topRight:  { flexDirection:'row', gap:6 },
+      topBtn:    { width:30, height:30, borderRadius:8, backgroundColor:T.innerBg, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:T.border },
 
-    // Banners
-    licenseBanner: { flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'rgba(252,211,77,0.1)', paddingHorizontal:14, paddingVertical:8, borderBottomWidth:1, borderBottomColor:'rgba(252,211,77,0.2)' },
-    licenseTxt:    { flex:1, fontSize:12, fontWeight:'600', color:'#FCD34D' },
-    licenseBtn:    { backgroundColor:BRAND, paddingHorizontal:10, paddingVertical:3, borderRadius:6 },
-    licenseBtnTxt: { fontSize:11, fontWeight:'700', color:'#fff' },
-    updateDlBanner:  { backgroundColor:'rgba(96,165,250,0.08)', paddingHorizontal:14, paddingTop:9, paddingBottom:8, borderBottomWidth:1, borderBottomColor:'rgba(96,165,250,0.15)' },
-    updateDlTitle:   { fontSize:12, fontWeight:'700', color:'#60A5FA' },
-    updateDlPct:     { fontSize:12, fontWeight:'900', color:'#60A5FA' },
-    updateTrack:     { height:4, backgroundColor:'rgba(96,165,250,0.2)', borderRadius:2, overflow:'hidden', marginBottom:5 },
-    updateFill:      { height:4, backgroundColor:'#22C55E', borderRadius:2 },
-    updateDlSub:     { fontSize:10, color:'rgba(96,165,250,0.6)' },
-    updateReadyBanner:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:'#16A34A', paddingHorizontal:14, paddingVertical:10, borderBottomWidth:1, borderBottomColor:'#15803D', gap:10 },
-    updateReadyIcon:  { width:30, height:30, borderRadius:15, backgroundColor:'rgba(255,255,255,0.2)', alignItems:'center', justifyContent:'center' },
-    updateReadyTitle: { fontSize:12, fontWeight:'700', color:'#fff', marginBottom:1 },
-    updateReadySub:   { fontSize:10, color:'rgba(255,255,255,0.75)' },
-    updateReadyBtn:   { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(0,0,0,0.22)', paddingHorizontal:10, paddingVertical:6, borderRadius:8 },
-    updateReadyBtnTxt:{ fontSize:11, fontWeight:'700', color:'#fff' },
+      // Banners
+      licenseBanner: { flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'rgba(252,211,77,0.1)', paddingHorizontal:14, paddingVertical:8, borderBottomWidth:1, borderBottomColor:'rgba(252,211,77,0.2)' },
+      licenseTxt:    { flex:1, fontSize:12, fontWeight:'600', color:'#FCD34D' },
+      licenseBtn:    { backgroundColor:BRAND, paddingHorizontal:10, paddingVertical:3, borderRadius:6 },
+      licenseBtnTxt: { fontSize:11, fontWeight:'700', color:'#fff' },
+      updateDlBanner:  { backgroundColor:'rgba(96,165,250,0.08)', paddingHorizontal:14, paddingTop:9, paddingBottom:8, borderBottomWidth:1, borderBottomColor:'rgba(96,165,250,0.15)' },
+      updateDlTitle:   { fontSize:12, fontWeight:'700', color:'#60A5FA' },
+      updateDlPct:     { fontSize:12, fontWeight:'900', color:'#60A5FA' },
+      updateTrack:     { height:4, backgroundColor:'rgba(96,165,250,0.2)', borderRadius:2, overflow:'hidden', marginBottom:5 },
+      updateFill:      { height:4, backgroundColor:'#22C55E', borderRadius:2 },
+      updateDlSub:     { fontSize:10, color:'rgba(96,165,250,0.6)' },
+      updateReadyBanner:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:'#16A34A', paddingHorizontal:14, paddingVertical:10, borderBottomWidth:1, borderBottomColor:'#15803D', gap:10 },
+      updateReadyIcon:  { width:30, height:30, borderRadius:15, backgroundColor:'rgba(255,255,255,0.2)', alignItems:'center', justifyContent:'center' },
+      updateReadyTitle: { fontSize:12, fontWeight:'700', color:'#fff', marginBottom:1 },
+      updateReadySub:   { fontSize:10, color:'rgba(255,255,255,0.75)' },
+      updateReadyBtn:   { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(0,0,0,0.22)', paddingHorizontal:10, paddingVertical:6, borderRadius:8 },
+      updateReadyBtnTxt:{ fontSize:11, fontWeight:'700', color:'#fff' },
 
-    // Grid
-    grid:    { flex:1, flexDirection:'row', padding:8, gap:8 },
-    leftCol: { flex:1.15, flexDirection:'column', gap:7 },
-    rightCol:{ flex:1,    flexDirection:'column', gap:7 },
+      // Grid
+      grid:    { flex:1, flexDirection:'row', padding:8, gap:8 },
+      leftCol: { flex:1.15, flexDirection:'column', gap:7 },
+      rightCol:{ flex:1,    flexDirection:'column', gap:7 },
 
-    // Hero card — compact
-    heroCard:   { backgroundColor:CARD_BG, borderRadius:14, padding:12, borderWidth:1, borderColor:'rgba(255,255,255,0.07)' },
-    heroHeader: { flexDirection:'row', alignItems:'flex-start', marginBottom:10 },
-    heroEye:    { fontSize:8, color:'rgba(255,255,255,0.3)', letterSpacing:1.5, marginBottom:3 },
-    heroAmt:    { fontSize:22, fontWeight:'900', color:'#fff', marginBottom:1 },
-    heroSub:    { fontSize:9, color:'rgba(255,255,255,0.3)' },
-    profitBadge:{ backgroundColor:'rgba(74,222,128,0.12)', paddingHorizontal:6, paddingVertical:2, borderRadius:5 },
-    profitBadgeTxt:{ fontSize:9, fontWeight:'700', color:'#4ADE80' },
-    heroStats:  { flexDirection:'row', backgroundColor:'rgba(255,255,255,0.04)', borderRadius:8, padding:8 },
-    heroStat:   { flex:1, alignItems:'center' },
-    heroStatVal:{ fontSize:10, fontWeight:'800', marginBottom:1 },
-    heroStatLbl:{ fontSize:7, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:0.4 },
-    heroDivider:{ width:1, backgroundColor:'rgba(255,255,255,0.07)' },
+      // Hero card
+      heroCard:   { backgroundColor:CARD_BG, borderRadius:14, padding:12, borderWidth:1, borderColor:T.border },
+      heroHeader: { flexDirection:'row', alignItems:'flex-start', marginBottom:10 },
+      heroEye:    { fontSize:8, color:T.textMuted, letterSpacing:1.5, marginBottom:3 },
+      heroAmt:    { fontSize:22, fontWeight:'900', color:T.textPrimary, marginBottom:1 },
+      heroSub:    { fontSize:9, color:T.textMuted },
+      profitBadge:{ backgroundColor:'rgba(74,222,128,0.12)', paddingHorizontal:6, paddingVertical:2, borderRadius:5 },
+      profitBadgeTxt:{ fontSize:9, fontWeight:'700', color:'#4ADE80' },
+      heroStats:  { flexDirection:'row', backgroundColor:T.heroStats, borderRadius:8, padding:8 },
+      heroStat:   { flex:1, alignItems:'center' },
+      heroStatVal:{ fontSize:10, fontWeight:'800', marginBottom:1 },
+      heroStatLbl:{ fontSize:7, color:T.textMuted, textTransform:'uppercase', letterSpacing:0.4 },
+      heroDivider:{ width:1, backgroundColor:T.heroDivider },
 
-    // Chart card — compact
-    chartCard: { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:'rgba(255,255,255,0.07)' },
-    chartHead: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:4 },
-    chartTitle:{ fontSize:12, fontWeight:'700', color:'rgba(255,255,255,0.8)' },
-    chartSub:  { fontSize:9, color:'rgba(255,255,255,0.25)', textTransform:'uppercase', letterSpacing:0.5 },
+      // Chart card
+      chartCard: { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:T.border },
+      chartHead: { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:4 },
+      chartTitle:{ fontSize:12, fontWeight:'700', color:T.textSub },
+      chartSub:  { fontSize:9, color:T.textMuted, textTransform:'uppercase', letterSpacing:0.5 },
 
-    // Quick actions — 1 row of 8, more compact
-    qaCard:  { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:'rgba(255,255,255,0.07)' },
-    qaRow:   { flexDirection:'row', justifyContent:'space-between' },
-    qaItem:  { flex:1, alignItems:'center', gap:4 },
-    qaIcon:  { width:34, height:34, borderRadius:10, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:'rgba(255,255,255,0.06)' },
-    qaLabel: { fontSize:7.5, color:'rgba(255,255,255,0.4)', textAlign:'center', fontWeight:'500' },
+      // Quick actions
+      qaCard:  { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:T.border },
+      qaRow:   { flexDirection:'row', justifyContent:'space-between' },
+      qaItem:  { flex:1, alignItems:'center', gap:4 },
+      qaIcon:  { width:34, height:34, borderRadius:10, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:T.border },
+      qaLabel: { fontSize:7.5, color:T.textMuted, textAlign:'center', fontWeight:'500' },
 
-    // KPI tiles — compact 2x2
-    kpiGrid: { flexDirection:'row', flexWrap:'wrap', gap:6 },
-    kpiTile: { width:'47.5%', backgroundColor:CARD_BG, borderRadius:12, padding:10, borderWidth:1, borderColor:'rgba(255,255,255,0.07)', gap:2 },
-    kpiDot:  { width:24, height:24, borderRadius:7, alignItems:'center', justifyContent:'center', marginBottom:3 },
-    kpiVal:  { fontSize:15, fontWeight:'900' },
-    kpiLbl:  { fontSize:10, fontWeight:'600', color:'rgba(255,255,255,0.7)' },
-    kpiSub:  { fontSize:8, color:'rgba(255,255,255,0.3)' },
-    alertStrip:     { flexDirection:'row', gap:6 },
-    alertChip:      { flex:1, flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(255,255,255,0.04)', borderRadius:8, paddingVertical:7, paddingHorizontal:9, borderWidth:1, borderColor:'rgba(255,255,255,0.06)' },
-    alertChipRed:   { backgroundColor:'rgba(248,113,113,0.08)', borderColor:'rgba(248,113,113,0.2)' },
-    alertChipYellow:{ backgroundColor:'rgba(252,211,77,0.08)', borderColor:'rgba(252,211,77,0.2)' },
-    alertChipTxt:   { fontSize:10, fontWeight:'600', color:'rgba(255,255,255,0.3)', flex:1 },
+      // KPI tiles
+      kpiGrid: { flexDirection:'row', flexWrap:'wrap', gap:6 },
+      kpiTile: { width:'47.5%', backgroundColor:CARD_BG, borderRadius:12, padding:10, borderWidth:1, borderColor:T.border, gap:2 },
+      kpiDot:  { width:24, height:24, borderRadius:7, alignItems:'center', justifyContent:'center', marginBottom:3 },
+      kpiVal:  { fontSize:15, fontWeight:'900' },
+      kpiLbl:  { fontSize:10, fontWeight:'600', color:T.textSub },
+      kpiSub:  { fontSize:8, color:T.textMuted },
 
-    // Donut — compact
-    donutCard:  { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:'rgba(255,255,255,0.07)' },
-    donutTitle: { fontSize:9, fontWeight:'700', color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:0.8, marginBottom:8 },
-    donutBody:  { flexDirection:'row', alignItems:'center', gap:10 },
-    legendRow:  { flexDirection:'row', alignItems:'center', gap:6 },
-    legendDot:  { width:6, height:6, borderRadius:3 },
-    legendLbl:  { flex:1, fontSize:10, color:'rgba(255,255,255,0.45)' },
-    legendVal:  { fontSize:10, fontWeight:'700', color:'rgba(255,255,255,0.7)' },
+      // Alert strip
+      alertStrip:     { flexDirection:'row', gap:6 },
+      alertChip:      { flex:1, flexDirection:'row', alignItems:'center', gap:5, backgroundColor:T.innerBg, borderRadius:8, paddingVertical:7, paddingHorizontal:9, borderWidth:1, borderColor:T.border },
+      alertChipRed:   { backgroundColor:'rgba(248,113,113,0.08)', borderColor:'rgba(248,113,113,0.2)' },
+      alertChipYellow:{ backgroundColor:'rgba(252,211,77,0.08)', borderColor:'rgba(252,211,77,0.2)' },
+      alertChipTxt:   { fontSize:10, fontWeight:'600', color:T.textMuted, flex:1 },
 
-    // Shared list card — compact, flex to fill
-    listCard:{ flex:1, backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:'rgba(255,255,255,0.07)' },
-    listHead:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:8 },
-    listTitle:{ fontSize:9, fontWeight:'700', color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 },
-    listAction:{ fontSize:10, color:BRAND, fontWeight:'600' },
-    row:      { flexDirection:'row', alignItems:'center', paddingVertical:6, gap:8 },
-    rowBorder:{ borderBottomWidth:1, borderBottomColor:'rgba(255,255,255,0.05)' },
-    rowName:  { fontSize:11, fontWeight:'700', color:'rgba(255,255,255,0.85)' },
-    rowSub:   { fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:1 },
-    rowAmt:   { fontSize:11, fontWeight:'800', color:'rgba(255,255,255,0.75)' },
-    rowAmtSub:{ fontSize:9, color:'rgba(255,255,255,0.3)' },
-    avatar:   { width:28, height:28, borderRadius:8, backgroundColor:ACCENT_DIM, alignItems:'center', justifyContent:'center', flexShrink:0 },
-    avatarTxt:{ fontSize:13, fontWeight:'800', color:BRAND },
-    invDot:   { width:26, height:26, borderRadius:8, alignItems:'center', justifyContent:'center', borderWidth:1, flexShrink:0 },
+      // Donut
+      donutCard:  { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:T.border },
+      donutTitle: { fontSize:9, fontWeight:'700', color:T.textMuted, textTransform:'uppercase', letterSpacing:0.8, marginBottom:8 },
+      donutBody:  { flexDirection:'row', alignItems:'center', gap:10 },
+      legendRow:  { flexDirection:'row', alignItems:'center', gap:6 },
+      legendDot:  { width:6, height:6, borderRadius:3 },
+      legendLbl:  { flex:1, fontSize:10, color:T.textMuted },
+      legendVal:  { fontSize:10, fontWeight:'700', color:T.textSub },
 
-    // Search
-    searchOverlay:    { flex:1, backgroundColor:'rgba(0,0,0,0.7)' },
-    searchSheet:      { flex:1, backgroundColor:DARK },
-    searchHeader:     { flexDirection:'row', alignItems:'center', gap:10, paddingHorizontal:14, paddingBottom:10, backgroundColor:CARD_BG, borderBottomWidth:1, borderBottomColor:'rgba(255,255,255,0.06)' },
-    searchInputWrap:  { flex:1, flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'rgba(255,255,255,0.06)', borderRadius:10, paddingHorizontal:12, paddingVertical:9, borderWidth:1, borderColor:'rgba(255,255,255,0.08)' },
-    searchInput:      { flex:1, fontSize:14, color:'#fff', paddingVertical:0 },
-    searchCancel:     { paddingLeft:4, paddingVertical:8 },
-    searchCancelTxt:  { fontSize:14, fontWeight:'600', color:BRAND },
-    searchResult:     { flexDirection:'row', alignItems:'center', gap:10, backgroundColor:CARD_BG, borderRadius:12, padding:11, marginBottom:6, borderWidth:1, borderColor:'rgba(255,255,255,0.06)' },
-    searchResultIcon: { width:34, height:34, borderRadius:9, alignItems:'center', justifyContent:'center', flexShrink:0 },
-    searchResultTitle:{ fontSize:13, fontWeight:'600', color:'rgba(255,255,255,0.85)' },
-    searchResultSub:  { fontSize:11, color:'rgba(255,255,255,0.35)', marginTop:1 },
-  });
+      // List cards
+      listCard:{ flex:1, backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:T.border },
+      listHead:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:8 },
+      listTitle:{ fontSize:9, fontWeight:'700', color:T.textMuted, textTransform:'uppercase', letterSpacing:1 },
+      listAction:{ fontSize:10, color:BRAND, fontWeight:'600' },
+      row:      { flexDirection:'row', alignItems:'center', paddingVertical:6, gap:8 },
+      rowBorder:{ borderBottomWidth:1, borderBottomColor:T.rowBorder },
+      rowName:  { fontSize:11, fontWeight:'700', color:T.textPrimary },
+      rowSub:   { fontSize:9, color:T.textMuted, marginTop:1 },
+      rowAmt:   { fontSize:11, fontWeight:'800', color:T.textSub },
+      rowAmtSub:{ fontSize:9, color:T.textMuted },
+      avatar:   { width:28, height:28, borderRadius:8, backgroundColor:ACCENT_DIM, alignItems:'center', justifyContent:'center', flexShrink:0 },
+      avatarTxt:{ fontSize:13, fontWeight:'800', color:BRAND },
+      invDot:   { width:26, height:26, borderRadius:8, alignItems:'center', justifyContent:'center', borderWidth:1, flexShrink:0 },
 
-  // ── PO Widget Styles ───────────────────────────────────────────────
-  const pw = StyleSheet.create({
-    card:       { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:'rgba(255,255,255,0.07)' },
-    header:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:10 },
-    iconWrap:   { width:26, height:26, borderRadius:8, backgroundColor:ACCENT_DIM, alignItems:'center', justifyContent:'center' },
-    title:      { fontSize:10, fontWeight:'700', color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 },
-    badge:      { backgroundColor:BRAND, borderRadius:10, paddingHorizontal:5, paddingVertical:1, minWidth:18, alignItems:'center' },
-    badgeTxt:   { fontSize:9, fontWeight:'900', color:'#fff' },
-    seeAllBtn:  { flexDirection:'row', alignItems:'center', gap:3 },
-    seeAllTxt:  { fontSize:11, color:BRAND, fontWeight:'600' },
+      // Search
+      searchOverlay:    { flex:1, backgroundColor:T.isDay?'rgba(0,0,0,0.4)':'rgba(0,0,0,0.7)' },
+      searchSheet:      { flex:1, backgroundColor:T.bg },
+      searchHeader:     { flexDirection:'row', alignItems:'center', gap:10, paddingHorizontal:14, paddingBottom:10, backgroundColor:T.topBarBg, borderBottomWidth:1, borderBottomColor:T.border },
+      searchInputWrap:  { flex:1, flexDirection:'row', alignItems:'center', gap:8, backgroundColor:T.innerBg, borderRadius:10, paddingHorizontal:12, paddingVertical:9, borderWidth:1, borderColor:T.border },
+      searchInput:      { flex:1, fontSize:14, color:T.textPrimary, paddingVertical:0 },
+      searchCancel:     { paddingLeft:4, paddingVertical:8 },
+      searchCancelTxt:  { fontSize:14, fontWeight:'600', color:BRAND },
+      searchResult:     { flexDirection:'row', alignItems:'center', gap:10, backgroundColor:CARD_BG, borderRadius:12, padding:11, marginBottom:6, borderWidth:1, borderColor:T.border },
+      searchResultIcon: { width:34, height:34, borderRadius:9, alignItems:'center', justifyContent:'center', flexShrink:0 },
+      searchResultTitle:{ fontSize:13, fontWeight:'600', color:T.textPrimary },
+      searchResultSub:  { fontSize:11, color:T.textMuted, marginTop:1 },
+    });
+  }
 
-    monthRow:   { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:'rgba(255,255,255,0.04)', borderRadius:10, paddingVertical:7, paddingHorizontal:10, marginBottom:10 },
-    monthArrow: { padding:3 },
-    monthTxt:   { fontSize:12, fontWeight:'600', color:'rgba(255,255,255,0.7)' },
-
-    statsRow:   { flexDirection:'row', backgroundColor:'rgba(255,255,255,0.04)', borderRadius:10, padding:10, marginBottom:10 },
-    statCell:   { flex:1, alignItems:'center' },
-    statDiv:    { width:1, backgroundColor:'rgba(255,255,255,0.07)', marginVertical:2 },
-    statVal:    { fontSize:14, fontWeight:'900', marginBottom:2 },
-    statLbl:    { fontSize:8, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:0.4 },
-
-    alertRow:   { flexDirection:'row', alignItems:'center', gap:7, backgroundColor:'rgba(248,113,113,0.08)', borderRadius:9, padding:9, marginBottom:6, borderWidth:1, borderColor:'rgba(248,113,113,0.18)' },
-    alertTxt:   { flex:1, fontSize:11, fontWeight:'500' },
-
-    poRow:      { flexDirection:'row', alignItems:'center', gap:8, paddingVertical:9 },
-    poRowBorder:{ borderBottomWidth:1, borderBottomColor:'rgba(255,255,255,0.05)' },
-    poAccent:   { width:3, height:32, borderRadius:2, flexShrink:0 },
-    poNum:      { fontSize:12, fontWeight:'700', color:'rgba(255,255,255,0.85)' },
-    poParty:    { fontSize:10, color:'rgba(255,255,255,0.35)', marginTop:1 },
-    poChip:     { paddingHorizontal:7, paddingVertical:3, borderRadius:7 },
-    poChipTxt:  { fontSize:9, fontWeight:'700' },
-  });
+  // ── PO Widget Styles (also theme-aware) ───────────────────────────
+  function makePWStyles(T) {
+    const CARD_BG   = T.cardBg;
+    const ACCENT_DIM= T.accentDim;
+    return StyleSheet.create({
+      card:       { backgroundColor:CARD_BG, borderRadius:14, padding:10, borderWidth:1, borderColor:T.border },
+      header:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:10 },
+      iconWrap:   { width:26, height:26, borderRadius:8, backgroundColor:ACCENT_DIM, alignItems:'center', justifyContent:'center' },
+      title:      { fontSize:10, fontWeight:'700', color:T.textMuted, textTransform:'uppercase', letterSpacing:1 },
+      badge:      { backgroundColor:BRAND, borderRadius:10, paddingHorizontal:5, paddingVertical:1, minWidth:18, alignItems:'center' },
+      badgeTxt:   { fontSize:9, fontWeight:'900', color:'#fff' },
+      seeAllBtn:  { flexDirection:'row', alignItems:'center', gap:3 },
+      seeAllTxt:  { fontSize:11, color:BRAND, fontWeight:'600' },
+      monthRow:   { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:T.innerBg, borderRadius:10, paddingVertical:7, paddingHorizontal:10, marginBottom:10 },
+      monthArrow: { padding:3 },
+      monthTxt:   { fontSize:12, fontWeight:'600', color:T.textSub },
+      statsRow:   { flexDirection:'row', backgroundColor:T.innerBg, borderRadius:10, padding:10, marginBottom:10 },
+      statCell:   { flex:1, alignItems:'center' },
+      statDiv:    { width:1, backgroundColor:T.heroDivider, marginVertical:2 },
+      statVal:    { fontSize:14, fontWeight:'900', marginBottom:2 },
+      statLbl:    { fontSize:8, color:T.textMuted, textTransform:'uppercase', letterSpacing:0.4 },
+      alertRow:   { flexDirection:'row', alignItems:'center', gap:7, backgroundColor:'rgba(248,113,113,0.08)', borderRadius:9, padding:9, marginBottom:6, borderWidth:1, borderColor:'rgba(248,113,113,0.18)' },
+      alertTxt:   { flex:1, fontSize:11, fontWeight:'500' },
+      poRow:      { flexDirection:'row', alignItems:'center', gap:8, paddingVertical:9 },
+      poRowBorder:{ borderBottomWidth:1, borderBottomColor:T.rowBorder },
+      poAccent:   { width:3, height:32, borderRadius:2, flexShrink:0 },
+      poNum:      { fontSize:12, fontWeight:'700', color:T.textPrimary },
+      poParty:    { fontSize:10, color:T.textMuted, marginTop:1 },
+      poChip:     { paddingHorizontal:7, paddingVertical:3, borderRadius:7 },
+      poChipTxt:  { fontSize:9, fontWeight:'700' },
+    });
+  }
