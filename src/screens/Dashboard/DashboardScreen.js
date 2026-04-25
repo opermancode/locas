@@ -19,43 +19,32 @@ const BRAND = '#FF6B00';
 // ── Auto theme: day (6am-6pm) = light, evening/night = dark ──────
 function getTheme() {
   const h = new Date().getHours();
-  const isDay = h >= 6 && h < 18;
-  return isDay ? {
-    isDay:      true,
-    bg:         '#F1F5F9',
-    cardBg:     '#FFFFFF',
-    topBarBg:   '#FFFFFF',
-    border:     'rgba(0,0,0,0.08)',
-    textPrimary:'#0F172A',
-    textSub:    '#475569',
-    textMuted:  'rgba(0,0,0,0.35)',
-    textMuted2: 'rgba(0,0,0,0.22)',
-    heroStats:  'rgba(0,0,0,0.04)',
-    heroDivider:'rgba(0,0,0,0.08)',
-    innerBg:    'rgba(0,0,0,0.04)',
-    rowBorder:  'rgba(0,0,0,0.06)',
-    accentDim:  'rgba(255,107,0,0.10)',
-    chartGrid:  'rgba(0,0,0,0.06)',
-    statusBar:  'dark-content',
-  } : {
-    isDay:      false,
-    bg:         '#0B1120',
-    cardBg:     '#131C2E',
-    topBarBg:   '#131C2E',
-    border:     'rgba(255,255,255,0.07)',
-    textPrimary:'#FFFFFF',
-    textSub:    'rgba(255,255,255,0.7)',
-    textMuted:  'rgba(255,255,255,0.3)',
-    textMuted2: 'rgba(255,255,255,0.2)',
-    heroStats:  'rgba(255,255,255,0.04)',
-    heroDivider:'rgba(255,255,255,0.07)',
-    innerBg:    'rgba(255,255,255,0.04)',
-    rowBorder:  'rgba(255,255,255,0.05)',
-    accentDim:  'rgba(255,107,0,0.12)',
-    chartGrid:  'rgba(255,255,255,0.06)',
-    statusBar:  'light',
-  };
+  return (h >= 6 && h < 18) ? 'day' : 'night';
 }
+
+// Pre-compute both themes at module load — never inside render
+const THEMES = {
+  day: {
+    isDay:true, bg:'#F1F5F9', cardBg:'#FFFFFF', topBarBg:'#FFFFFF',
+    border:'rgba(0,0,0,0.08)', textPrimary:'#0F172A', textSub:'#475569',
+    textMuted:'rgba(0,0,0,0.35)', textMuted2:'rgba(0,0,0,0.22)',
+    heroStats:'rgba(0,0,0,0.04)', heroDivider:'rgba(0,0,0,0.08)',
+    innerBg:'rgba(0,0,0,0.04)', rowBorder:'rgba(0,0,0,0.06)',
+    accentDim:'rgba(255,107,0,0.10)', chartGrid:'rgba(0,0,0,0.06)', statusBar:'dark',
+  },
+  night: {
+    isDay:false, bg:'#0B1120', cardBg:'#131C2E', topBarBg:'#131C2E',
+    border:'rgba(255,255,255,0.07)', textPrimary:'#FFFFFF', textSub:'rgba(255,255,255,0.7)',
+    textMuted:'rgba(255,255,255,0.3)', textMuted2:'rgba(255,255,255,0.2)',
+    heroStats:'rgba(255,255,255,0.04)', heroDivider:'rgba(255,255,255,0.07)',
+    innerBg:'rgba(255,255,255,0.04)', rowBorder:'rgba(255,255,255,0.05)',
+    accentDim:'rgba(255,107,0,0.12)', chartGrid:'rgba(255,255,255,0.06)', statusBar:'light',
+  },
+};
+const STYLES_DAY   = makeStyles(THEMES.day);
+const STYLES_NIGHT = makeStyles(THEMES.night);
+const PW_DAY       = makePWStyles(THEMES.day);
+const PW_NIGHT     = makePWStyles(THEMES.night);
 
 // ── Mini sparkline SVG ─────────────────────────────────────────────
 function Sparkline({ points = [], width = 88, height = 36, color = '#4ADE80' }) {
@@ -276,9 +265,10 @@ export default function DashboardScreen({ navigation }) {
   const now0 = new Date();
   const [poSelectedMonth, setPoSelectedMonth]= useState({ year:now0.getFullYear(), month:now0.getMonth() });
   const [poStats,         setPoStats]        = useState(null);
-  const [T, setT] = useState(getTheme);  // T = current theme
-  const s  = React.useMemo(() => makeStyles(T), [T]);
-  const pw = React.useMemo(() => makePWStyles(T), [T]);
+  const [themeKey, setThemeKey] = useState(getTheme);  // 'day' | 'night'
+  const T  = THEMES[themeKey];
+  const s  = themeKey === 'day' ? STYLES_DAY  : STYLES_NIGHT;
+  const pw = themeKey === 'day' ? PW_DAY      : PW_NIGHT;
   const searchRef   = useRef(null);
   const searchTimer = useRef(null);
   const loadingRef  = useRef(false);
@@ -336,7 +326,7 @@ export default function DashboardScreen({ navigation }) {
     finally { setLoading(false); loadingRef.current=false; }
   };
 
-  useFocusEffect(useCallback(()=>{ setT(getTheme()); load(); },[]))
+  useFocusEffect(useCallback(()=>{ setThemeKey(getTheme()); load(); },[]))
 
   const computePOStats = useCallback((allPOs, { year, month }) => {
     const fromStr = `${year}-${String(month+1).padStart(2,'0')}-01`;

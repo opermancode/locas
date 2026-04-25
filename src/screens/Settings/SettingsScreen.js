@@ -15,6 +15,22 @@ import { INDIAN_STATES } from '../../utils/gst';
 import { COLORS, RADIUS, FONTS } from '../../theme';
 
 const isNative = Platform.OS !== 'web';
+const {
+  useGoogleAuth: _useGoogleAuth,
+  saveToken, getToken, getUserEmail, fetchUserEmail,
+  uploadBackup, downloadBackup,
+  signOut: gdriveSignOut,
+  getBackupTime, setBackupTime, getLastBackupTime,
+} = isNative ? require('../../utils/googleDrive') : {
+  useGoogleAuth: () => ({ request: null, response: null, promptAsync: () => {} }),
+  saveToken: async () => {}, getToken: async () => null,
+  getUserEmail: async () => null, fetchUserEmail: async () => '',
+  uploadBackup: async () => {}, downloadBackup: async () => null,
+  signOut: async () => {},
+  getBackupTime: async () => '00:00', setBackupTime: async () => {},
+  getLastBackupTime: async () => null,
+};
+function useGoogleAuth() { return _useGoogleAuth(); }
 
 const { expo: { version } } = require('../../../app.json');
 
@@ -37,6 +53,7 @@ const TABS = [
   { key: 'gst',       label: 'GST & Tax', icon: 'percent'     },
   { key: 'bank',      label: 'Bank / UPI',icon: 'credit-card' },
   { key: 'data',      label: 'Data',      icon: 'database'    },
+  { key: 'backup',    label: 'Backup',    icon: 'cloud'       },
   { key: 'about',     label: 'About',     icon: 'info'        },
 ];
 
@@ -54,7 +71,13 @@ export default function SettingsScreen({ navigation, route }) {
   const [numDigits, setNumDigits]           = useState('4');
   const [invoiceSeparator, setInvoiceSep]   = useState('-');
 
-
+  // Backup
+  const [driveEmail, setDriveEmail]   = useState(null);
+  const [lastBackup, setLastBackup]   = useState(null);
+  const [backupTime, setBackupTimeVal] = useState('00:00');
+  const [syncing, setSyncing]         = useState(false);
+  const [restoring, setRestoring]     = useState(false);
+  const [timeModal, setTimeModal]     = useState(false);
 
   // Data export / delete
   const [exportingData, setExportingData] = useState(false);
@@ -69,6 +92,8 @@ export default function SettingsScreen({ navigation, route }) {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus,   setUpdateStatus]   = useState(null); // 'latest' | 'found' | 'error'
 
+  const { request, response, promptAsync } = useGoogleAuth();
+
   const load = async () => {
     try {
       const p = await getProfile();
@@ -80,7 +105,30 @@ export default function SettingsScreen({ navigation, route }) {
     } catch (e) { console.error(e); }
   };
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  const loadBackupInfo = async () => {
+    const email = await getUserEmail();
+    const last  = await getLastBackupTime();
+    const time  = await getBackupTime();
+    setDriveEmail(email);
+    setLastBackup(last);
+    setBackupTimeVal(time || '00:00');
+  };
+
+  useFocusEffect(useCallback(() => { load(); loadBackupInfo(); }, []));
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const token = response.authentication?.accessToken || response.params?.access_token;
+      const expiresIn = parseInt(response.authentication?.expiresIn || response.params?.expires_in || '3600', 10);
+      if (token) {
+        fetchUserEmail(token).then(async email => {
+          await saveToken(token, email, expiresIn);
+          setDriveEmail(email);
+          Alert.alert('Connected', `Google Drive linked to ${email}`);
+        }).catch(() => Alert.alert('Error', 'Could not fetch Google account info'));
+      }
+    }
+  }, [response]);
 
   const set = (key, value) => {
     setForm(f => ({ ...f, [key]: value }));
@@ -110,11 +158,56 @@ export default function SettingsScreen({ navigation, route }) {
   );
 
   // ── Backup ─────────────────────────────────────────────────────
+  const handleSync = async () => {
+    const token = await getToken();
+    if (!token) { Alert.alert('Not connected', 'Connect Google Drive first'); return; }
+    setSyncing(true);
+    try {
+      const json = await exportAllData();
+      await uploadBackup(token, json);
+      const last = await getLastBackupTime();
+      setLastBackup(last);
+      Alert.alert('Backup saved ✓', 'Your data has been backed up to Google Drive');
+    } catch (e) { Alert.alert('Backup failed', e.message); }
+    finally { setSyncing(false); }
+  };
 
+  const handleRestore = async () => {
+    const token = await getToken();
+    if (!token) { Alert.alert('Not connected', 'Connect Google Drive first'); return; }
+    const doRestore = async () => {
+      setRestoring(true);
+      try {
+        const json = await downloadBackup(token);
+        if (!json) { Alert.alert('No backup found', 'No backup file in your Google Drive'); return; }
+        await importAllData(json);
+        Alert.alert('Restored ✓', 'Your data has been restored');
+      } catch (e) { Alert.alert('Restore failed', e.message); }
+      finally { setRestoring(false); }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Restore Backup?\n\nThis will replace ALL current data with your Google Drive backup. This cannot be undone.')) {
+        doRestore();
+      }
+    } else {
+      Alert.alert('Restore Backup', 'This will replace ALL current data. Cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Restore', style: 'destructive', onPress: doRestore },
+      ]);
+    }
+  };
 
-
-
-
+  const handleDisconnect = () => {
+    const doIt = async () => { await gdriveSignOut(); setDriveEmail(null); setLastBackup(null); };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Disconnect Google Drive? Auto backup will stop.')) doIt();
+    } else {
+      Alert.alert('Disconnect?', 'Stop backing up to Google Drive?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Disconnect', style: 'destructive', onPress: doIt },
+      ]);
+    }
+  };
 
   // ── Sign out ───────────────────────────────────────────────────
   const handleSignOut = () => {
@@ -342,7 +435,12 @@ export default function SettingsScreen({ navigation, route }) {
     setTimeout(() => done('error'), 15000);
   };
 
-
+  const formatLastBackup = (iso) => {
+    if (!iso) return 'Never';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  };
 
   const BACKUP_TIMES = ['00:00','06:00','08:00','10:00','12:00','18:00','20:00','22:00'];
 
@@ -851,7 +949,55 @@ export default function SettingsScreen({ navigation, route }) {
         )}
 
         {/* ════ BACKUP ════ */}
+        {activeTab === 'backup' && (
+          <>
+            <SH icon="cloud" title="Google Drive Backup" />
+            <Card>
+              {driveEmail ? (
+                <>
+                  <View style={s.connectedRow}>
+                    <View style={s.connectedDot} />
+                    <View style={{flex:1}}>
+                      <Text style={s.connectedEmail}>{driveEmail}</Text>
+                      <Text style={s.connectedLast}>Last backup: {formatLastBackup(lastBackup)}</Text>
+                    </View>
+                    <TouchableOpacity style={s.disconnectBtn} onPress={handleDisconnect}>
+                      <Text style={s.disconnectTxt}>Disconnect</Text>
+                    </TouchableOpacity>
+                  </View>
 
+                  <ToggleRow
+                    label="Daily Backup Time"
+                    sub="Auto backup runs once per day"
+                    right={
+                      <TouchableOpacity style={s.timeChip} onPress={() => setTimeModal(true)}>
+                        <Icon name="clock" size={13} color={COLORS.primary} />
+                        <Text style={s.timeChipTxt}>{backupTime}</Text>
+                      </TouchableOpacity>
+                    }
+                  />
+
+                  <View style={s.backupBtns}>
+                    <TouchableOpacity style={[s.actionBtn,s.actionBtnPrimary,{flex:1},syncing&&{opacity:0.5}]} onPress={handleSync} disabled={syncing}>
+                      {syncing ? <ActivityIndicator size="small" color="#fff" /> : <><Icon name="upload-cloud" size={14} color="#fff" /><Text style={s.actionBtnTxt}> Backup Now</Text></>}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.actionBtn,s.actionBtnOutline,{flex:1},restoring&&{opacity:0.5}]} onPress={handleRestore} disabled={restoring}>
+                      {restoring ? <ActivityIndicator size="small" color={COLORS.primary} /> : <><Icon name="download-cloud" size={14} color={COLORS.primary} /><Text style={[s.actionBtnTxt,{color:COLORS.primary}]}> Restore</Text></>}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={s.cardDesc}>Connect Google Drive to automatically backup your data daily. Restore anytime after reinstalling.</Text>
+                  <TouchableOpacity style={[s.actionBtn,s.actionBtnSecondary]} onPress={() => promptAsync()} disabled={!request}>
+                    <Icon name="link" size={14} color="#fff" />
+                    <Text style={s.actionBtnTxt}> Connect Google Drive</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </Card>
+          </>
+        )}
 
         {/* ════ ABOUT ════ */}
         {activeTab === 'about' && (
@@ -965,6 +1111,31 @@ export default function SettingsScreen({ navigation, route }) {
         </View>
       )}
 
+      {/* Backup time modal */}
+      {timeModal && (
+        <Modal transparent animationType="slide" onRequestClose={() => setTimeModal(false)}>
+          <View style={s.overlay}>
+            <View style={s.sheet}>
+              <View style={s.sheetHeader}>
+                <Text style={s.sheetTitle}>Daily Backup Time</Text>
+                <TouchableOpacity onPress={() => setTimeModal(false)} style={{padding:4}}>
+                  <Icon name="x" size={18} color={COLORS.textMute} />
+                </TouchableOpacity>
+              </View>
+              {BACKUP_TIMES.map(t => (
+                <TouchableOpacity key={t} style={s.sheetItem} onPress={async () => {
+                  await setBackupTime(t);
+                  setBackupTimeVal(t);
+                  setTimeModal(false);
+                }}>
+                  <Text style={[s.sheetItemName, backupTime===t&&{color:COLORS.primary,fontWeight:FONTS.bold}]}>{t}</Text>
+                  {backupTime===t && <Icon name="check" size={15} color={COLORS.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -1096,6 +1267,15 @@ const s = StyleSheet.create({
   actionBtnTxt:    { color:'#fff', fontWeight:FONTS.bold, fontSize:13 },
 
   // Backup
+  connectedRow:  { flexDirection:'row', alignItems:'center', gap:10, backgroundColor:COLORS.successLight, borderRadius:RADIUS.md, padding:12, marginBottom:4 },
+  connectedDot:  { width:8, height:8, borderRadius:4, backgroundColor:COLORS.success, flexShrink:0 },
+  connectedEmail:{ fontSize:13, fontWeight:FONTS.semibold, color:COLORS.success },
+  connectedLast: { fontSize:11, color:COLORS.success, opacity:0.7, marginTop:1 },
+  disconnectBtn: { paddingHorizontal:10, paddingVertical:5, borderRadius:RADIUS.sm, backgroundColor:'rgba(220,38,38,0.1)' },
+  disconnectTxt: { fontSize:11, fontWeight:FONTS.bold, color:COLORS.danger },
+  timeChip:      { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:12, paddingVertical:7, borderRadius:RADIUS.md, backgroundColor:COLORS.primaryLight, borderWidth:1, borderColor:COLORS.primary },
+  timeChipTxt:   { fontSize:13, fontWeight:FONTS.bold, color:COLORS.primary },
+  backupBtns:    { flexDirection:'row', gap:10, marginTop:4 },
 
   // Sign out
   signOutBtn:  { flexDirection:'row', alignItems:'center', backgroundColor:COLORS.dangerLight, borderRadius:RADIUS.lg, padding:16, marginTop:8, borderWidth:1, borderColor:'#FECACA' },
