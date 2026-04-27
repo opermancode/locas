@@ -81,7 +81,7 @@ export default function CreateInvoice({ navigation, route }) {
   const [itemSearch, setItemSearch]   = useState('');
 
   // ── Load ──────────────────────────────────────────────────────
-  useEffect(() => { init(); }, []);
+  useEffect(() => { isMounted.current = false; init(); }, [route?.params?.invoice?.id]);
   const isMounted = React.useRef(false);
 
   // Reload parties, items and invoice number every time screen comes into focus
@@ -91,11 +91,10 @@ export default function CreateInvoice({ navigation, route }) {
       const [p, itms, num] = await Promise.all([getParties(), getItems(), peekNextInvoiceNumber()]);
       setParties(p);
       setItems(itms);
-      // Only update invoice number if user hasn't manually changed it
-      // i.e. it still looks like an auto-generated number (contains digits)
+      // Only refresh invoice number for NEW invoices — never touch edit/duplicate
       if (!editInvoice) setInvoiceNo(num);
     })();
-  }, []));
+  }, [editInvoice]));
 
   const init = async () => {
     const [num, p, itms, prof] = await Promise.all([
