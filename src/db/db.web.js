@@ -236,11 +236,9 @@ export async function peekNextInvoiceNumber() {
   }, 0);
 
   // If prefix changed (no matching invoices), start from 1; otherwise continue from max
-  const storedCounter = profile.invoice_counter || 0;
-  const baseCounter   = matchingInvoices.length > 0
-    ? Math.max(storedCounter, maxFromInvoices)
-    : maxFromInvoices; // don't carry over storedCounter from old prefix
-  const next = baseCounter + 1;
+  // Always trust actual invoices on disk — ignore stored counter
+  // (counter gets stale when invoices are deleted)
+  const next = maxFromInvoices + 1;
 
   return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
 }
@@ -263,11 +261,8 @@ async function consumeNextInvoiceNumber() {
       return Math.max(max, extractCounter(inv.invoice_number));
     }, 0);
 
-    const storedCounter = profile.invoice_counter || 0;
-    const baseCounter   = matchingInvoices.length > 0
-      ? Math.max(storedCounter, maxFromInvoices)
-      : maxFromInvoices;
-    const next = baseCounter + 1;
+    // Always trust actual invoices on disk — ignore stored counter
+    const next = maxFromInvoices + 1;
 
     await stores.profile.setItem('1', { ...profile, invoice_counter: next });
     return `${prefix}${sep}${String(next).padStart(digits, '0')}`;
